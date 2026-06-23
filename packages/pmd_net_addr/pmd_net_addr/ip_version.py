@@ -30,6 +30,8 @@ pmd_net_addr/ip_version.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
 
 

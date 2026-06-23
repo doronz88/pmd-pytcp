@@ -37,6 +37,8 @@ pmd_pytcp/client/client__membership.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 
 from pmd_net_addr import Ip4Address

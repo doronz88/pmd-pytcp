@@ -30,8 +30,10 @@ pmd_net_proto/protocols/tcp/options/tcp__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC
-from typing import Self, override
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_option import ProtoOptions
@@ -66,6 +68,7 @@ from pmd_net_proto.protocols.tcp.options.tcp__option__unknown import (
 from pmd_net_proto.protocols.tcp.options.tcp__option__wscale import TcpOptionWscale
 from pmd_net_proto.protocols.tcp.tcp__errors import TcpIntegrityError
 from pmd_net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TCP__MIN_MSS
+from pmd_net_proto._compat import as_buffer
 
 TCP__OPTIONS__MAX_LEN = 40
 
@@ -191,7 +194,7 @@ class TcpOptions(ProtoOptions):
             # RFC 9293 §3.2 — NOP (Kind 1) is a single byte used
             # for inter-option padding.
             if frame[offset] == int(TcpOptionType.NOP):
-                offset += TCP__OPTION__NOP__LEN
+                offset += as_buffer(TCP__OPTION__NOP__LEN)
                 continue
 
             # RFC 9293 §3.2 — Case-2 TLV: the Length byte MUST
@@ -221,32 +224,32 @@ class TcpOptions(ProtoOptions):
         options: list[TcpOption] = []
 
         while offset < len(buffer):
-            match TcpOptionType.from_bytes(buffer[offset : offset + 1]):
-                case TcpOptionType.EOL:
-                    options.append(TcpOptionEol.from_buffer(buffer[offset:]))
-                    break
-                case TcpOptionType.NOP:
-                    options.append(TcpOptionNop.from_buffer(buffer[offset:]))
-                case TcpOptionType.MSS:
-                    options.append(TcpOptionMss.from_buffer(buffer[offset:]))
-                case TcpOptionType.WSCALE:
-                    options.append(TcpOptionWscale.from_buffer(buffer[offset:]))
-                case TcpOptionType.SACKPERM:
-                    options.append(TcpOptionSackperm.from_buffer(buffer[offset:]))
-                case TcpOptionType.SACK:
-                    options.append(TcpOptionSack.from_buffer(buffer[offset:]))
-                case TcpOptionType.TIMESTAMPS:
-                    options.append(TcpOptionTimestamps.from_buffer(buffer[offset:]))
-                case TcpOptionType.FASTOPEN:
-                    options.append(TcpOptionFastOpen.from_buffer(buffer[offset:]))
-                case TcpOptionType.ACCECN0:
-                    options.append(TcpOptionAccecn0.from_buffer(buffer[offset:]))
-                case TcpOptionType.ACCECN1:
-                    options.append(TcpOptionAccecn1.from_buffer(buffer[offset:]))
-                case _:
-                    options.append(TcpOptionUnknown.from_buffer(buffer[offset:]))
+            _match_subject = TcpOptionType.from_bytes(buffer[offset : offset + 1])
+            if _match_subject == TcpOptionType.EOL:
+                options.append(TcpOptionEol.from_buffer(buffer[offset:]))
+                break
+            elif _match_subject == TcpOptionType.NOP:
+                options.append(TcpOptionNop.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.MSS:
+                options.append(TcpOptionMss.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.WSCALE:
+                options.append(TcpOptionWscale.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.SACKPERM:
+                options.append(TcpOptionSackperm.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.SACK:
+                options.append(TcpOptionSack.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.TIMESTAMPS:
+                options.append(TcpOptionTimestamps.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.FASTOPEN:
+                options.append(TcpOptionFastOpen.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.ACCECN0:
+                options.append(TcpOptionAccecn0.from_buffer(buffer[offset:]))
+            elif _match_subject == TcpOptionType.ACCECN1:
+                options.append(TcpOptionAccecn1.from_buffer(buffer[offset:]))
+            else:
+                options.append(TcpOptionUnknown.from_buffer(buffer[offset:]))
 
-            offset += options[-1].len
+            offset += as_buffer(options[-1].len)
 
         return cls(*options)
 

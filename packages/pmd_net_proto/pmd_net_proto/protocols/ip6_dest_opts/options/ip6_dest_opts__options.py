@@ -30,8 +30,10 @@ pmd_net_proto/protocols/ip6_dest_opts/options/ip6_dest_opts__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC
-from typing import Self, override
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_option import ProtoOptions
@@ -59,6 +61,7 @@ from pmd_net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__tunnel
 from pmd_net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__option__unknown import (
     Ip6DestOptsOptionUnknown,
 )
+from pmd_net_proto._compat import as_buffer
 
 # RFC 8200 §4.6 — Hdr Ext Len is an 8-bit unsigned integer giving
 # the length of the Destination Options header in 8-octet units NOT
@@ -99,7 +102,7 @@ class Ip6DestOptsOptions(ProtoOptions):
 
         while offset < len(buffer):
             if buffer[offset] == int(Ip6DestOptsOptionType.PAD1):
-                offset += IP6_DEST_OPTS__OPTION__PAD1__LEN
+                offset += as_buffer(IP6_DEST_OPTS__OPTION__PAD1__LEN)
                 continue
 
             if offset + IP6_DEST_OPTS__OPTION__LEN > len(buffer):
@@ -118,7 +121,7 @@ class Ip6DestOptsOptions(ProtoOptions):
                     f"block length {len(buffer)}."
                 )
 
-            offset += opt_total_len
+            offset += as_buffer(opt_total_len)
 
     @staticmethod
     def validate_sanity(*, buffer: Buffer, ip6_dst_is_multicast: bool = False) -> None:
@@ -140,39 +143,38 @@ class Ip6DestOptsOptions(ProtoOptions):
 
             if opt_type in Ip6DestOptsOptionType.get_known_values():
                 if opt_type == int(Ip6DestOptsOptionType.PAD1):
-                    offset += IP6_DEST_OPTS__OPTION__PAD1__LEN
+                    offset += as_buffer(IP6_DEST_OPTS__OPTION__PAD1__LEN)
                 else:
                     offset += IP6_DEST_OPTS__OPTION__LEN + buffer[offset + 1]
                 continue
 
             action = ip6_dest_opts__option_action(opt_type)
 
-            match action:
-                case Ip6DestOptsOptionAction.SKIP:
-                    pass
-                case Ip6DestOptsOptionAction.DISCARD:
+            if action == Ip6DestOptsOptionAction.SKIP:
+                pass
+            elif action == Ip6DestOptsOptionAction.DISCARD:
+                raise Ip6DestOptsSanityError(
+                    f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset {offset} "
+                    "with action 01 (silent discard).",
+                )
+            elif action == Ip6DestOptsOptionAction.DISCARD_PARAM_PROBLEM:
+                raise Ip6DestOptsSanityError(
+                    f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset {offset} "
+                    "with action 10 (discard + Param Problem code 2).",
+                    pointer=offset,
+                )
+            elif action == Ip6DestOptsOptionAction.DISCARD_PARAM_PROBLEM_UNICAST:
+                if ip6_dst_is_multicast:
                     raise Ip6DestOptsSanityError(
-                        f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset {offset} "
-                        "with action 01 (silent discard).",
+                        f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset "
+                        f"{offset} with action 11 (silent discard on multicast dst).",
+                        multicast_only=True,
                     )
-                case Ip6DestOptsOptionAction.DISCARD_PARAM_PROBLEM:
-                    raise Ip6DestOptsSanityError(
-                        f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset {offset} "
-                        "with action 10 (discard + Param Problem code 2).",
-                        pointer=offset,
-                    )
-                case Ip6DestOptsOptionAction.DISCARD_PARAM_PROBLEM_UNICAST:
-                    if ip6_dst_is_multicast:
-                        raise Ip6DestOptsSanityError(
-                            f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset "
-                            f"{offset} with action 11 (silent discard on multicast dst).",
-                            multicast_only=True,
-                        )
-                    raise Ip6DestOptsSanityError(
-                        f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset {offset} "
-                        "with action 11 (discard + Param Problem code 2 on unicast dst).",
-                        pointer=offset,
-                    )
+                raise Ip6DestOptsSanityError(
+                    f"Unrecognized DestOpts option type 0x{opt_type:02x} at offset {offset} "
+                    "with action 11 (discard + Param Problem code 2 on unicast dst).",
+                    pointer=offset,
+                )
 
             offset += IP6_DEST_OPTS__OPTION__LEN + buffer[offset + 1]
 
@@ -191,17 +193,17 @@ class Ip6DestOptsOptions(ProtoOptions):
         options: list[Ip6DestOptsOption] = []
 
         while offset < len(buffer):
-            match Ip6DestOptsOptionType.from_bytes(buffer[offset : offset + 1]):
-                case Ip6DestOptsOptionType.PAD1:
-                    options.append(Ip6DestOptsOptionPad1.from_buffer(buffer[offset:]))
-                case Ip6DestOptsOptionType.PADN:
-                    options.append(Ip6DestOptsOptionPadN.from_buffer(buffer[offset:]))
-                case Ip6DestOptsOptionType.TUNNEL_ENCAPSULATION_LIMIT:
-                    options.append(Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(buffer[offset:]))
-                case _:
-                    options.append(Ip6DestOptsOptionUnknown.from_buffer(buffer[offset:]))
+            _match_subject = Ip6DestOptsOptionType.from_bytes(buffer[offset : offset + 1])
+            if _match_subject == Ip6DestOptsOptionType.PAD1:
+                options.append(Ip6DestOptsOptionPad1.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip6DestOptsOptionType.PADN:
+                options.append(Ip6DestOptsOptionPadN.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip6DestOptsOptionType.TUNNEL_ENCAPSULATION_LIMIT:
+                options.append(Ip6DestOptsOptionTunnelEncapsulationLimit.from_buffer(buffer[offset:]))
+            else:
+                options.append(Ip6DestOptsOptionUnknown.from_buffer(buffer[offset:]))
 
-            offset += options[-1].len
+            offset += as_buffer(options[-1].len)
 
         return cls(*options)
 

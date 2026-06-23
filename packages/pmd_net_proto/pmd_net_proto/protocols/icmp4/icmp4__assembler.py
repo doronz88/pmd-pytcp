@@ -30,7 +30,10 @@ pmd_net_proto/protocols/icmp4/icmp4__assembler.py
 ver 3.0.7
 """
 
-from typing import cast, override
+from __future__ import annotations
+
+from typing import cast
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -98,4 +101,4 @@ class Icmp4Assembler(Icmp4, ProtoAssembler):
 
         cast(bytearray, buffers[-2])[2:4] = inet_cksum(
             *buffers[-2:],
-        ).to_bytes(2)
+        ).to_bytes(2, "big")

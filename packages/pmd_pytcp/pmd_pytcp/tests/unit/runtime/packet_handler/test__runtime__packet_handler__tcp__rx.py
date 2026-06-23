@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__tcp__
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
@@ -42,6 +44,7 @@ from pmd_pytcp import stack
 from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.packet_handler.packet_handler__tcp__rx import TcpRxHandler
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -166,11 +169,11 @@ class TestPacketHandlerTcpRxParse(_TcpRxTestBase):
 
         # Build a valid IP+TCP frame then corrupt the TCP cksum field.
         frame = bytearray(
-            Ip4Assembler(
+            as_buffer(Ip4Assembler(
                 ip4__src=HOST_A__IP4,
                 ip4__dst=STACK__IP4_ADDRESS,
                 ip4__payload=TcpAssembler(tcp__sport=12345, tcp__dport=80),
-            )
+            ))
         )
         # TCP cksum is at offset IP4_header_len + 16. Minimum IP header is 20.
         frame[20 + 16] = 0xDE

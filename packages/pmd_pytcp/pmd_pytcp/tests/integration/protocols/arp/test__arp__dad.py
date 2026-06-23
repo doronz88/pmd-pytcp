@@ -42,6 +42,8 @@ pmd_pytcp/tests/integration/protocols/arp/test__arp__dad.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.tests.lib.arp_testcase import (
     HOST_A__MAC_ADDRESS,
     STACK__IP4_HOST,

@@ -33,6 +33,8 @@ pmd_pytcp/tests/integration/protocols/icmp4/test__icmp4__echo_options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto import (
     EthernetAssembler,

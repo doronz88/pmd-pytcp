@@ -40,6 +40,8 @@ pmd_pytcp/tests/integration/protocols/ethernet_802_3/test__ethernet_802_3__llc_s
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto import SnapCiscoProtocol
 from pmd_net_proto.lib.enums import EtherType
 from pmd_pytcp.tests.lib.ethernet_802_3_testcase import (

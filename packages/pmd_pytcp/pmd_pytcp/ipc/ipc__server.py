@@ -37,11 +37,13 @@ pmd_pytcp/ipc/ipc__server.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import socket
 import threading
 from collections.abc import Callable, Mapping
-from typing import override
+from typing_extensions import TypeAliasType, override
 
 from pmd_pytcp.ipc.ipc__control import handle_control_call
 from pmd_pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
@@ -55,7 +57,7 @@ from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 # A handler takes the decoded request and returns the full response
 # message, so it owns the response 'kind' (a control handler returns
 # RESPONSE_OK or RESPONSE_ERROR depending on the call's outcome).
-type IpcRequestHandler = Callable[[IpcMessage], IpcMessage]
+IpcRequestHandler = TypeAliasType("IpcRequestHandler", Callable[[IpcMessage], IpcMessage])
 
 IPC__SERVER__LISTEN_BACKLOG: int = 64
 IPC__SERVER__CLIENT_JOIN_TIMEOUT__SEC: float = 2.0
@@ -161,7 +163,7 @@ class IpcServer(Subsystem):
             while not self._event__stop_subsystem.is_set():
                 try:
                     payload = recv_frame(conn)
-                except IpcFrameError, OSError:
+                except (IpcFrameError, OSError):
                     break
 
                 if payload is None:

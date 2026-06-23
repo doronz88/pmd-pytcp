@@ -39,8 +39,10 @@ pmd_pytcp/ipc/ipc__rpc.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import json
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from typing import Any, NoReturn
 
 from pmd_net_proto.lib.buffer import Buffer

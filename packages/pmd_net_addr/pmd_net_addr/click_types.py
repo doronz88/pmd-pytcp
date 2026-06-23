@@ -30,10 +30,22 @@ pmd_net_addr/click_types.py
 ver 3.0.7
 """
 
-from typing import NoReturn, override
+from __future__ import annotations
+
+from typing import NoReturn, TypeVar, Union
+from typing_extensions import override
 
 from click import ParamType
 from click.core import Context, Parameter
+
+# click's `ParamType` only became subscriptable in the 8.2 line (Python
+# 3.10+). On the 8.1.x releases still installable on Python 3.9, the
+# generic `ParamType[...]` bases below would fail at class-definition
+# time, so add the PEP 560 hook when it is missing.
+if not hasattr(ParamType, "__class_getitem__"):
+    ParamType.__class_getitem__ = classmethod(  # type: ignore[attr-defined]
+        lambda cls, item: cls
+    )
 
 from pmd_net_addr.errors import NetAddrError
 from pmd_net_addr.ip4_address import Ip4Address
@@ -45,14 +57,8 @@ from pmd_net_addr.ip6_network import Ip6Network
 from pmd_net_addr.mac_address import MacAddress
 
 
-def _fail[T](
-    param_type: ParamType[T],
-    /,
-    *,
-    message: str,
-    param: Parameter | None,
-    ctx: Context | None,
-) -> NoReturn:
+T = TypeVar("T")
+def _fail( param_type: ParamType[T], /, *, message: str, param: Parameter | None, ctx: Context | None, ) -> NoReturn:
     """
     Raise the Click usage error for an invalid argument. Never
     returns: 'ParamType.fail' raises, and the trailing assert
@@ -93,7 +99,7 @@ class ClickTypeMacAddress(ParamType[MacAddress]):
             )
 
 
-class ClickTypeIpAddress(ParamType[Ip6Address | Ip4Address]):
+class ClickTypeIpAddress(ParamType[Union[Ip6Address, Ip4Address]]):
     """
     Custom Click type for handling IP address argument.
     """
@@ -190,7 +196,7 @@ class ClickTypeIp4Address(ParamType[Ip4Address]):
             )
 
 
-class ClickTypeIpNetwork(ParamType[Ip6Network | Ip4Network]):
+class ClickTypeIpNetwork(ParamType[Union[Ip6Network, Ip4Network]]):
     """
     Custom Click type for handling IP network argument.
     """
@@ -287,7 +293,7 @@ class ClickTypeIp4Network(ParamType[Ip4Network]):
             )
 
 
-class ClickTypeIfAddr(ParamType[Ip6IfAddr | Ip4IfAddr]):
+class ClickTypeIfAddr(ParamType[Union[Ip6IfAddr, Ip4IfAddr]]):
     """
     Custom Click type for handling IP host argument.
     """

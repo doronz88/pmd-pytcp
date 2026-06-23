@@ -34,6 +34,8 @@ pmd_net_proto/tests/unit/protocols/ethernet/test__ethernet__assembler__operation
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

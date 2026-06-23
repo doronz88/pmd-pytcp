@@ -30,8 +30,11 @@ pmd_net_addr/ip4_network.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterator
-from typing import ClassVar, Self, final, override
+from typing import ClassVar
+from typing_extensions import Self, final, override
 
 from pmd_net_addr.errors import (
     Ip4AddressFormatError,

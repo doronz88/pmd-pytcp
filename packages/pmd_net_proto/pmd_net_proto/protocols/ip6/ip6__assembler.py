@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6/ip6__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import Ip6Address
 from pmd_net_proto.lib.buffer import Buffer
@@ -45,6 +47,7 @@ from pmd_net_proto.protocols.ip6.ip6__header import (
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
 from pmd_net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from pmd_net_proto.protocols.udp.udp__assembler import UdpAssembler
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
@@ -90,7 +93,7 @@ class Ip6Assembler(Ip6[Ip6Payload], ProtoAssembler):
         Assemble the IPv6 packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
 
         if isinstance(
             self._payload,

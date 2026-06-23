@@ -46,6 +46,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__dad_initial_dela
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest.mock import patch
 

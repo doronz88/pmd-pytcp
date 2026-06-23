@@ -30,7 +30,10 @@ pmd_net_proto/tests/unit/lib/test__lib__buffer.py
 ver 3.0.7
 """
 
-from typing import TypeAliasType, get_args
+from __future__ import annotations
+
+from typing import get_args
+from typing_extensions import TypeAliasType
 from unittest import TestCase
 
 from pmd_net_proto.lib.buffer import Buffer

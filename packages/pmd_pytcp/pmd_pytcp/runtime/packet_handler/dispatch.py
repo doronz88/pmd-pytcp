@@ -30,12 +30,16 @@ pmd_pytcp/runtime/packet_handler/dispatch.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 
 from pmd_net_proto import PacketRx
+from typing import Generic, TypeVar
 
 
-class DispatchRegistry[K]:
+K = TypeVar("K")
+class DispatchRegistry(Generic[K]):
     """
     A per-interface codepoint-keyed RX dispatch table.
 

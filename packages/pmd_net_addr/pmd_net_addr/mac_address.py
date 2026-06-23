@@ -30,11 +30,15 @@ pmd_net_addr/mac_address.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import re
-from typing import ClassVar, Self, final, override
+from typing import ClassVar
+from typing_extensions import Self, final, override
 
 from pmd_net_addr.address import Address
 from pmd_net_addr.errors import MacAddressFormatError, MacAddressSanityError, NetAddrError
+from pmd_net_addr._compat import as_buffer
 
 MAC__ADDRESS_LEN = 6
 
@@ -84,7 +88,7 @@ class MacAddress(Address):
 
         if isinstance(address, (memoryview, bytes, bytearray)):
             if len(address) == MAC__ADDRESS_LEN:
-                self._address = int.from_bytes(address)
+                self._address = int.from_bytes(address, "big")
                 return
 
         if isinstance(address, str):
@@ -101,7 +105,7 @@ class MacAddress(Address):
                 address.strip(),
             ):
                 self._address = int.from_bytes(
-                    bytes.fromhex(re.sub(r":|-|\.", "", address.lower().strip())),
+                    bytes.fromhex(re.sub(r":|-|\.", "", address.lower().strip())), "big",
                 )
                 return
 
@@ -124,12 +128,11 @@ class MacAddress(Address):
         emit lowercase hex; any other code is not recognised.
         """
 
-        match format_spec:
-            case "hy":
-                return "-".join(f"{octet:0>2x}" for octet in bytes(self))
-            case "ci":
-                digits = f"{self._address:012x}"
-                return ".".join(digits[index : index + 4] for index in range(0, 12, 4))
+        if format_spec == "hy":
+            return "-".join(f"{octet:0>2x}" for octet in bytes(self))
+        elif format_spec == "ci":
+            digits = f"{self._address:012x}"
+            return ".".join(digits[index : index + 4] for index in range(0, 12, 4))
 
         return None
 
@@ -139,7 +142,16 @@ class MacAddress(Address):
         Get the MAC address as a memoryview.
         """
 
-        return memoryview(bytearray(self._address.to_bytes(MAC__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._address.to_bytes(MAC__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def is_unicast(self) -> bool:

@@ -34,7 +34,9 @@ pmd_net_proto/protocols/llc/llc__enums.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.proto_enum import ProtoEnumByte
 
@@ -70,33 +72,32 @@ class LlcSap(ProtoEnumByte):
         Get the LLC SAP value as a string.
         """
 
-        match self:
-            case LlcSap.NULL:
-                name = "Null"
-            case LlcSap.LLC_MGMT:
-                name = "LLC-Mgmt"
-            case LlcSap.SNA_PATH_CONTROL:
-                name = "SNA-PathCtrl"
-            case LlcSap.TCP_IP_OVER_LLC:
-                name = "TCP/IP-over-LLC"
-            case LlcSap.PROWAY_NM:
-                name = "ProWay-NM"
-            case LlcSap.LAYER_MGMT:
-                name = "STP"
-            case LlcSap.SNA_2:
-                name = "SNA-2"
-            case LlcSap.SNAP:
-                name = "SNAP"
-            case LlcSap.BANYAN_VINES:
-                name = "Banyan-VINES"
-            case LlcSap.NOVELL_IPX:
-                name = "Novell-IPX"
-            case LlcSap.NETBIOS:
-                name = "NetBIOS"
-            case LlcSap.ISO_NETWORK:
-                name = "ISO-Network"
-            case LlcSap.GLOBAL:
-                name = "Global"
+        if self == LlcSap.NULL:
+            name = "Null"
+        elif self == LlcSap.LLC_MGMT:
+            name = "LLC-Mgmt"
+        elif self == LlcSap.SNA_PATH_CONTROL:
+            name = "SNA-PathCtrl"
+        elif self == LlcSap.TCP_IP_OVER_LLC:
+            name = "TCP/IP-over-LLC"
+        elif self == LlcSap.PROWAY_NM:
+            name = "ProWay-NM"
+        elif self == LlcSap.LAYER_MGMT:
+            name = "STP"
+        elif self == LlcSap.SNA_2:
+            name = "SNA-2"
+        elif self == LlcSap.SNAP:
+            name = "SNAP"
+        elif self == LlcSap.BANYAN_VINES:
+            name = "Banyan-VINES"
+        elif self == LlcSap.NOVELL_IPX:
+            name = "Novell-IPX"
+        elif self == LlcSap.NETBIOS:
+            name = "NetBIOS"
+        elif self == LlcSap.ISO_NETWORK:
+            name = "ISO-Network"
+        elif self == LlcSap.GLOBAL:
+            name = "Global"
 
         return f"0x{self.value:02x}" if self.is_unknown else name
 
@@ -124,16 +125,15 @@ class LlcControl(ProtoEnumByte):
         Get the LLC Control value as a string.
         """
 
-        match self:
-            case LlcControl.UI:
-                name = "UI"
-            case LlcControl.XID_POLL_OFF:
-                name = "XID"
-            case LlcControl.XID_POLL_ON:
-                name = "XID/P"
-            case LlcControl.TEST_POLL_OFF:
-                name = "TEST"
-            case LlcControl.TEST_POLL_ON:
-                name = "TEST/P"
+        if self == LlcControl.UI:
+            name = "UI"
+        elif self == LlcControl.XID_POLL_OFF:
+            name = "XID"
+        elif self == LlcControl.XID_POLL_ON:
+            name = "XID/P"
+        elif self == LlcControl.TEST_POLL_OFF:
+            name = "TEST"
+        elif self == LlcControl.TEST_POLL_ON:
+            name = "TEST/P"
 
         return f"0x{self.value:02x}" if self.is_unknown else name

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__client_id.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -41,6 +43,7 @@ from pmd_net_proto import (
     Dhcp4OptionClientId,
     Dhcp4OptionType,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp4OptionClientIdAsserts(TestCase):
@@ -224,7 +227,7 @@ class TestDhcp4OptionClientIdAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._option)),
+            bytes(memoryview(as_buffer(self._option))),
             self._results["__bytes__"],
             msg=f"Unexpected memoryview output for case: {self._description}",
         )

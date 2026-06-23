@@ -35,8 +35,10 @@ packages/pmd_pytcp/pmd_pytcp/tests/integration/protocols/icmp6/test__mld__thread
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr import MacAddress
 from pmd_net_proto.lib.inet_cksum import inet_cksum

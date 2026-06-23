@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__icmp4__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 
 from pmd_net_addr import Ip4Address, IpVersion
@@ -101,19 +103,18 @@ class Icmp4RxHandler:
 
         __debug__ and log("icmp4", f"{packet_rx.tracker} - {packet_rx.icmp4}")
 
-        match packet_rx.icmp4.message.type:
-            case Icmp4Type.ECHO_REPLY:
-                self.__phrx_icmp4__echo_reply(packet_rx)
-            case Icmp4Type.DESTINATION_UNREACHABLE:
-                self.__phrx_icmp4__destination_unreachable(packet_rx)
-            case Icmp4Type.ECHO_REQUEST:
-                self.__phrx_icmp4__echo_request(packet_rx)
-            case Icmp4Type.TIME_EXCEEDED:
-                self.__phrx_icmp4__time_exceeded(packet_rx)
-            case Icmp4Type.PARAMETER_PROBLEM:
-                self.__phrx_icmp4__parameter_problem(packet_rx)
-            case _:
-                self.__phrx_icmp4__unknown(packet_rx)
+        if packet_rx.icmp4.message.type == Icmp4Type.ECHO_REPLY:
+            self.__phrx_icmp4__echo_reply(packet_rx)
+        elif packet_rx.icmp4.message.type == Icmp4Type.DESTINATION_UNREACHABLE:
+            self.__phrx_icmp4__destination_unreachable(packet_rx)
+        elif packet_rx.icmp4.message.type == Icmp4Type.ECHO_REQUEST:
+            self.__phrx_icmp4__echo_request(packet_rx)
+        elif packet_rx.icmp4.message.type == Icmp4Type.TIME_EXCEEDED:
+            self.__phrx_icmp4__time_exceeded(packet_rx)
+        elif packet_rx.icmp4.message.type == Icmp4Type.PARAMETER_PROBLEM:
+            self.__phrx_icmp4__parameter_problem(packet_rx)
+        else:
+            self.__phrx_icmp4__unknown(packet_rx)
 
     def __phrx_icmp4__echo_reply(self, packet_rx: PacketRx) -> None:
         """

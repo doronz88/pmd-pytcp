@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/lib/test__lib__enums.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock
@@ -48,6 +50,7 @@ from pmd_net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
 from pmd_net_proto.protocols.raw.raw__base import Raw
 from pmd_net_proto.protocols.tcp.tcp__base import Tcp
 from pmd_net_proto.protocols.udp.udp__base import Udp
+from typing_extensions import override
 
 
 @parameterized_class(
@@ -263,6 +266,15 @@ class TestNetProtoLibEnumsEtherTypeFromProtoRaw(TestCase):
 
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
         with self.assertRaises(AssertionError):
             EtherType.from_proto(ForeignProto())
@@ -638,6 +650,15 @@ class TestNetProtoLibEnumsIpProtoFromProtoSpecialCases(TestCase):
 
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
         with self.assertRaises(AssertionError) as error:
             IpProto.from_proto(ForeignProto())

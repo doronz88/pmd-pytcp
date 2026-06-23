@@ -31,7 +31,9 @@ pmd_pytcp/tests/unit/stack/test__stack__route.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network

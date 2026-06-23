@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/igmp/test__igmp__message__v3_report__assemble
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

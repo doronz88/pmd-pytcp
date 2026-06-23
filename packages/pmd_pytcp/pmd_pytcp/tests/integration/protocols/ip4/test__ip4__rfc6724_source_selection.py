@@ -41,6 +41,8 @@ pmd_pytcp/tests/integration/protocols/ip4/test__ip4__rfc6724_source_selection.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, Ip4IfAddr
 from pmd_pytcp.tests.lib.ip4_testcase import Ip4TestCase
 

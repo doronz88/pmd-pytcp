@@ -30,6 +30,8 @@ pmd_net_proto/protocols/arp/arp__enums.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto.lib.proto_enum import ProtoEnumWord
 
 

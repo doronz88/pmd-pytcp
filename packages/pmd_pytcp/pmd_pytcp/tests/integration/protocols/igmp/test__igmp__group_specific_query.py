@@ -32,8 +32,10 @@ pmd_net_proto/../pmd_pytcp/tests/integration/protocols/igmp/test__igmp__group_sp
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
-from typing import override
+from typing_extensions import override
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, MacAddress

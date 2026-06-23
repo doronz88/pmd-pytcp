@@ -30,9 +30,12 @@ pmd_net_proto/protocols/tcp/options/tcp__option__sack.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint32
@@ -119,6 +122,14 @@ class TcpSackBlock:
         )
 
         return memoryview(buffer)
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def __str__(self) -> str:
@@ -180,16 +191,25 @@ class TcpOptionSack(TcpOption):
 
         struct.pack_into(
             TCP__OPTION__SACK__STRUCT,
-            buffer := bytearray(TCP__OPTION__SACK__LEN),
+            buffer := bytearray(as_buffer(TCP__OPTION__SACK__LEN)),
             0,
             int(self.type),
             self.len,
         )
 
         for block in self.blocks:
-            buffer.extend(bytearray(block))
+            buffer.extend(bytearray(as_buffer(block)))
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -249,9 +269,9 @@ class TcpOptionSack(TcpOption):
         return cls(
             blocks=[
                 TcpSackBlock(
-                    left=int.from_bytes(buffer[offset : offset + TCP__OPTION__SACK__BLOCK_LEN // 2]),
+                    left=int.from_bytes(buffer[offset : offset + TCP__OPTION__SACK__BLOCK_LEN // 2], "big"),
                     right=int.from_bytes(
-                        buffer[offset + TCP__OPTION__SACK__BLOCK_LEN // 2 : offset + TCP__OPTION__SACK__BLOCK_LEN]
+                        buffer[offset + TCP__OPTION__SACK__BLOCK_LEN // 2 : offset + TCP__OPTION__SACK__BLOCK_LEN], "big"
                     ),
                 )
                 for offset in range(

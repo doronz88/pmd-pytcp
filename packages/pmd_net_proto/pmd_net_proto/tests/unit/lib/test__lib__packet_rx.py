@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/lib/test__lib__packet_rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import itertools
 from typing import Any
 from unittest import TestCase

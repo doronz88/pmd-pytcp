@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Union
+from typing_extensions import TypeAliasType
 ################################################################################
 ##                                                                            ##
 ##   PyTCP - Python TCP/IP stack                                              ##
@@ -30,4 +34,4 @@ pmd_net_proto/lib/buffer.py
 ver 3.0.7
 """
 
-type Buffer = bytes | bytearray | memoryview
+Buffer = TypeAliasType("Buffer", Union[bytes, bytearray, memoryview])

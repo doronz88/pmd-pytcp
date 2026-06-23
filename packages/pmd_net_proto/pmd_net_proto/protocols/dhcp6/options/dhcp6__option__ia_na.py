@@ -31,9 +31,12 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option__ia_na.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint32
@@ -135,6 +138,15 @@ class Dhcp6OptionIaNa(Dhcp6Option):
         buffer[DHCP6__OPTION__LEN + DHCP6__OPTION__IA_NA__DATA__MIN_LEN :] = self.options
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -142,7 +154,7 @@ class Dhcp6OptionIaNa(Dhcp6Option):
         Ensure integrity of the DHCPv6 IA_NA option before parsing it.
         """
 
-        option_len = int.from_bytes(buffer[2:4])
+        option_len = int.from_bytes(buffer[2:4], "big")
 
         if option_len < DHCP6__OPTION__IA_NA__DATA__MIN_LEN:
             raise Dhcp6IntegrityError(
@@ -167,19 +179,19 @@ class Dhcp6OptionIaNa(Dhcp6Option):
             f"The minimum length of the DHCPv6 IA_NA option must " f"be {DHCP6__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := int.from_bytes(buffer[0:2])) == int(Dhcp6OptionType.IA_NA), (
+        assert (value := int.from_bytes(buffer[0:2], "big")) == int(Dhcp6OptionType.IA_NA), (
             f"The DHCPv6 IA_NA option type must be {Dhcp6OptionType.IA_NA!r}. "
             f"Got: {Dhcp6OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        option_len = int.from_bytes(buffer[2:4])
+        option_len = int.from_bytes(buffer[2:4], "big")
         options_offset = DHCP6__OPTION__LEN + DHCP6__OPTION__IA_NA__DATA__MIN_LEN
 
         return cls(
-            iaid=int.from_bytes(buffer[DHCP6__OPTION__LEN : DHCP6__OPTION__LEN + 4]),
-            t1=int.from_bytes(buffer[DHCP6__OPTION__LEN + 4 : DHCP6__OPTION__LEN + 8]),
-            t2=int.from_bytes(buffer[DHCP6__OPTION__LEN + 8 : DHCP6__OPTION__LEN + 12]),
+            iaid=int.from_bytes(buffer[DHCP6__OPTION__LEN : DHCP6__OPTION__LEN + 4], "big"),
+            t1=int.from_bytes(buffer[DHCP6__OPTION__LEN + 4 : DHCP6__OPTION__LEN + 8], "big"),
+            t2=int.from_bytes(buffer[DHCP6__OPTION__LEN + 8 : DHCP6__OPTION__LEN + 12], "big"),
             options=bytes(buffer[options_offset : DHCP6__OPTION__LEN + option_len]),
         )

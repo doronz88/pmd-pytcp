@@ -31,6 +31,8 @@ pmd_pytcp/tests/lib/tcp_segment_factory.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
 
 from pmd_net_addr import Ip4Address, Ip6Address, MacAddress

@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__icmp4
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
@@ -53,6 +55,7 @@ from pmd_pytcp import stack
 from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.packet_handler.packet_handler__icmp4__rx import Icmp4RxHandler
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -152,13 +155,13 @@ class TestPacketHandlerIcmp4RxParse(_Icmp4RxTestBase):
         """
 
         ip4 = bytearray(
-            Ip4Assembler(
+            as_buffer(Ip4Assembler(
                 ip4__src=HOST_A__IP4,
                 ip4__dst=STACK__IP4_ADDRESS,
                 ip4__payload=Icmp4Assembler(
                     icmp4__message=Icmp4MessageEchoRequest(id=1, seq=1, data=b"hello"),
                 ),
-            )
+            ))
         )
         # Rewrite the ICMPv4 checksum (bytes 22-23) to a wrong value —
         # byte 20 is the ICMP type, byte 21 is code, 22-23 is cksum.
@@ -348,13 +351,13 @@ class TestPacketHandlerIcmp4RxUnknown(_Icmp4RxTestBase):
         """
 
         ip4 = bytearray(
-            Ip4Assembler(
+            as_buffer(Ip4Assembler(
                 ip4__src=HOST_A__IP4,
                 ip4__dst=STACK__IP4_ADDRESS,
                 ip4__payload=Icmp4Assembler(
                     icmp4__message=Icmp4MessageEchoReply(id=1, seq=1, data=b"hello"),
                 ),
-            )
+            ))
         )
         # Rewrite the ICMPv4 type (byte 20 = IPv4 header end) to an
         # unknown value (13 = Timestamp Request — not dispatched).

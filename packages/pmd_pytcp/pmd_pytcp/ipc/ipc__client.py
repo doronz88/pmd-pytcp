@@ -36,10 +36,12 @@ pmd_pytcp/ipc/ipc__client.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 import threading
 from types import TracebackType
-from typing import Self
+from typing_extensions import Self
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp

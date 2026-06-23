@@ -37,6 +37,8 @@ ver 3.0.7
 """
 
 
+from __future__ import annotations
+
 def should_emit_echo_reply() -> bool:
     """
     Return True if an ICMPv6 Echo Reply may be sent. Currently

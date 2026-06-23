@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from typing import Any
 from unittest import TestCase
@@ -58,6 +60,7 @@ from pmd_net_proto import (
 )
 from pmd_net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4HardwareType, Dhcp4Operation
 from pmd_net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__MAGIC_COOKIE
+from pmd_net_proto._compat import as_buffer
 
 
 def _dhcp4_header(
@@ -88,7 +91,7 @@ def _dhcp4_header(
     file_bytes = file.encode("ascii") + b"\x00" * (128 - len(file))
 
     header = bytes([op, htype, hlen, hops])
-    header += xid.to_bytes(4, "big")
+    header += as_buffer(xid.to_bytes(4, "big"))
     header += secs.to_bytes(2, "big") + flags.to_bytes(2, "big")
     header += ciaddr + yiaddr + siaddr + giaddr
     header += chaddr + sname_bytes + file_bytes + DHCP4__HEADER__MAGIC_COOKIE
@@ -284,7 +287,7 @@ class TestDhcp4ParserOperation(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._parser)),
+            bytes(memoryview(as_buffer(self._parser))),
             self._results["header_bytes"] + bytes(self._results["options"]),
             msg=f"Unexpected parser buffer output for case: {self._description}",
         )
@@ -702,7 +705,7 @@ class TestDhcp4ParserBufferRoundtrip(TestCase):
         )
 
         first = Dhcp4Parser(memoryview(frame))
-        second = Dhcp4Parser(memoryview(bytes(memoryview(first))))
+        second = Dhcp4Parser(memoryview(bytes(memoryview(as_buffer(first)))))
 
         self.assertEqual(
             first.header,

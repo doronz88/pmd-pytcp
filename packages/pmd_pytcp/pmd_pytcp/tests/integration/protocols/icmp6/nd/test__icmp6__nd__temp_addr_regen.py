@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__temp_addr_regen.
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 
 from pmd_net_addr import Ip6Address, Ip6Network

@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_dest_opts/ip6_dest_opts__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.enums import IpProto
@@ -45,6 +47,7 @@ from pmd_net_proto.protocols.ip6_dest_opts.options.ip6_dest_opts__options import
     IP6_DEST_OPTS__OPTIONS__MAX_LEN,
     Ip6DestOptsOptions,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip6DestOptsAssembler(Ip6DestOpts, ProtoAssembler):
@@ -103,6 +106,6 @@ class Ip6DestOptsAssembler(Ip6DestOpts, ProtoAssembler):
         Assemble the IPv6 Dest Opts packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
-        buffers.append(bytearray(self._options))
-        buffers.append(self._payload)
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
+        buffers.append(as_buffer(bytearray(as_buffer(self._options))))
+        buffers.append(as_buffer(self._payload))

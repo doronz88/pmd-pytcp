@@ -57,7 +57,9 @@ pmd_pytcp/protocols/tcp/tcp__rto.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 
 # RFC 6298 §2.1 / RFC 8961: initial RTO before any RTT sample.
 # Both RFCs converge on 1 second.

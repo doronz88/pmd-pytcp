@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/igmp/test__igmp__legacy_reports.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]

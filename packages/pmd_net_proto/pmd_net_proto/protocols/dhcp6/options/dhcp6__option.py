@@ -34,8 +34,10 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
-from typing import Self, override
+from __future__ import annotations
+
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_option import ProtoOption, ProtoOptionType
@@ -83,7 +85,7 @@ class Dhcp6OptionType(ProtoOptionType):
         Get the enum value as bytes.
         """
 
-        return int(self).to_bytes(2)
+        return int(self).to_bytes(2, "big")
 
     @override
     @classmethod

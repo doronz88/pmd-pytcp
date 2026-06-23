@@ -36,9 +36,12 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option__unknown.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint16
@@ -115,6 +118,15 @@ class Dhcp6OptionUnknown(Dhcp6Option):
         buffer[DHCP6__OPTION__LEN:] = self.data
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -122,7 +134,7 @@ class Dhcp6OptionUnknown(Dhcp6Option):
         Ensure integrity of the unknown DHCPv6 option before parsing it.
         """
 
-        if (value := DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4])) > len(buffer):
+        if (value := DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4], "big")) > len(buffer):
             raise Dhcp6IntegrityError(
                 "The unknown DHCPv6 option length value must be less than or equal to "
                 f"the length of provided bytes ({len(buffer)}). Got: {value!r}"
@@ -142,7 +154,7 @@ class Dhcp6OptionUnknown(Dhcp6Option):
         )
 
         assert (
-            value := int.from_bytes(buffer[0:2])
+            value := int.from_bytes(buffer[0:2], "big")
         ) not in Dhcp6OptionType.get_known_values(), (
             f"The unknown DHCPv6 option type must not be known. Got: {Dhcp6OptionType.from_int(value)!r}"
         )
@@ -150,8 +162,8 @@ class Dhcp6OptionUnknown(Dhcp6Option):
         Dhcp6OptionUnknown._validate_integrity(buffer)
 
         return cls(
-            type=Dhcp6OptionType.from_int(int.from_bytes(buffer[0:2])),
+            type=Dhcp6OptionType.from_int(int.from_bytes(buffer[0:2], "big")),
             data=bytes(
-                buffer[DHCP6__OPTION__LEN : DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4])]
+                buffer[DHCP6__OPTION__LEN : DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4], "big")]
             ),  # NOTE: Conversion: memoryview -> bytes
         )

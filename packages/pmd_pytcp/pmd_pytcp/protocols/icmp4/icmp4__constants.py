@@ -36,6 +36,8 @@ ver 3.0.7
 # destination is a broadcast or multicast address (the Smurf-attack
 # mitigation, RFC 1122 §3.2.2.6). Set to 0 to make the host answer such
 # requests (sourcing the reply from a unicast address).
+from __future__ import annotations
+
 ICMP4__ECHO_IGNORE_BROADCASTS = 1
 
 # Sysctl registration. The constant above is a policy knob,

@@ -35,6 +35,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__shutdown_api.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState
 from pmd_pytcp.protocols.tcp.tcp__errors import TcpSessionError

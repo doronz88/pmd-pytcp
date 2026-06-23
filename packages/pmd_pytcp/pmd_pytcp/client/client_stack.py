@@ -37,9 +37,11 @@ pmd_pytcp/client/client_stack.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from types import TracebackType
-from typing import Self
+from typing_extensions import Self
 
 from pmd_net_proto.lib.enums import EtherType, IpProto
 from pmd_pytcp.client.client__address import ClientAddress
@@ -92,22 +94,21 @@ class ClientStack:
         (with an ethertype filter, default capture-all).
         """
 
-        match type:
-            case SocketType.STREAM:
-                return ClientTcpSocket(self._client, family=family)
-            case SocketType.DGRAM:
-                return ClientUdpSocket(self._client, family=family)
-            case SocketType.RAW:
-                if family is AddressFamily.PACKET:
-                    if isinstance(protocol, IpProto):
-                        raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
-                    return ClientPacketSocket(
-                        self._client,
-                        protocol=ETH_P_ALL if protocol is None else protocol,
-                    )
-                if not isinstance(protocol, IpProto):
-                    raise ValueError("A raw IP socket requires an explicit IpProto next-header protocol.")
-                return ClientRawSocket(self._client, family=family, protocol=protocol)
+        if type == SocketType.STREAM:
+            return ClientTcpSocket(self._client, family=family)
+        elif type == SocketType.DGRAM:
+            return ClientUdpSocket(self._client, family=family)
+        elif type == SocketType.RAW:
+            if family is AddressFamily.PACKET:
+                if isinstance(protocol, IpProto):
+                    raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
+                return ClientPacketSocket(
+                    self._client,
+                    protocol=ETH_P_ALL if protocol is None else protocol,
+                )
+            if not isinstance(protocol, IpProto):
+                raise ValueError("A raw IP socket requires an explicit IpProto next-header protocol.")
+            return ClientRawSocket(self._client, family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {type!r}.")
 

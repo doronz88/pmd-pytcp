@@ -30,6 +30,8 @@ pmd_net_proto/lib/packet_rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_proto.lib.buffer import Buffer

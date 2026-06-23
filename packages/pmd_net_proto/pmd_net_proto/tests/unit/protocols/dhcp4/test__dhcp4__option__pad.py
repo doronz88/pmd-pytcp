@@ -30,9 +30,12 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__pad.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto import DHCP4__OPTION__PAD__LEN, Dhcp4OptionPad, Dhcp4OptionType
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp4OptionPadAssembler(TestCase):
@@ -110,7 +113,7 @@ class TestDhcp4OptionPadAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._option)),
+            bytes(memoryview(as_buffer(self._option))),
             b"\x00",
             msg="Pad option memoryview must equal b'\\x00'.",
         )

@@ -46,6 +46,8 @@ ver 3.0.7
 # RFC 6298 §2.1 initial RTO. The first transmission of a fresh segment
 # starts the retransmit timer at this value; subsequent retransmits
 # back off exponentially, capped by the loss-recovery state machine.
+from __future__ import annotations
+
 TCP__RTO__INITIAL_MS = 1000
 
 # RFC 1122 §4.2.3.5 R2 (incorporated by RFC 9293 §3.8.3) mandates that

@@ -31,9 +31,12 @@ pmd_pytcp/tests/unit/stack/test__stack__address.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Callable
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, cast
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 

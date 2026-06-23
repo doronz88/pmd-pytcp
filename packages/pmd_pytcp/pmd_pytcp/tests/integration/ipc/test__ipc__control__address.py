@@ -30,6 +30,8 @@ pmd_pytcp/tests/integration/ipc/test__ipc__control__address.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp import stack
 from pmd_pytcp.socket import AddressFamily
 from pmd_pytcp.tests.lib.ipc_control_testcase import IpcControlTestCase

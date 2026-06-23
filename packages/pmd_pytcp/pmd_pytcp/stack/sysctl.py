@@ -38,9 +38,11 @@ pmd_pytcp/stack/sysctl.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from typing import Any, Callable, Generator, Iterator
 
 

@@ -35,6 +35,8 @@ packages/pmd_pytcp/pmd_pytcp/tests/integration/packet_handler/test__packet_handl
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 
 from pmd_pytcp.tests.lib.network_testcase import NetworkTestCase

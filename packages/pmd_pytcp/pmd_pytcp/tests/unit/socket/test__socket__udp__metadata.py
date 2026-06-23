@@ -31,6 +31,8 @@ pmd_pytcp/tests/unit/socket/test__socket__udp__metadata.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 

@@ -46,9 +46,11 @@ pmd_pytcp/ipc/ipc__message.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass
-from typing import Self
+from pmd_pytcp._compat import dataclass
+from typing_extensions import Self
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_pytcp.ipc.ipc__enums import IpcMessageKind

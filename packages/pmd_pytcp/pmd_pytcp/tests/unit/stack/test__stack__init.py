@@ -32,6 +32,8 @@ pmd_pytcp/tests/unit/stack/test__stack__init.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import sys
 from typing import cast
@@ -1064,19 +1066,21 @@ class TestStackPythonVersionGuard(TestCase):
     The Python-version-guard tests at module import time.
     """
 
-    def test__stack__requires_python_3_12(self) -> None:
+    def test__stack__requires_python_3_9(self) -> None:
         """
-        Ensure the module-level assert requires Python 3.12+. This is
-        the floor the codebase's PEP 695 generics and 'typing.override'
-        usage depend on.
+        Ensure the module-level assert requires Python 3.9+. The
+        codebase's PEP 695 generics, 'typing.override' and PEP 604
+        unions are back-compiled to 3.9-safe forms (TypeVar/Generic,
+        'typing_extensions', 'from __future__ import annotations'),
+        so 3.9 is the supported floor.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertGreaterEqual(
             sys.version_info,
-            (3, 12),
-            msg="pmd_pytcp/stack/__init__.py asserts Python >= 3.12; the running interpreter must meet that floor.",
+            (3, 9),
+            msg="pmd_pytcp/stack/__init__.py asserts Python >= 3.9; the running interpreter must meet that floor.",
         )
 
 

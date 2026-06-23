@@ -30,10 +30,13 @@ pmd_net_proto/tests/unit/protocols/udp/test__udp__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
 from pmd_net_proto import UDP__HEADER__LEN, UINT_16__MAX, UINT_16__MIN, UdpHeader
+from pmd_net_proto._compat import as_buffer
 
 
 class TestUdpHeaderAsserts(TestCase):
@@ -233,7 +236,7 @@ class TestUdpHeaderAsserts(TestCase):
 
         original = UdpHeader(sport=12345, dport=54321, plen=42, cksum=0)
 
-        rebuilt = UdpHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = UdpHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

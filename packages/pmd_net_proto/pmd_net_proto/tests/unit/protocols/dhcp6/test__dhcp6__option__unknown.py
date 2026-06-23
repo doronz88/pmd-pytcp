@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__unknown.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -43,6 +45,7 @@ from pmd_net_proto import (
     Dhcp6OptionType,
     Dhcp6OptionUnknown,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp6OptionUnknownAsserts(TestCase):
@@ -281,7 +284,7 @@ class TestDhcp6OptionUnknownAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._option)),
+            bytes(memoryview(as_buffer(self._option))),
             self._results["__bytes__"],
             msg=f"Unexpected memoryview output for case: {self._description}",
         )

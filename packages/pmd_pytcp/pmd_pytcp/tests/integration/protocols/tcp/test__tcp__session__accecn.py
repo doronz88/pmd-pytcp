@@ -57,6 +57,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__accecn.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address  # noqa: F401
 from pmd_pytcp import stack
 from pmd_pytcp.protocols.tcp.session import TcpSession

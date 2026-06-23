@@ -41,11 +41,14 @@ pmd_pytcp/lib/plpmtud.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import auto
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.lib.name_enum import NameEnum
+from typing import Generic, TypeVar, Union
 
 # RFC 8899 §5.1.2 MAX_PROBES default — the number of
 # consecutive losses on the engine before black-hole
@@ -98,7 +101,8 @@ class PmtuState(NameEnum):
     ERROR = auto()
 
 
-class PmtuSearch[A: Ip4Address | Ip6Address]:
+A = TypeVar("A", bound=Union[Ip4Address, Ip6Address])
+class PmtuSearch(Generic[A]):
     """
     The unified per-destination PLPMTUD search engine.
     Generic over the address type 'A'; per-transport
@@ -229,49 +233,48 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
         knowing the timer details.
         """
 
-        match self._state:
-            case PmtuState.DISABLED:
-                return None
+        if self._state == PmtuState.DISABLED:
+            return None
 
-            case PmtuState.ERROR:
-                # RFC 8899 ERROR recovery — re-enter BASE
-                # after PMTU_RAISE_TIMER expires to try
-                # confirming connectivity again.
-                if self._raise_timer_expiry is None or now < self._raise_timer_expiry:
-                    return None
-                self._state = PmtuState.BASE
-                self._candidate_mtu = self._base_mtu
-                self._probe_count = 0
+        elif self._state == PmtuState.ERROR:
+            # RFC 8899 ERROR recovery — re-enter BASE
+            # after PMTU_RAISE_TIMER expires to try
+            # confirming connectivity again.
+            if self._raise_timer_expiry is None or now < self._raise_timer_expiry:
+                return None
+            self._state = PmtuState.BASE
+            self._candidate_mtu = self._base_mtu
+            self._probe_count = 0
+            self._probe_timer_expiry = now + PROBE_TIMER__SEC
+            self._raise_timer_expiry = None
+            return self._candidate_mtu
+
+        elif self._state == PmtuState.SEARCH_COMPLETE:
+            # RFC 8899 §5.1.1 PMTU_RAISE_TIMER —
+            # re-open the search range to detect
+            # path-MTU increases.
+            if self._raise_timer_expiry is None or now < self._raise_timer_expiry:
+                return None
+            self._search_high = self._max_mtu
+            self._raise_timer_expiry = None
+            self._candidate_mtu = self._next_candidate()
+            self._state = PmtuState.SEARCHING
+            if self._candidate_mtu is not None:
                 self._probe_timer_expiry = now + PROBE_TIMER__SEC
-                self._raise_timer_expiry = None
                 return self._candidate_mtu
+            return None
 
-            case PmtuState.SEARCH_COMPLETE:
-                # RFC 8899 §5.1.1 PMTU_RAISE_TIMER —
-                # re-open the search range to detect
-                # path-MTU increases.
-                if self._raise_timer_expiry is None or now < self._raise_timer_expiry:
-                    return None
-                self._search_high = self._max_mtu
-                self._raise_timer_expiry = None
-                self._candidate_mtu = self._next_candidate()
-                self._state = PmtuState.SEARCHING
-                if self._candidate_mtu is not None:
-                    self._probe_timer_expiry = now + PROBE_TIMER__SEC
-                    return self._candidate_mtu
+        elif (self._state == PmtuState.BASE or self._state == PmtuState.SEARCHING):
+            if self._candidate_mtu is None:
                 return None
-
-            case PmtuState.BASE | PmtuState.SEARCHING:
-                if self._candidate_mtu is None:
-                    return None
-                if self._probe_timer_expiry is None:
-                    # First probe of this candidate.
-                    self._probe_timer_expiry = now + PROBE_TIMER__SEC
-                    return self._candidate_mtu
-                # Probe in flight; caller awaits ack or
-                # will call on_probe_loss when its timer
-                # fires.
-                return None
+            if self._probe_timer_expiry is None:
+                # First probe of this candidate.
+                self._probe_timer_expiry = now + PROBE_TIMER__SEC
+                return self._candidate_mtu
+            # Probe in flight; caller awaits ack or
+            # will call on_probe_loss when its timer
+            # fires.
+            return None
 
     def on_probe_ack(self, size: int, *, now: float) -> None:
         """
@@ -289,38 +292,37 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
         if size > self._current_mtu:
             self._current_mtu = size
 
-        match self._state:
-            case PmtuState.BASE:
-                # Base confirmed; open the binary search
-                # above ack_size.
-                self._probe_timer_expiry = None
-                self._candidate_mtu = self._next_candidate()
-                if self._candidate_mtu is None:
-                    self._enter_search_complete(now=now)
-                else:
-                    self._state = PmtuState.SEARCHING
+        if self._state == PmtuState.BASE:
+            # Base confirmed; open the binary search
+            # above ack_size.
+            self._probe_timer_expiry = None
+            self._candidate_mtu = self._next_candidate()
+            if self._candidate_mtu is None:
+                self._enter_search_complete(now=now)
+            else:
+                self._state = PmtuState.SEARCHING
 
-            case PmtuState.SEARCHING:
-                self._probe_timer_expiry = None
-                self._candidate_mtu = self._next_candidate()
-                if self._candidate_mtu is None:
-                    self._enter_search_complete(now=now)
+        elif self._state == PmtuState.SEARCHING:
+            self._probe_timer_expiry = None
+            self._candidate_mtu = self._next_candidate()
+            if self._candidate_mtu is None:
+                self._enter_search_complete(now=now)
 
-            case PmtuState.ERROR:
-                # Out-of-band recovery: an ack arrived
-                # while we'd given up. Re-enter SEARCHING.
-                self._probe_timer_expiry = None
-                self._raise_timer_expiry = None
-                self._candidate_mtu = self._next_candidate()
-                if self._candidate_mtu is None:
-                    self._enter_search_complete(now=now)
-                else:
-                    self._state = PmtuState.SEARCHING
+        elif self._state == PmtuState.ERROR:
+            # Out-of-band recovery: an ack arrived
+            # while we'd given up. Re-enter SEARCHING.
+            self._probe_timer_expiry = None
+            self._raise_timer_expiry = None
+            self._candidate_mtu = self._next_candidate()
+            if self._candidate_mtu is None:
+                self._enter_search_complete(now=now)
+            else:
+                self._state = PmtuState.SEARCHING
 
-            case PmtuState.SEARCH_COMPLETE:
-                # Idle ack; just refresh ack_size /
-                # current_mtu (already done above).
-                pass
+        elif self._state == PmtuState.SEARCH_COMPLETE:
+            # Idle ack; just refresh ack_size /
+            # current_mtu (already done above).
+            pass
 
     def on_probe_loss(self, *, now: float) -> None:
         """
@@ -346,22 +348,21 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
             self._raise_timer_expiry = now + PMTU_RAISE_TIMER__SEC
             return
 
-        match self._state:
-            case PmtuState.BASE:
-                # Retry the base probe at the next tick.
-                # Don't narrow search_high — BASE is the
-                # connectivity confirmation, not a search.
-                pass
+        if self._state == PmtuState.BASE:
+            # Retry the base probe at the next tick.
+            # Don't narrow search_high — BASE is the
+            # connectivity confirmation, not a search.
+            pass
 
-            case PmtuState.SEARCHING:
-                # The current candidate is too big; lower
-                # the search ceiling and try a smaller
-                # candidate.
-                if self._candidate_mtu is not None:
-                    self._search_high = self._candidate_mtu - 1
-                self._candidate_mtu = self._next_candidate()
-                if self._candidate_mtu is None:
-                    self._enter_search_complete(now=now)
+        elif self._state == PmtuState.SEARCHING:
+            # The current candidate is too big; lower
+            # the search ceiling and try a smaller
+            # candidate.
+            if self._candidate_mtu is not None:
+                self._search_high = self._candidate_mtu - 1
+            self._candidate_mtu = self._next_candidate()
+            if self._candidate_mtu is None:
+                self._enter_search_complete(now=now)
 
     def on_classical_pmtu(self, mtu: int, *, now: float) -> None:
         """
@@ -376,36 +377,35 @@ class PmtuSearch[A: Ip4Address | Ip6Address]:
 
         effective = max(self._min_mtu, mtu)
 
-        match self._state:
-            case PmtuState.ERROR:
-                # Recovery: ICMP gives us a hint to try.
-                self._search_high = max(effective, self._min_mtu)
-                self._current_mtu = effective
-                self._ack_size = self._min_mtu
-                self._candidate_mtu = self._next_candidate()
-                self._probe_count = 0
-                self._probe_timer_expiry = None
-                self._raise_timer_expiry = None
-                if self._candidate_mtu is not None:
-                    self._state = PmtuState.SEARCHING
-                else:
-                    self._enter_search_complete(now=now)
+        if self._state == PmtuState.ERROR:
+            # Recovery: ICMP gives us a hint to try.
+            self._search_high = max(effective, self._min_mtu)
+            self._current_mtu = effective
+            self._ack_size = self._min_mtu
+            self._candidate_mtu = self._next_candidate()
+            self._probe_count = 0
+            self._probe_timer_expiry = None
+            self._raise_timer_expiry = None
+            if self._candidate_mtu is not None:
+                self._state = PmtuState.SEARCHING
+            else:
+                self._enter_search_complete(now=now)
 
-            case PmtuState.BASE | PmtuState.SEARCHING | PmtuState.SEARCH_COMPLETE:
-                # Linux-aligned: ICMP shrinks 'current_mtu'
-                # (the working PLPMTU per RFC 8201 §4) but
-                # does NOT lower 'search_high' — the engine
-                # must still be able to probe upward toward
-                # interface_mtu to detect path-MTU
-                # increases / verify the ICMP signal. This
-                # matches Linux's 'tcp_mtu_probing'
-                # behaviour where ICMP affects 'mss_cache'
-                # but leaves the PLPMTUD upper bound alone;
-                # 'search_high' only narrows on probe-loss.
-                # RFC 4821 §7.6 allows MAY-set-from-ICMP;
-                # PyTCP / Linux opt out.
-                if effective < self._current_mtu:
-                    self._current_mtu = effective
+        elif (self._state == PmtuState.BASE or self._state == PmtuState.SEARCHING or self._state == PmtuState.SEARCH_COMPLETE):
+            # Linux-aligned: ICMP shrinks 'current_mtu'
+            # (the working PLPMTU per RFC 8201 §4) but
+            # does NOT lower 'search_high' — the engine
+            # must still be able to probe upward toward
+            # interface_mtu to detect path-MTU
+            # increases / verify the ICMP signal. This
+            # matches Linux's 'tcp_mtu_probing'
+            # behaviour where ICMP affects 'mss_cache'
+            # but leaves the PLPMTUD upper bound alone;
+            # 'search_high' only narrows on probe-loss.
+            # RFC 4821 §7.6 allows MAY-set-from-ICMP;
+            # PyTCP / Linux opt out.
+            if effective < self._current_mtu:
+                self._current_mtu = effective
                 # In-flight candidates are left unchanged
                 # — if a candidate is now > effective the
                 # probe will fail on the wire and the

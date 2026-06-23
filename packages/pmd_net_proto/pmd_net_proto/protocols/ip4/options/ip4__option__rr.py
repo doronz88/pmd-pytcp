@@ -30,9 +30,12 @@ pmd_net_proto/protocols/ip4/options/ip4__option__rr.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip4Address
 from pmd_net_proto.lib.buffer import Buffer
@@ -133,7 +136,7 @@ class Ip4OptionRr(Ip4Option):
 
         struct.pack_into(
             IP4__OPTION__RR__STRUCT,
-            buffer := bytearray(self.len),
+            buffer := bytearray(as_buffer(self.len)),
             0,
             int(self.type),
             self.len,
@@ -145,6 +148,15 @@ class Ip4OptionRr(Ip4Option):
             buffer[offset : offset + IP4__OPTION__RR__SLOT_LEN] = bytes(hop)
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:

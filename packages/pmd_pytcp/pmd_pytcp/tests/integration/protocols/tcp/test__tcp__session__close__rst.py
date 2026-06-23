@@ -54,6 +54,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__close__rst.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp import stack
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState

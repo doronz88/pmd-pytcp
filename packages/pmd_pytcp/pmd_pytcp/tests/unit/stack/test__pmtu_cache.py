@@ -33,13 +33,16 @@ pmd_pytcp/tests/unit/stack/test__pmtu_cache.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
-from typing import override
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp import stack
 from pmd_pytcp.lib.plpmtud import PmtuSearch
+from typing import TypeVar
 
 
 class TestPmtuCache(TestCase):
@@ -147,7 +150,9 @@ class _TrackingLock:
         self._lock.release()
 
 
-class _LockAssertingDict[K, V](dict[K, V]):
+K = TypeVar("K")
+V = TypeVar("V")
+class _LockAssertingDict(dict[K, V]):
     """
     A dict that records, on every structural mutation, whether the
     tracking lock was held at the moment of the write.

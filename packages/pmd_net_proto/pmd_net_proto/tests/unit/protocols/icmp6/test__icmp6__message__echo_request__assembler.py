@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/icmp6/test__icmp6__message__echo_request__ass
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, cast
 from unittest import TestCase
 

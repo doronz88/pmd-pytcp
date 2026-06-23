@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__icmp6__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from typing import TYPE_CHECKING
 
@@ -111,40 +113,36 @@ class Icmp6TxHandler:
 
         __debug__ and log("icmp6", f"{icmp6_packet_tx.tracker} - {icmp6_packet_tx}")
 
-        match icmp6__message.type, icmp6__message.code:
-            case Icmp6Type.ECHO_REPLY, _:
-                self._if._packet_stats_tx.icmp6__echo_reply__send += 1
-            case Icmp6Type.ECHO_REQUEST, _:
-                self._if._packet_stats_tx.icmp6__echo_request__send += 1
-            case (
-                Icmp6Type.DESTINATION_UNREACHABLE,
-                Icmp6DestinationUnreachableCode.PORT,
-            ):
-                self._if._packet_stats_tx.icmp6__destination_unreachable__port__send += 1
-            case Icmp6Type.PARAMETER_PROBLEM, _:
-                self._if._packet_stats_tx.icmp6__parameter_problem__send += 1
-            case Icmp6Type.ND__ROUTER_SOLICITATION, _:
-                self._if._packet_stats_tx.icmp6__nd__router_solicitation__send += 1
-            case Icmp6Type.ND__ROUTER_ADVERTISEMENT, _:
-                self._if._packet_stats_tx.icmp6__nd__router_advertisement__send += 1
-            case Icmp6Type.ND__NEIGHBOR_SOLICITATION, _:
-                self._if._packet_stats_tx.icmp6__nd__neighbor_solicitation__send += 1
-            case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT, _:
-                self._if._packet_stats_tx.icmp6__nd__neighbor_advertisement__send += 1
-            case Icmp6Type.MLD2__REPORT, _:
-                self._if._packet_stats_tx.icmp6__mld2__report__send += 1
-            case _:
-                # Defensive drop: unsupported ICMPv6 type/code shouldn't
-                # reach the TX path (the call sites enumerate their
-                # message types), but if one does, count + drop is
-                # robust where 'raise' would crash the calling thread.
-                self._if._packet_stats_tx.icmp6__unknown__drop += 1
-                __debug__ and log(
-                    "icmp6",
-                    f"{icmp6_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv6 "
-                    f"type {icmp6__message.type}, code {icmp6__message.code}</>",
-                )
-                return TxStatus.DROPPED__ICMP6__UNKNOWN
+        if icmp6__message.type == Icmp6Type.ECHO_REPLY:
+            self._if._packet_stats_tx.icmp6__echo_reply__send += 1
+        elif icmp6__message.type == Icmp6Type.ECHO_REQUEST:
+            self._if._packet_stats_tx.icmp6__echo_request__send += 1
+        elif icmp6__message.type == Icmp6Type.DESTINATION_UNREACHABLE and icmp6__message.code == Icmp6DestinationUnreachableCode.PORT:
+            self._if._packet_stats_tx.icmp6__destination_unreachable__port__send += 1
+        elif icmp6__message.type == Icmp6Type.PARAMETER_PROBLEM:
+            self._if._packet_stats_tx.icmp6__parameter_problem__send += 1
+        elif icmp6__message.type == Icmp6Type.ND__ROUTER_SOLICITATION:
+            self._if._packet_stats_tx.icmp6__nd__router_solicitation__send += 1
+        elif icmp6__message.type == Icmp6Type.ND__ROUTER_ADVERTISEMENT:
+            self._if._packet_stats_tx.icmp6__nd__router_advertisement__send += 1
+        elif icmp6__message.type == Icmp6Type.ND__NEIGHBOR_SOLICITATION:
+            self._if._packet_stats_tx.icmp6__nd__neighbor_solicitation__send += 1
+        elif icmp6__message.type == Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
+            self._if._packet_stats_tx.icmp6__nd__neighbor_advertisement__send += 1
+        elif icmp6__message.type == Icmp6Type.MLD2__REPORT:
+            self._if._packet_stats_tx.icmp6__mld2__report__send += 1
+        else:
+            # Defensive drop: unsupported ICMPv6 type/code shouldn't
+            # reach the TX path (the call sites enumerate their
+            # message types), but if one does, count + drop is
+            # robust where 'raise' would crash the calling thread.
+            self._if._packet_stats_tx.icmp6__unknown__drop += 1
+            __debug__ and log(
+                "icmp6",
+                f"{icmp6_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv6 "
+                f"type {icmp6__message.type}, code {icmp6__message.code}</>",
+            )
+            return TxStatus.DROPPED__ICMP6__UNKNOWN
 
         return self._if._phtx_ip6(
             ip6__src=ip6__src,

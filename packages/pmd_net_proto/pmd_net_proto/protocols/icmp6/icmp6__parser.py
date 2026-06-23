@@ -30,7 +30,9 @@ pmd_net_proto/protocols/icmp6/icmp6__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -126,42 +128,42 @@ class Icmp6Parser(Icmp6, ProtoParser):
         type byte. Falls back to Icmp6MessageUnknown for unrecognised types.
         """
 
-        match Icmp6Type.from_int(self._frame[0]):
-            case Icmp6Type.DESTINATION_UNREACHABLE:
-                return Icmp6MessageDestinationUnreachable
-            case Icmp6Type.PACKET_TOO_BIG:
-                return Icmp6MessagePacketTooBig
-            case Icmp6Type.TIME_EXCEEDED:
-                return Icmp6MessageTimeExceeded
-            case Icmp6Type.PARAMETER_PROBLEM:
-                return Icmp6MessageParameterProblem
-            case Icmp6Type.ECHO_REQUEST:
-                return Icmp6MessageEchoRequest
-            case Icmp6Type.ECHO_REPLY:
-                return Icmp6MessageEchoReply
-            case Icmp6Type.ND__ROUTER_SOLICITATION:
-                return Icmp6NdMessageRouterSolicitation
-            case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                return Icmp6NdMessageRouterAdvertisement
-            case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                return Icmp6NdMessageNeighborSolicitation
-            case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                return Icmp6NdMessageNeighborAdvertisement
-            case Icmp6Type.ND__REDIRECT:
-                return Icmp6NdMessageRedirect
-            case Icmp6Type.MLD2__REPORT:
-                return Icmp6Mld2MessageReport
-            case Icmp6Type.MULTICAST_LISTENER_QUERY:
-                # RFC 3810 §8.1: a 24-octet Query is the MLDv1 form;
-                # an MLDv2 Query is >= 28 octets. Discriminate by the
-                # declared IPv6 payload length.
-                return Icmp6Mld1MessageQuery if self._ip6__dlen == ICMP6__MLD1__MESSAGE__LEN else Icmp6Mld2MessageQuery
-            case Icmp6Type.MULTICAST_LISTENER_REPORT:
-                return Icmp6Mld1MessageReport
-            case Icmp6Type.MULTICAST_LISTENER_DONE:
-                return Icmp6Mld1MessageDone
-            case _:
-                return Icmp6MessageUnknown
+        _match_subject = Icmp6Type.from_int(self._frame[0])
+        if _match_subject == Icmp6Type.DESTINATION_UNREACHABLE:
+            return Icmp6MessageDestinationUnreachable
+        elif _match_subject == Icmp6Type.PACKET_TOO_BIG:
+            return Icmp6MessagePacketTooBig
+        elif _match_subject == Icmp6Type.TIME_EXCEEDED:
+            return Icmp6MessageTimeExceeded
+        elif _match_subject == Icmp6Type.PARAMETER_PROBLEM:
+            return Icmp6MessageParameterProblem
+        elif _match_subject == Icmp6Type.ECHO_REQUEST:
+            return Icmp6MessageEchoRequest
+        elif _match_subject == Icmp6Type.ECHO_REPLY:
+            return Icmp6MessageEchoReply
+        elif _match_subject == Icmp6Type.ND__ROUTER_SOLICITATION:
+            return Icmp6NdMessageRouterSolicitation
+        elif _match_subject == Icmp6Type.ND__ROUTER_ADVERTISEMENT:
+            return Icmp6NdMessageRouterAdvertisement
+        elif _match_subject == Icmp6Type.ND__NEIGHBOR_SOLICITATION:
+            return Icmp6NdMessageNeighborSolicitation
+        elif _match_subject == Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
+            return Icmp6NdMessageNeighborAdvertisement
+        elif _match_subject == Icmp6Type.ND__REDIRECT:
+            return Icmp6NdMessageRedirect
+        elif _match_subject == Icmp6Type.MLD2__REPORT:
+            return Icmp6Mld2MessageReport
+        elif _match_subject == Icmp6Type.MULTICAST_LISTENER_QUERY:
+            # RFC 3810 §8.1: a 24-octet Query is the MLDv1 form;
+            # an MLDv2 Query is >= 28 octets. Discriminate by the
+            # declared IPv6 payload length.
+            return Icmp6Mld1MessageQuery if self._ip6__dlen == ICMP6__MLD1__MESSAGE__LEN else Icmp6Mld2MessageQuery
+        elif _match_subject == Icmp6Type.MULTICAST_LISTENER_REPORT:
+            return Icmp6Mld1MessageReport
+        elif _match_subject == Icmp6Type.MULTICAST_LISTENER_DONE:
+            return Icmp6Mld1MessageDone
+        else:
+            return Icmp6MessageUnknown
 
     @override
     def _validate_integrity(self) -> None:

@@ -56,6 +56,9 @@ ver 3.0.7
 """
 
 
+from __future__ import annotations
+from pmd_pytcp._compat import as_buffer
+
 def partial_cum_ack_deflate(cwnd: int, bytes_acked: int, smss: int) -> int:
     """
     Compute the post-deflation cwnd value for an in-recovery
@@ -88,5 +91,5 @@ def partial_cum_ack_deflate(cwnd: int, bytes_acked: int, smss: int) -> int:
 
     new_cwnd = max(smss, cwnd - bytes_acked)
     if bytes_acked >= smss:
-        new_cwnd += smss
+        new_cwnd += as_buffer(smss)
     return new_cwnd

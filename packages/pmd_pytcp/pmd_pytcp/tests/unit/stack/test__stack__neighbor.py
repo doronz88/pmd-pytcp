@@ -32,8 +32,11 @@ pmd_pytcp/tests/unit/stack/test__stack__neighbor.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
-from typing import cast, override
+from typing import cast
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import patch
 

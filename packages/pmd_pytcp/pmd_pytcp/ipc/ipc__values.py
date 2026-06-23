@@ -50,6 +50,8 @@ pmd_pytcp/ipc/ipc__values.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import base64
 import dataclasses
 from enum import Enum

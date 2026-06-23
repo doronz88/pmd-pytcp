@@ -31,9 +31,11 @@ pmd_net_proto/lib/tracker.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import itertools
 import time
-from typing import override
+from typing_extensions import override
 
 
 class Tracker:

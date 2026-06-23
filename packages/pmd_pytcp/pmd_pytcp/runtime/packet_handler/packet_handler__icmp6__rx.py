@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__icmp6__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import random
 from typing import TYPE_CHECKING, cast
 
@@ -171,35 +173,34 @@ class Icmp6RxHandler:
             )
             return
 
-        match packet_rx.icmp6.message.type:
-            case Icmp6Type.DESTINATION_UNREACHABLE:
-                self.__phrx_icmp6__destination_unreachable(packet_rx)
-            case Icmp6Type.PACKET_TOO_BIG:
-                self.__phrx_icmp6__packet_too_big(packet_rx)
-            case Icmp6Type.TIME_EXCEEDED:
-                self.__phrx_icmp6__time_exceeded(packet_rx)
-            case Icmp6Type.PARAMETER_PROBLEM:
-                self.__phrx_icmp6__parameter_problem(packet_rx)
-            case Icmp6Type.ECHO_REQUEST:
-                self.__phrx_icmp6__echo_request(packet_rx)
-            case Icmp6Type.ECHO_REPLY:
-                self.__phrx_icmp6__echo_reply(packet_rx)
-            case Icmp6Type.ND__ROUTER_SOLICITATION:
-                self.__phrx_icmp6__nd_router_solicitation(packet_rx)
-            case Icmp6Type.ND__ROUTER_ADVERTISEMENT:
-                self.__phrx_icmp6__nd_router_advertisement(packet_rx)
-            case Icmp6Type.ND__NEIGHBOR_SOLICITATION:
-                self.__phrx_icmp6__nd_neighbor_solicitation(packet_rx)
-            case Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
-                self.__phrx_icmp6__nd_neighbor_advertisement(packet_rx)
-            case Icmp6Type.ND__REDIRECT:
-                self.__phrx_icmp6__nd_redirect(packet_rx)
-            case Icmp6Type.MLD2__REPORT:
-                self.__phrx_icmp6__mld2_report(packet_rx)
-            case Icmp6Type.MULTICAST_LISTENER_QUERY:
-                self.__phrx_icmp6__mld_query(packet_rx)
-            case _:
-                self.__phrx_icmp6__unknown(packet_rx)
+        if packet_rx.icmp6.message.type == Icmp6Type.DESTINATION_UNREACHABLE:
+            self.__phrx_icmp6__destination_unreachable(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.PACKET_TOO_BIG:
+            self.__phrx_icmp6__packet_too_big(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.TIME_EXCEEDED:
+            self.__phrx_icmp6__time_exceeded(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.PARAMETER_PROBLEM:
+            self.__phrx_icmp6__parameter_problem(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ECHO_REQUEST:
+            self.__phrx_icmp6__echo_request(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ECHO_REPLY:
+            self.__phrx_icmp6__echo_reply(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ND__ROUTER_SOLICITATION:
+            self.__phrx_icmp6__nd_router_solicitation(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ND__ROUTER_ADVERTISEMENT:
+            self.__phrx_icmp6__nd_router_advertisement(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ND__NEIGHBOR_SOLICITATION:
+            self.__phrx_icmp6__nd_neighbor_solicitation(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ND__NEIGHBOR_ADVERTISEMENT:
+            self.__phrx_icmp6__nd_neighbor_advertisement(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.ND__REDIRECT:
+            self.__phrx_icmp6__nd_redirect(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.MLD2__REPORT:
+            self.__phrx_icmp6__mld2_report(packet_rx)
+        elif packet_rx.icmp6.message.type == Icmp6Type.MULTICAST_LISTENER_QUERY:
+            self.__phrx_icmp6__mld_query(packet_rx)
+        else:
+            self.__phrx_icmp6__unknown(packet_rx)
 
     def __phrx_icmp6__destination_unreachable(self, packet_rx: PacketRx) -> None:
         """

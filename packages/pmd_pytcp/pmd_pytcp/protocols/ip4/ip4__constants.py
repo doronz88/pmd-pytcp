@@ -42,6 +42,8 @@ ver 3.0.7
 # override is observable on the wire without a stack restart.
 # Multicast destinations are independently pinned at TTL=1 per
 # RFC 1112 §6.1 and do NOT consult this knob.
+from __future__ import annotations
+
 IP4__DEFAULT_TTL = 64
 
 # RFC 919 §1 / RFC 922 §3 outbound broadcast emission policy.

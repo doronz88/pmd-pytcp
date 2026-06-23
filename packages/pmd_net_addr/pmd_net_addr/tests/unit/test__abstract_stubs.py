@@ -31,6 +31,8 @@ pmd_net_addr/tests/unit/test__abstract_stubs.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import inspect
 from unittest import TestCase
 
@@ -54,6 +56,7 @@ from pmd_net_addr.ip_network import IpNetwork
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.ip_wildcard import IpWildcard
 from pmd_net_addr.mac_address import MacAddress
+from pmd_net_addr._compat import as_buffer
 
 
 class TestNetAddrBaseAbstractStubs(TestCase):
@@ -417,7 +420,7 @@ class TestNetAddrAddressLenConstant(TestCase):
             with self.subTest(cls=type(instance).__name__):
                 self.assertEqual(
                     type(instance)._address_len,
-                    len(memoryview(instance)),
+                    len(memoryview(as_buffer(instance))),
                     msg=(f"{type(instance).__name__}._address_len must equal " f"the serialized byte width."),
                 )
 

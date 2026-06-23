@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip6_dest_opts/test__ip6_dest_opts__header__as
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto.lib.enums import IpProto
@@ -38,6 +40,7 @@ from pmd_net_proto.protocols.ip6_dest_opts.ip6_dest_opts__header import (
     IP6_DEST_OPTS__HEADER__LEN,
     Ip6DestOptsHeader,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestIp6DestOptsHeaderAsserts(TestCase):
@@ -121,7 +124,7 @@ class TestIp6DestOptsHeaderAsserts(TestCase):
 
         original = Ip6DestOptsHeader(next=IpProto.TCP, hdr_ext_len=7)
 
-        rebuilt = Ip6DestOptsHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = Ip6DestOptsHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

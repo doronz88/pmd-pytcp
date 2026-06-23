@@ -30,9 +30,11 @@ pmd_pytcp/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp import socket, stack
 
-__version__: str = "0.0.3"
+__version__: str = "0.0.4"
 
 __all__ = [
     "stack",

@@ -32,7 +32,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

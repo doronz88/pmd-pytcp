@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__icmp6
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
@@ -55,6 +57,7 @@ from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.protocols.icmp6.nd.nd__cache import NdCache
 from pmd_pytcp.runtime.packet_handler.packet_handler__icmp6__rx import Icmp6RxHandler
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -229,11 +232,11 @@ class TestPacketHandlerIcmp6RxParse(_Icmp6RxTestBase):
         """
 
         ip6 = bytearray(
-            _build_icmp6_frame(
+            as_buffer(_build_icmp6_frame(
                 src=HOST_A__IP6,
                 dst=STACK__IP6_ADDRESS,
                 message=Icmp6MessageEchoRequest(id=1, seq=1, data=b"hello"),
-            )
+            ))
         )
         # Corrupt the ICMPv6 checksum (bytes 42-43 = IPv6 40-byte header + 2).
         ip6[42] = 0xDE

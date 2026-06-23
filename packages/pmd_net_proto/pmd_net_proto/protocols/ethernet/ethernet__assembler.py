@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ethernet/ethernet__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import MacAddress
 from pmd_net_proto.lib.buffer import Buffer
@@ -42,6 +44,7 @@ from pmd_net_proto.protocols.ethernet.ethernet__base import (
 )
 from pmd_net_proto.protocols.ethernet.ethernet__header import EthernetHeader
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
+from pmd_net_proto._compat import as_buffer
 
 
 class EthernetAssembler(Ethernet[EthernetPayload], ProtoAssembler):
@@ -78,6 +81,6 @@ class EthernetAssembler(Ethernet[EthernetPayload], ProtoAssembler):
         Assemble the Ethernet packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
 
         self._payload.assemble(buffers)

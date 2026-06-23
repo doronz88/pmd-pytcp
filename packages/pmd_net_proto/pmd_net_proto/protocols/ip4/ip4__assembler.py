@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip4/ip4__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address
 from pmd_net_proto.lib.buffer import Buffer
@@ -49,6 +51,7 @@ from pmd_net_proto.protocols.ip4.options.ip4__options import (
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
 from pmd_net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from pmd_net_proto.protocols.udp.udp__assembler import UdpAssembler
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
@@ -113,12 +116,12 @@ class Ip4Assembler(Ip4[Ip4Payload], ProtoAssembler):
         Assemble the IPv4 packet into list of buffers.
         """
 
-        header = bytearray(self._header)
-        options = bytearray(self._options)
-        header[10:12] = inet_cksum(header, options).to_bytes(2)
+        header = bytearray(as_buffer(self._header))
+        options = bytearray(as_buffer(self._options))
+        header[10:12] = inet_cksum(header, options).to_bytes(2, "big")
 
-        buffers.append(header)
-        buffers.append(options)
+        buffers.append(as_buffer(header))
+        buffers.append(as_buffer(options))
 
         if isinstance(self._payload, (TcpAssembler, UdpAssembler, RawAssembler)):
             self._payload.pshdr_sum = self.pshdr_sum
@@ -190,10 +193,10 @@ class Ip4FragAssembler(Ip4[Buffer], ProtoAssembler):
         Assemble the IPv4 (Frag) packet into list of buffers.
         """
 
-        header = bytearray(self._header)
-        options = bytearray(self._options)
-        header[10:12] = inet_cksum(header, options).to_bytes(2)
+        header = bytearray(as_buffer(self._header))
+        options = bytearray(as_buffer(self._options))
+        header[10:12] = inet_cksum(header, options).to_bytes(2, "big")
 
-        buffers.append(header)
-        buffers.append(options)
-        buffers.append(self._payload)
+        buffers.append(as_buffer(header))
+        buffers.append(as_buffer(options))
+        buffers.append(as_buffer(self._payload))

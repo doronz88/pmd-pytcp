@@ -35,14 +35,17 @@ pmd_pytcp/client/client__route.py
 ver 3.0.7
 """
 
-from typing import cast
+from __future__ import annotations
+
+from typing import Union, cast
 
 from pmd_net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
 from pmd_pytcp.client.client__base import _ClientApiProxy
 from pmd_pytcp.runtime.fib import Route, RouteProtocol
 from pmd_pytcp.socket import AddressFamily
+from typing_extensions import TypeAliasType
 
-type _AnyRoute = Route[Ip4Address, Ip4Network] | Route[Ip6Address, Ip6Network]
+_AnyRoute = TypeAliasType("_AnyRoute", Union[Route[Ip4Address, Ip4Network], Route[Ip6Address, Ip6Network]])
 
 
 class ClientRoute(_ClientApiProxy):

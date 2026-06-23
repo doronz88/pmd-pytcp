@@ -41,6 +41,8 @@ pmd_pytcp/tests/integration/protocols/arp/test__arp__harness_smoke.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto import ArpOperation, ArpParser
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp.tests.lib.arp_testcase import (

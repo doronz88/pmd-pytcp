@@ -30,6 +30,8 @@ pmd_net_addr/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_addr.errors import (
@@ -156,7 +158,7 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__version__: str = "0.0.1"
+__version__: str = "0.0.2"
 
 __all__ = [
     "ClickTypeIfAddr",

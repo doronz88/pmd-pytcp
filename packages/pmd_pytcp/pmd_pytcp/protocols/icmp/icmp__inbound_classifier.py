@@ -32,6 +32,8 @@ pmd_pytcp/protocols/icmp/icmp__inbound_classifier.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import IpVersion
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorContext

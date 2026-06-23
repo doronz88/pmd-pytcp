@@ -36,6 +36,8 @@ pmd_pytcp/tests/integration/protocols/icmp4/test__icmp4__error_gates.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

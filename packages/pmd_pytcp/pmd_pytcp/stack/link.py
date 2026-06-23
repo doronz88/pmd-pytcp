@@ -43,7 +43,10 @@ pmd_pytcp/stack/link.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass, fields
+from __future__ import annotations
+
+from dataclasses import fields
+from pmd_pytcp._compat import as_buffer, dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
@@ -197,7 +200,7 @@ def _sum_drops(
             continue
         if exclude_prefix is not None and name.startswith(exclude_prefix):
             continue
-        total += getattr(stats, name)
+        total += as_buffer(getattr(stats, name))
     return total
 
 

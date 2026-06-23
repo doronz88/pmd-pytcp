@@ -31,8 +31,10 @@ pmd_pytcp/runtime/packet_handler/packet_handler__igmp__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import random
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from typing import TYPE_CHECKING
 
 from pmd_net_addr import Ip4Address

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -54,6 +56,7 @@ from pmd_net_proto.protocols.dhcp4.dhcp4__enums import (
     Dhcp4HardwareType,
 )
 from pmd_net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__MAGIC_COOKIE
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp4HeaderAsserts(TestCase):
@@ -636,7 +639,7 @@ class TestDhcp4HeaderOperation(TestCase):
             file="",
         )
 
-        frame = bytes(memoryview(header))
+        frame = bytes(memoryview(as_buffer(header)))
 
         self.assertEqual(len(frame), DHCP4__HEADER__LEN, msg="Buffer must be 240 bytes long.")
         self.assertEqual(frame[:4], b"\x01\x01\x06\x00", msg="Unexpected op/htype/hlen/hops bytes.")
@@ -678,7 +681,7 @@ class TestDhcp4HeaderOperation(TestCase):
             file="",
         )
 
-        frame = bytes(memoryview(header))
+        frame = bytes(memoryview(as_buffer(header)))
 
         self.assertEqual(
             frame[10:12],
@@ -695,7 +698,7 @@ class TestDhcp4HeaderOperation(TestCase):
 
         original = Dhcp4Header(**self._valid_kwargs())
 
-        rebuilt = Dhcp4Header.from_buffer(bytes(memoryview(original)))
+        rebuilt = Dhcp4Header.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,
@@ -712,7 +715,7 @@ class TestDhcp4HeaderOperation(TestCase):
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
-        padded = bytes(memoryview(original)) + b"\xde\xad\xbe\xef"
+        padded = bytes(memoryview(as_buffer(original))) + b"\xde\xad\xbe\xef"
 
         rebuilt = Dhcp4Header.from_buffer(padded)
 
@@ -731,7 +734,7 @@ class TestDhcp4HeaderOperation(TestCase):
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
-        frame = bytearray(bytes(memoryview(original)))
+        frame = bytearray(bytes(memoryview(as_buffer(original))))
         frame[1] = 0x00  # clobber hrtype
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -752,7 +755,7 @@ class TestDhcp4HeaderOperation(TestCase):
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
-        frame = bytearray(bytes(memoryview(original)))
+        frame = bytearray(bytes(memoryview(as_buffer(original))))
         frame[2] = 0x08  # clobber hrlen
 
         with self.assertRaises(Dhcp4IntegrityError) as error:
@@ -773,7 +776,7 @@ class TestDhcp4HeaderOperation(TestCase):
         """
 
         original = Dhcp4Header(**self._valid_kwargs())
-        frame = bytearray(bytes(memoryview(original)))
+        frame = bytearray(bytes(memoryview(as_buffer(original))))
         frame[236:240] = b"\xde\xad\xbe\xef"
 
         with self.assertRaises(Dhcp4IntegrityError) as error:

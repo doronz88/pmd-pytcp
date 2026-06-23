@@ -31,10 +31,12 @@ pmd_pytcp/tests/unit/socket/test__socket__base.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 import fcntl
 import select
-from typing import override
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import patch
 

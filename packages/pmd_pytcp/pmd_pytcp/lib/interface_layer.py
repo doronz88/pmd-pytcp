@@ -30,6 +30,8 @@ pmd_pytcp/lib/interface_layer.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import Enum, auto
 
 

@@ -44,6 +44,8 @@ pmd_pytcp/tests/integration/protocols/ip6/test__ip6__rfc6724_source_selection_ru
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip6Address, Ip6IfAddr
 from pmd_pytcp.tests.lib.ip6_testcase import Ip6TestCase
 

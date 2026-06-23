@@ -36,8 +36,10 @@ pmd_pytcp/tests/lib/tcp_testcase.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from typing import Any, cast
 from unittest.mock import _patch, patch
 

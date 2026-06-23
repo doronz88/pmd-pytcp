@@ -30,8 +30,10 @@ pmd_net_addr/ip_mask.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr.base import Base
 from pmd_net_addr.ip import Ip
@@ -53,7 +55,7 @@ class IpMask(Base, Ip, ABC):
         Get the IP mask prefix length.
         """
 
-        return self._mask.bit_count()
+        return bin(self._mask).count("1")
 
     @override
     def __str__(self) -> str:
@@ -70,6 +72,14 @@ class IpMask(Base, Ip, ABC):
         """
 
         raise NotImplementedError
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     def __int__(self) -> int:
         """

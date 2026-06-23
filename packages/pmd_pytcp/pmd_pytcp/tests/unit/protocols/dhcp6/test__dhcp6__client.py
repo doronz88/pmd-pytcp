@@ -31,7 +31,9 @@ pmd_pytcp/tests/unit/protocols/dhcp6/test__dhcp6__client.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import create_autospec, patch
 
@@ -47,6 +49,7 @@ from pmd_pytcp.socket import SO_BINDTODEVICE, SOL_SOCKET
 from pmd_pytcp.stack import sysctl
 from pmd_pytcp.stack.address import AddressApi
 from pmd_pytcp.tests.lib.dhcp6_mock_server import Dhcp6MockServer, autospec_dhcp6_socket
+from pmd_pytcp._compat import as_buffer
 
 _DEFAULT_MAC = MacAddress("02:00:00:00:00:07")
 _PINNED_XID = 0xABCDEF
@@ -939,7 +942,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
         self.assertEqual(renew.client_id, get_client_duid(_DEFAULT_MAC), msg="RENEW must carry the client DUID.")
         self.assertIsNotNone(renew.ia_na, msg="RENEW must carry an IA_NA.")
         assert renew.ia_na is not None
-        ia_options = Dhcp6Options.from_buffer(memoryview(renew.ia_na.options))
+        ia_options = Dhcp6Options.from_buffer(memoryview(as_buffer(renew.ia_na.options)))
         assert ia_options.ia_addr is not None
         self.assertEqual(
             ia_options.ia_addr.address,
@@ -1085,7 +1088,7 @@ class TestDhcp6ClientElapsedTime(TestCase):
             try:
                 return base(*args, **kwargs)
             except TimeoutError:
-                self._clock["t"] += delta
+                self._clock["t"] += as_buffer(delta)
                 raise
 
         self._sock.recv__mv.side_effect = _wrapped
@@ -1445,7 +1448,7 @@ class TestDhcp6ClientRelease(TestCase):
         self.assertEqual(release.server_id, _SERVER_DUID, msg="RELEASE must address the granting server.")
         self.assertEqual(release.client_id, get_client_duid(_DEFAULT_MAC), msg="RELEASE must carry the client DUID.")
         assert release.ia_na is not None
-        ia_options = Dhcp6Options.from_buffer(memoryview(release.ia_na.options))
+        ia_options = Dhcp6Options.from_buffer(memoryview(as_buffer(release.ia_na.options)))
         assert ia_options.ia_addr is not None
         self.assertEqual(
             ia_options.ia_addr.address,
@@ -1583,7 +1586,7 @@ class TestDhcp6ClientDecline(TestCase):
         self.assertEqual(decline.server_id, _SERVER_DUID, msg="DECLINE must address the granting server.")
         self.assertEqual(decline.client_id, get_client_duid(_DEFAULT_MAC), msg="DECLINE must carry the client DUID.")
         assert decline.ia_na is not None
-        ia_options = Dhcp6Options.from_buffer(memoryview(decline.ia_na.options))
+        ia_options = Dhcp6Options.from_buffer(memoryview(as_buffer(decline.ia_na.options)))
         assert ia_options.ia_addr is not None
         self.assertEqual(
             ia_options.ia_addr.address,

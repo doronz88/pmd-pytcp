@@ -30,8 +30,11 @@ pmd_net_proto/protocols/tcp/options/tcp__option__accecn1.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass, field
-from typing import Self, override
+from __future__ import annotations
+
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint24
@@ -145,7 +148,7 @@ class TcpOptionAccecn1(TcpOption):
         §3.2.3 abbreviation rule.
         """
 
-        buffer = bytearray(self.len)
+        buffer = bytearray(as_buffer(self.len))
         buffer[0] = int(self.type)
         buffer[1] = self.len
         if self.ee1b is not None:
@@ -156,6 +159,15 @@ class TcpOptionAccecn1(TcpOption):
             buffer[8:11] = self.ee0b.to_bytes(3, "big")
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:

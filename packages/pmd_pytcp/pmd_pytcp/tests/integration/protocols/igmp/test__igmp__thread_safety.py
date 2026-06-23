@@ -33,8 +33,10 @@ packages/pmd_pytcp/pmd_pytcp/tests/integration/protocols/igmp/test__igmp__thread
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto import IpProto
@@ -58,6 +60,7 @@ from pmd_pytcp.socket import (
 from pmd_pytcp.stack import sysctl
 from pmd_pytcp.stack.membership import MembershipApi
 from pmd_pytcp.tests.lib.icmp_testcase import IcmpTestCase
+from typing import TypeVar
 
 _GROUP = Ip4Address("239.7.7.7")
 _SOURCE = Ip4Address("10.0.0.5")
@@ -139,7 +142,9 @@ class _TrackingRLock:
         self._lock.release()
 
 
-class _LockAssertingDict[K, V](dict[K, V]):
+K = TypeVar("K")
+V = TypeVar("V")
+class _LockAssertingDict(dict[K, V]):
     """
     A dict that records, on every structural mutation, whether the
     tracking lock was held at the moment of the write.

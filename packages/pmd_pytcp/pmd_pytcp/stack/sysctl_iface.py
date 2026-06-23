@@ -37,6 +37,8 @@ pmd_pytcp/stack/sysctl_iface.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import sys
 from typing import Any
 

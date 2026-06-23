@@ -57,6 +57,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__seq_wraparound.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.tcp__constants import TCP__RTO__INITIAL_MS
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall

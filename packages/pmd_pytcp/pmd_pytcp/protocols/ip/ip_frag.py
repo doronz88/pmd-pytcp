@@ -30,9 +30,12 @@ pmd_pytcp/protocols/ip/ip_frag.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import field
+from pmd_pytcp._compat import as_buffer, dataclass
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_net_proto import IpProto
@@ -180,4 +183,4 @@ def iter_fragment_chunks(payload: Buffer, /, *, max_chunk_bytes: int) -> Iterato
         chunk = payload_bytes[offset : offset + aligned_chunk_bytes]
         is_last = offset + len(chunk) >= total
         yield offset, chunk, is_last
-        offset += aligned_chunk_bytes
+        offset += as_buffer(aligned_chunk_bytes)

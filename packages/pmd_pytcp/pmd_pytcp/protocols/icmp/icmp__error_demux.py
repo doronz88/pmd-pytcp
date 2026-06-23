@@ -35,8 +35,10 @@ pmd_pytcp/protocols/icmp/icmp__error_demux.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
 from pmd_net_proto import (
@@ -96,11 +98,10 @@ def parse_embedded_l4(frame: Buffer, ip_version: IpVersion, /) -> EmbeddedL4 | N
     callers treat that as "no demux possible" without raising.
     """
 
-    match ip_version:
-        case IpVersion.IP4:
-            return _parse_embedded_ip4(frame)
-        case IpVersion.IP6:
-            return _parse_embedded_ip6(frame)
+    if ip_version == IpVersion.IP4:
+        return _parse_embedded_ip4(frame)
+    elif ip_version == IpVersion.IP6:
+        return _parse_embedded_ip6(frame)
 
 
 def _parse_embedded_ip4(frame: Buffer) -> EmbeddedL4 | None:

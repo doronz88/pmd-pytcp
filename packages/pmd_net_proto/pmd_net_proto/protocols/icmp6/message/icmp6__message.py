@@ -30,8 +30,10 @@ pmd_net_proto/protocols/icmp6/message/icmp6__message.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod
-from dataclasses import dataclass
+from pmd_net_proto._compat import dataclass
 
 from pmd_net_addr import Ip6Address
 from pmd_net_proto.lib.buffer import Buffer

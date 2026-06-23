@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__slaac_address_tr
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from unittest.mock import patch
 

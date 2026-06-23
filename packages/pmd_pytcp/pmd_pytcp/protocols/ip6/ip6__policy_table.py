@@ -41,7 +41,9 @@ pmd_pytcp/protocols/ip6/ip6__policy_table.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip6Address, Ip6Network
 

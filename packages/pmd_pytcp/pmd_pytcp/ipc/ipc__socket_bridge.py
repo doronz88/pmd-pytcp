@@ -40,9 +40,12 @@ pmd_pytcp/ipc/ipc__socket_bridge.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 import threading
 from typing import Protocol
+from pmd_pytcp._compat import as_buffer
 
 IPC__BRIDGE__POLL_TIMEOUT__SEC: float = 0.2
 IPC__BRIDGE__CHUNK_SIZE: int = 65536
@@ -159,7 +162,7 @@ class SocketBridge:
         offset = 0
         while offset < len(data):
             try:
-                offset += self._stack_socket.send(data[offset:])
+                offset += as_buffer(self._stack_socket.send(data[offset:]))
             except OSError:
                 return False
         return True

@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ip4__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 import time as time_module
 from typing import TYPE_CHECKING, cast
@@ -54,6 +56,7 @@ from pmd_pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome
 from pmd_pytcp.socket.raw__metadata import RawMetadata
 from pmd_pytcp.socket.raw__socket import RawSocket
 from pmd_pytcp.stack import sysctl_iface
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandler
@@ -398,7 +401,7 @@ class Ip4RxHandler:
         header[1] = (header[1] & 0xFC) | (result.ecn & 0x03)
         struct.pack_into("!H", header, 2, len(header) + len(payload))
         header[6] = header[7] = header[10] = header[11] = 0
-        struct.pack_into("!H", header, 10, inet_cksum(memoryview(header)))
+        struct.pack_into("!H", header, 10, inet_cksum(memoryview(as_buffer(header))))
         packet_rx = PacketRx(bytes(header) + payload)
         Ip4Parser(packet_rx)
         __debug__ and log(

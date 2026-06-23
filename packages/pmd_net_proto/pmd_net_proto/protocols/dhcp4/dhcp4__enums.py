@@ -30,7 +30,9 @@ pmd_net_proto/protocols/dhcp4/dhcp4__enums.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.proto_enum import ProtoEnumByte
 
@@ -75,22 +77,21 @@ class Dhcp4MessageType(ProtoEnumByte):
         Get the value as a string.
         """
 
-        match self:
-            case Dhcp4MessageType.DISCOVER:
-                name = "Discover"
-            case Dhcp4MessageType.OFFER:
-                name = "Offer"
-            case Dhcp4MessageType.REQUEST:
-                name = "Request"
-            case Dhcp4MessageType.DECLINE:
-                name = "Decline"
-            case Dhcp4MessageType.ACK:
-                name = "ACK"
-            case Dhcp4MessageType.NAK:
-                name = "NAK"
-            case Dhcp4MessageType.RELEASE:
-                name = "Release"
-            case Dhcp4MessageType.INFORM:
-                name = "Inform"
+        if self == Dhcp4MessageType.DISCOVER:
+            name = "Discover"
+        elif self == Dhcp4MessageType.OFFER:
+            name = "Offer"
+        elif self == Dhcp4MessageType.REQUEST:
+            name = "Request"
+        elif self == Dhcp4MessageType.DECLINE:
+            name = "Decline"
+        elif self == Dhcp4MessageType.ACK:
+            name = "ACK"
+        elif self == Dhcp4MessageType.NAK:
+            name = "NAK"
+        elif self == Dhcp4MessageType.RELEASE:
+            name = "Release"
+        elif self == Dhcp4MessageType.INFORM:
+            name = "Inform"
 
         return f"{self.value}" if self.is_unknown else name

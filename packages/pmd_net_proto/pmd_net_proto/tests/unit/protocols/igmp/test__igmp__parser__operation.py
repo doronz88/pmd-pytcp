@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/igmp/test__igmp__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from unittest import TestCase
 

@@ -37,6 +37,8 @@ pmd_pytcp/tests/integration/protocols/ip4/test__ip4__harness_smoke.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, Ip4IfAddr
 from pmd_net_proto import Icmp4Assembler, Icmp4MessageEchoRequest, IpProto
 from pmd_net_proto.lib.enums import EtherType
@@ -155,7 +157,7 @@ class TestIp4HarnessSmoke(Ip4TestCase):
 
         # Build a raw Ethernet/IPv6 frame manually so the EtherType
         # mismatch fires.
-        bogus = bytes(STACK__MAC_ADDRESS) + bytes(HOST_A__MAC_ADDRESS) + int(EtherType.IP6).to_bytes(2)
+        bogus = bytes(STACK__MAC_ADDRESS) + bytes(HOST_A__MAC_ADDRESS) + int(EtherType.IP6).to_bytes(2, "big")
 
         with self.assertRaises(AssertionError):
             self._parse_tx_ip4(bogus)

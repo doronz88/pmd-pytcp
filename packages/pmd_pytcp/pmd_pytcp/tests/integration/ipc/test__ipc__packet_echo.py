@@ -41,10 +41,13 @@ pmd_pytcp/tests/integration/ipc/test__ipc__packet_echo.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 import time
-from typing import Any, cast, override
+from typing import Any, cast
+from typing_extensions import override
 from unittest.mock import call
 
 from pmd_net_proto import ArpAssembler, ArpOperation, EthernetAssembler, EtherType

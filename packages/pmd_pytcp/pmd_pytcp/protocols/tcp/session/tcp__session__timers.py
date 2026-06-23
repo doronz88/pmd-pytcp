@@ -49,6 +49,8 @@ packages/pmd_pytcp/pmd_pytcp/protocols/tcp/session/tcp__session__timers.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from typing import TYPE_CHECKING
 

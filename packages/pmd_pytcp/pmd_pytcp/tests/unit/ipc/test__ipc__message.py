@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/ipc/test__ipc__message.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from enum import IntEnum
 from unittest import TestCase

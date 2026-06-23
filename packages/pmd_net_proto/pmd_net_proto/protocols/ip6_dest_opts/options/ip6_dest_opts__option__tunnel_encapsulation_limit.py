@@ -31,9 +31,12 @@ pmd_net_proto/protocols/ip6_dest_opts/options/ip6_dest_opts__option__tunnel_enca
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint8
@@ -101,7 +104,7 @@ class Ip6DestOptsOptionTunnelEncapsulationLimit(Ip6DestOptsOption):
 
         struct.pack_into(
             IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__STRUCT,
-            buffer := bytearray(IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__LEN),
+            buffer := bytearray(as_buffer(IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__LEN)),
             0,
             int(self.type),
             IP6_DEST_OPTS__OPTION__TUNNEL_ENCAPSULATION_LIMIT__OPT_DATA_LEN,
@@ -109,6 +112,15 @@ class Ip6DestOptsOptionTunnelEncapsulationLimit(Ip6DestOptsOption):
         )
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:

@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -57,6 +59,7 @@ from pmd_net_proto import (
     Dhcp4OptionUnknown,
 )
 from pmd_net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__LEN
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -245,7 +248,7 @@ class TestDhcp4OptionsAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._options)),
+            bytes(memoryview(as_buffer(self._options))),
             self._results["__bytes__"],
             msg=f"Unexpected memoryview output for case: {self._description}",
         )

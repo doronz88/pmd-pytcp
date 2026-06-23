@@ -31,10 +31,12 @@ pmd_pytcp/protocols/icmp/icmp__error_emitter.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from enum import IntEnum
-from typing import override
+from typing_extensions import override
 
 from pmd_pytcp.protocols.icmp import icmp__constants
 
@@ -57,19 +59,18 @@ class IcmpErrorBlockReason(IntEnum):
         Get the value as a string.
         """
 
-        match self:
-            case IcmpErrorBlockReason.INBOUND_WAS_ICMP_ERROR:
-                return "inbound-was-icmp-error"
-            case IcmpErrorBlockReason.INBOUND_DST_IS_BROADCAST:
-                return "inbound-dst-broadcast"
-            case IcmpErrorBlockReason.INBOUND_DST_IS_MULTICAST:
-                return "inbound-dst-multicast"
-            case IcmpErrorBlockReason.INBOUND_SRC_INVALID:
-                return "inbound-src-invalid"
-            case IcmpErrorBlockReason.INBOUND_NON_INITIAL_FRAGMENT:
-                return "inbound-non-initial-fragment"
-            case IcmpErrorBlockReason.RATE_LIMIT_EXCEEDED:
-                return "rate-limit-exceeded"
+        if self == IcmpErrorBlockReason.INBOUND_WAS_ICMP_ERROR:
+            return "inbound-was-icmp-error"
+        elif self == IcmpErrorBlockReason.INBOUND_DST_IS_BROADCAST:
+            return "inbound-dst-broadcast"
+        elif self == IcmpErrorBlockReason.INBOUND_DST_IS_MULTICAST:
+            return "inbound-dst-multicast"
+        elif self == IcmpErrorBlockReason.INBOUND_SRC_INVALID:
+            return "inbound-src-invalid"
+        elif self == IcmpErrorBlockReason.INBOUND_NON_INITIAL_FRAGMENT:
+            return "inbound-non-initial-fragment"
+        elif self == IcmpErrorBlockReason.RATE_LIMIT_EXCEEDED:
+            return "rate-limit-exceeded"
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

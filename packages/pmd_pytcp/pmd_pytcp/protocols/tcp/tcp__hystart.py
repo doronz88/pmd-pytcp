@@ -51,7 +51,9 @@ pmd_pytcp/protocols/tcp/tcp__hystart.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 
 # RFC 9406 §4.3 tuning constants. These RECOMMENDED values were
 # determined from lab measurements; production stacks (Linux,

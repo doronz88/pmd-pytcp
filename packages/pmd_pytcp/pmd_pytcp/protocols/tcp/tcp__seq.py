@@ -31,7 +31,10 @@ pmd_pytcp/protocols/tcp/tcp__seq.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto.lib.int_checks import UINT_32__MAX, is_uint32
+from typing_extensions import TypeAliasType
 
 # Documentation type alias for 32-bit modular sequence numbers (RFC 9293
 # §3.4). PEP 695 transparent alias: mypy treats 'Seq32' as 'int' so plain
@@ -41,7 +44,7 @@ from pmd_net_proto.lib.int_checks import UINT_32__MAX, is_uint32
 # Python's built-in comparison operators". Use for parameters, return
 # values, and dataclass fields that hold a seq number; do not use for
 # byte counts, lengths, or window sizes.
-type Seq32 = int
+Seq32 = TypeAliasType("Seq32", int)
 
 
 # RFC 9293 §3.4 defines TCP sequence and acknowledgement numbers as 32-bit

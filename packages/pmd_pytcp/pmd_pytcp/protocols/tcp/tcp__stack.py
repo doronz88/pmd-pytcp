@@ -46,8 +46,11 @@ pmd_pytcp/protocols/tcp/tcp__stack.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
-from dataclasses import dataclass, field
+from dataclasses import field
+from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip4Address, Ip6Address
 

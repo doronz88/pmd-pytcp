@@ -30,9 +30,13 @@ pmd_net_proto/tests/unit/lib/test__lib__proto_struct.py
 ver 3.0.7
 """
 
-from dataclasses import FrozenInstanceError, dataclass, fields, is_dataclass
-from typing import Self
-from unittest import TestCase
+from __future__ import annotations
+
+import sys
+from dataclasses import FrozenInstanceError, fields, is_dataclass
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
+from unittest import TestCase, skipUnless
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_struct import ProtoStruct
@@ -53,7 +57,16 @@ class _ConcreteStruct(ProtoStruct):
         return 1
 
     def __buffer__(self, _: int) -> memoryview:
-        return memoryview(self.value.to_bytes(1, "big"))
+        return memoryview(as_buffer(self.value.to_bytes(1, "big")))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -161,6 +174,7 @@ class TestNetProtoLibProtoStructDataclassConfig(TestCase):
         with self.assertRaises(TypeError):
             _ConcreteStruct(1)  # type: ignore[misc]
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__net_proto__lib__proto_struct__subclass_has_slots(self) -> None:
         """
         Ensure the subclass uses '__slots__' and has no '__dict__'.
@@ -221,7 +235,7 @@ class TestNetProtoLibProtoStructBufferProtocol(TestCase):
 
         instance = _ConcreteStruct(value=0x2A)
 
-        self.assertEqual(bytes(memoryview(instance)), b"\x2a")
+        self.assertEqual(bytes(memoryview(as_buffer(instance))), b"\x2a")
 
     def test__net_proto__lib__proto_struct__from_buffer_roundtrip(self) -> None:
         """
@@ -232,7 +246,7 @@ class TestNetProtoLibProtoStructBufferProtocol(TestCase):
 
         original = _ConcreteStruct(value=0x99)
 
-        reconstructed = _ConcreteStruct.from_buffer(bytes(memoryview(original)))
+        reconstructed = _ConcreteStruct.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(reconstructed, original)
 

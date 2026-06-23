@@ -37,8 +37,10 @@ pmd_pytcp/tests/integration/protocols/udp/test__udp__no_route.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip4Network
 from pmd_pytcp import stack

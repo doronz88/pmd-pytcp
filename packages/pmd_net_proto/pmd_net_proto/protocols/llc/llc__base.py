@@ -30,11 +30,14 @@ pmd_net_proto/protocols/llc/llc__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
 from pmd_net_proto.protocols.llc.llc__header import LlcHeader, LlcHeaderProperties
+from pmd_net_proto._compat import as_buffer
 
 
 class Llc(Proto, LlcHeaderProperties):
@@ -78,8 +81,17 @@ class Llc(Proto, LlcHeaderProperties):
         Get the LLC packet as a memoryview.
         """
 
-        buffer = bytearray(self._header) + bytearray(self._payload)
+        buffer = bytearray(as_buffer(self._header)) + bytearray(as_buffer(self._payload))
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def header(self) -> LlcHeader:

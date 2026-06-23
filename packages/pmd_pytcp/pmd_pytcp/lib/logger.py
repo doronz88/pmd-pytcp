@@ -30,6 +30,8 @@ pmd_pytcp/lib/logger.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import inspect
 import logging
 import time

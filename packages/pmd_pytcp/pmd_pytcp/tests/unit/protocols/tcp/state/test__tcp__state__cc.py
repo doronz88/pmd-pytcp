@@ -31,6 +31,8 @@ pmd_pytcp/tests/unit/protocols/tcp/state/test__tcp__state__cc.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_pytcp.protocols.tcp.state.tcp__state__cc import (

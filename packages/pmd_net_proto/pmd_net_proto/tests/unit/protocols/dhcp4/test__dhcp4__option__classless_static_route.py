@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__classless_static_r
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

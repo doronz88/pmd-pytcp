@@ -30,9 +30,11 @@ pmd_pytcp/tests/unit/runtime/test__runtime__subsystem.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import io
 import threading
-from typing import override
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import patch
 

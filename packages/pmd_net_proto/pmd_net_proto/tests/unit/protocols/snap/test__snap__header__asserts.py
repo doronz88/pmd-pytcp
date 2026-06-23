@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/snap/test__snap__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -42,6 +44,7 @@ from pmd_net_proto import (
     UINT_24__MIN,
     SnapHeader,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestSnapHeaderAsserts(TestCase):
@@ -210,7 +213,7 @@ class TestSnapHeaderAsserts(TestCase):
 
         original = SnapHeader(**self._kwargs)
 
-        rebuilt = SnapHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = SnapHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

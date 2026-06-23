@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp6/test__dhcp6__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_addr import Ip6Address
@@ -47,6 +49,7 @@ from pmd_net_proto import (
     Dhcp6Parser,
     Dhcp6StatusCode,
 )
+from pmd_net_proto._compat import as_buffer
 
 # DHCPv6 REPLY (server -> client) wire frame:
 #   Bytes 0     : 0x07 -> msg-type = REPLY
@@ -82,7 +85,7 @@ class TestDhcp6ParserOperation(TestCase):
         Parse the reference DHCPv6 REPLY frame.
         """
 
-        self._parser = Dhcp6Parser(memoryview(_REPLY_FRAME))
+        self._parser = Dhcp6Parser(memoryview(as_buffer(_REPLY_FRAME)))
 
     def test__dhcp6__parser__msg_type(self) -> None:
         """
@@ -185,7 +188,7 @@ class TestDhcp6ParserOperation(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._parser)),
+            bytes(memoryview(as_buffer(self._parser))),
             _REPLY_FRAME,
             msg="Reserialised packet must match the original frame.",
         )

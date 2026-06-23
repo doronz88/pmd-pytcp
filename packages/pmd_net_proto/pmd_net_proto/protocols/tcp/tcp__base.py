@@ -30,7 +30,9 @@ pmd_net_proto/protocols/tcp/tcp__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -40,6 +42,7 @@ from pmd_net_proto.protocols.tcp.options.tcp__options import (
     TcpOptionsProperties,
 )
 from pmd_net_proto.protocols.tcp.tcp__header import TcpHeader, TcpHeaderProperties
+from pmd_net_proto._compat import as_buffer
 
 
 class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
@@ -108,12 +111,21 @@ class Tcp(Proto, TcpHeaderProperties, TcpOptionsProperties):
         Get the TCP packet as a memoryview.
         """
 
-        buffer = bytearray(self._header)
-        buffer += bytearray(self._options)
-        buffer += self._payload
-        buffer[16:18] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
+        buffer = bytearray(as_buffer(self._header))
+        buffer += bytearray(as_buffer(self._options))
+        buffer += as_buffer(self._payload)
+        buffer[16:18] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2, "big")
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def header(self) -> TcpHeader:

@@ -39,6 +39,8 @@ pmd_pytcp/daemon/daemon.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import signal
 import tempfile
@@ -72,11 +74,11 @@ def _resolve_interface(interface_name: str, *, mac_address: MacAddress | None) -
     on the 'tap' / 'tun' prefix.
     """
 
-    match interface_name[:3]:
-        case "tap":
-            return stack.initialize_interface__tap(interface_name=interface_name, mac_address=mac_address)
-        case "tun":
-            return stack.initialize_interface__tun(interface_name=interface_name)
+    _match_subject = interface_name[:3]
+    if _match_subject == "tap":
+        return stack.initialize_interface__tap(interface_name=interface_name, mac_address=mac_address)
+    elif _match_subject == "tun":
+        return stack.initialize_interface__tun(interface_name=interface_name)
 
     raise ValueError(f"Unsupported interface type {interface_name[:3]!r}; only 'tap' and 'tun' are supported.")
 

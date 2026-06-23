@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/protocols/icmp6/test__icmp6__echo_gate.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_pytcp.protocols.icmp6.icmp6__echo_gate import should_emit_echo_reply

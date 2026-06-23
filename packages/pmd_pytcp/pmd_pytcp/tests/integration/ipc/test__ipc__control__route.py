@@ -30,6 +30,8 @@ pmd_pytcp/tests/integration/ipc/test__ipc__control__route.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, Ip4Network
 from pmd_pytcp import stack
 from pmd_pytcp.runtime.fib import Route, RouteProtocol

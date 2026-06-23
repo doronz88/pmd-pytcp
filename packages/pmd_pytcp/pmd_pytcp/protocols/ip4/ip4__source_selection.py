@@ -40,6 +40,8 @@ pmd_pytcp/protocols/ip4/ip4__source_selection.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.ip.ip_scope import IpScope
 

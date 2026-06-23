@@ -42,6 +42,8 @@ pmd_pytcp/tests/integration/protocols/arp/test__arp__resolution_flow.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto import ArpOperation, ArpParser, Ip4Assembler
 from pmd_net_proto.lib.packet_rx import PacketRx

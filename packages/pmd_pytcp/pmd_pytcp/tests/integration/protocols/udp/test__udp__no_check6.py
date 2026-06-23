@@ -50,6 +50,8 @@ pmd_pytcp/tests/integration/protocols/udp/test__udp__no_check6.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_net_proto import (
     EthernetAssembler,
@@ -214,7 +216,7 @@ class TestUdpNoCheck6Tx(UdpTestCase):
         )
         outbound = self._frames_tx[-1]
         # Ethernet (14) + IPv6 (40) + UDP cksum offset (6).
-        cksum = int.from_bytes(outbound[60:62])
+        cksum = int.from_bytes(outbound[60:62], "big")
 
         self.assertEqual(
             cksum,
@@ -237,7 +239,7 @@ class TestUdpNoCheck6Tx(UdpTestCase):
         sock.sendto(b"probe", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
 
         outbound = self._frames_tx[-1]
-        cksum = int.from_bytes(outbound[60:62])
+        cksum = int.from_bytes(outbound[60:62], "big")
 
         self.assertNotEqual(
             cksum,

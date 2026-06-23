@@ -43,6 +43,8 @@ pmd_pytcp/tests/integration/protocols/udp/test__udp__plpmtud.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.lib.plpmtud import MAX_PROBES, MIN_PLPMTU__IP4, PmtuState
 from pmd_pytcp.socket import AddressFamily
 from pmd_pytcp.tests.lib.udp_testcase import (

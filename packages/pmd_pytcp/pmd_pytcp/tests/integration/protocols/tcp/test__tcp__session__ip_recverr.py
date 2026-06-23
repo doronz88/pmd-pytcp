@@ -51,6 +51,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__ip_recverr.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno as errno_mod
 import struct
 

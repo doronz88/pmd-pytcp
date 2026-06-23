@@ -40,7 +40,10 @@ pmd_pytcp/protocols/tcp/state/tcp__state__rack_tlp.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import field
+from pmd_pytcp._compat import dataclass
 
 from pmd_pytcp.protocols.tcp.tcp__rack import RackSegment
 from pmd_pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32

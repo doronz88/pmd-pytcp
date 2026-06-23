@@ -39,6 +39,8 @@ pmd_pytcp/lib/neighbor__constants.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, Callable
 
 from pmd_pytcp.stack.sysctl import get, is_positive_int, register, register_finalize_validator

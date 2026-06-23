@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__ip6_f
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 

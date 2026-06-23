@@ -30,9 +30,12 @@ pmd_net_proto/protocols/igmp/message/igmp__message__v3_report.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint16
@@ -126,9 +129,18 @@ class IgmpMessageV3Report(IgmpMessage):
         """
 
         buffer = self._pack_header()
-        buffer += self._pack_records()
+        buffer += as_buffer(self._pack_records())
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     def _pack_header(self) -> bytearray:
         """
@@ -137,7 +149,7 @@ class IgmpMessageV3Report(IgmpMessage):
 
         struct.pack_into(
             IGMP__V3_REPORT__STRUCT,
-            buffer := bytearray(IGMP__V3_REPORT__LEN),
+            buffer := bytearray(as_buffer(IGMP__V3_REPORT__LEN)),
             0,
             int(self.type),
             0,
@@ -156,7 +168,7 @@ class IgmpMessageV3Report(IgmpMessage):
         buffer = bytearray()
 
         for record in self.records:
-            buffer += bytearray(record)
+            buffer += bytearray(as_buffer(record))
 
         return buffer
 
@@ -233,5 +245,5 @@ class IgmpMessageV3Report(IgmpMessage):
         Assemble the IGMPv3 Membership Report message into the buffer list.
         """
 
-        buffers.append(self._pack_header())
-        buffers.append(self._pack_records())
+        buffers.append(as_buffer(self._pack_header()))
+        buffers.append(as_buffer(self._pack_records()))

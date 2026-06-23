@@ -30,9 +30,12 @@ pmd_net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__route_info.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip6Address, Ip6Mask, Ip6Network
 from pmd_net_proto.lib.buffer import Buffer
@@ -194,6 +197,15 @@ class Icmp6NdOptionRouteInfo(Icmp6NdOption):
             ] = bytes(self.prefix.address)[:prefix_bytes_to_emit]
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:

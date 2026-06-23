@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__arp__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_proto import ArpOperation, ArpParser, PacketRx, PacketValidationError
@@ -74,17 +76,16 @@ class ArpRxHandler:
 
         __debug__ and log("arp", f"{packet_rx.tracker} - {packet_rx.arp}")
 
-        match packet_rx.arp.oper:
-            case ArpOperation.REQUEST:
-                self.__phrx_arp__request(packet_rx)
-            case ArpOperation.REPLY:
-                self.__phrx_arp__reply(packet_rx)
-            case _:
-                self._if._packet_stats_rx.arp__op_unknown__drop += 1
-                __debug__ and log(
-                    "arp",
-                    f"{packet_rx.tracker} - Unsupported operation " f"{packet_rx.arp.oper}, dropping.",
-                )
+        if packet_rx.arp.oper == ArpOperation.REQUEST:
+            self.__phrx_arp__request(packet_rx)
+        elif packet_rx.arp.oper == ArpOperation.REPLY:
+            self.__phrx_arp__reply(packet_rx)
+        else:
+            self._if._packet_stats_rx.arp__op_unknown__drop += 1
+            __debug__ and log(
+                "arp",
+                f"{packet_rx.tracker} - Unsupported operation " f"{packet_rx.arp.oper}, dropping.",
+            )
 
     def __update_arp_cache(
         self,
@@ -112,13 +113,12 @@ class ArpRxHandler:
             and (packet_rx.ethernet.dst == self._if._mac_unicast or packet_rx.ethernet.dst.is_broadcast)
             and packet_rx.arp.spa not in self._if._ip4_unicast
         ):
-            match operation:
-                case ArpOperation.REQUEST:
-                    self._if._packet_stats_rx.arp__op_request__update_arp_cache += 1
-                case ArpOperation.REPLY:
-                    self._if._packet_stats_rx.arp__op_reply__update_arp_cache += 1
-                case _:
-                    raise ValueError("Invalid ARP operation")
+            if operation == ArpOperation.REQUEST:
+                self._if._packet_stats_rx.arp__op_request__update_arp_cache += 1
+            elif operation == ArpOperation.REPLY:
+                self._if._packet_stats_rx.arp__op_reply__update_arp_cache += 1
+            else:
+                raise ValueError("Invalid ARP operation")
 
             assert self._if._arp_cache is not None, "L2 handler updating the ARP cache must have one wired."
             self._if._arp_cache.add_entry(

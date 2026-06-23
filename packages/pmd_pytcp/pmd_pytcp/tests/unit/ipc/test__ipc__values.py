@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/ipc/test__ipc__values.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import json
 from typing import Any
 from unittest import TestCase

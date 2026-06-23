@@ -31,7 +31,9 @@ pmd_pytcp/tests/unit/protocols/ip4/test__ip4__constants.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_pytcp.protocols.ip4 import ip4__constants as ip4_const

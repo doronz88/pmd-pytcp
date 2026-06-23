@@ -34,6 +34,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__integrity_checks.p
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

@@ -30,14 +30,18 @@ pmd_net_addr/ip6_address.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
-from typing import ClassVar, Self, final, override
+from typing import ClassVar
+from typing_extensions import Self, final, override
 
 from pmd_net_addr.errors import Ip6AddressFormatError, Ip6AddressSanityError, NetAddrError
 from pmd_net_addr.ip4_address import Ip4Address
 from pmd_net_addr.ip_address import IpAddress
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.mac_address import MAC__IP6_MULTICAST_PREFIX, MacAddress
+from pmd_net_addr._compat import as_buffer
 
 IP6__ADDRESS_LEN = 16
 IP6__MASK = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF
@@ -163,7 +167,7 @@ class Ip6Address(IpAddress):
 
         if isinstance(address, (memoryview, bytes, bytearray)):
             if len(address) == IP6__ADDRESS_LEN:
-                self._address = int.from_bytes(address)
+                self._address = int.from_bytes(address, "big")
                 return
 
         if isinstance(address, str):
@@ -179,7 +183,7 @@ class Ip6Address(IpAddress):
             zone_ok = not sep or (bool(zone) and "%" not in zone)
             if zone_ok:
                 try:
-                    self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, addr_part))
+                    self._address = int.from_bytes(socket.inet_pton(socket.AF_INET6, addr_part), "big")
                 except OSError:
                     pass
                 else:
@@ -212,7 +216,16 @@ class Ip6Address(IpAddress):
         Get the IPv6 address as a memoryview.
         """
 
-        return memoryview(bytearray(self._address.to_bytes(IP6__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._address.to_bytes(IP6__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def __eq__(self, other: object, /) -> bool:

@@ -30,10 +30,14 @@ pmd_pytcp/tests/unit/runtime/test__runtime__timer.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
+import sys
 import threading
 import time
-from typing import Any, override
-from unittest import TestCase
+from typing import Any
+from typing_extensions import override
+from unittest import TestCase, skipUnless
 from unittest.mock import MagicMock, call, create_autospec, patch
 
 from pmd_pytcp.runtime.timer import Timer, TimerHandle, _HeapEntry
@@ -227,6 +231,7 @@ class TestTimerHandle(TestCase):
             seq=0,
         )
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__timer_handle__has_slots(self) -> None:
         """
         Ensure 'TimerHandle' is slot-based so an accidental

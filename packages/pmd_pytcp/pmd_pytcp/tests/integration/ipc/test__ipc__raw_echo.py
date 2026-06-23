@@ -41,10 +41,13 @@ pmd_pytcp/tests/integration/ipc/test__ipc__raw_echo.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 import time
-from typing import cast, override
+from typing import cast
+from typing_extensions import override
 
 from pmd_net_proto.lib.enums import EtherType, IpProto
 from pmd_net_proto.lib.packet_rx import PacketRx

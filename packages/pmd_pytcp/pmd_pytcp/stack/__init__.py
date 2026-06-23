@@ -68,8 +68,8 @@ if TYPE_CHECKING:
 
 assert sys.version_info >= (
     3,
-    12,
-), "PyTCP stack requires Python version 3.12 or higher to run."
+    9,
+), "PyTCP stack requires Python version 3.9 or higher to run."
 
 
 # TUN/TAP ioctl request number (Linux <linux/if_tun.h>);

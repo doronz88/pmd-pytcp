@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__udp__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, cast
 
 from pmd_net_addr import Ip4Address, Ip6Address
@@ -91,46 +93,45 @@ class UdpTxHandler:
 
         __debug__ and log("udp", f"{udp_packet_tx.tracker} - {udp_packet_tx}")
 
-        match ip__src.is_ip6, ip__dst.is_ip6, ip__src.is_ip4, ip__dst.is_ip4:
-            case True, True, False, False:
-                self._if._packet_stats_tx.udp__send += 1
-                ip6_kwargs: dict[str, Any] = {
-                    "ip6__src": cast(Ip6Address, ip__src),
-                    "ip6__dst": cast(Ip6Address, ip__dst),
-                    "ip6__payload": udp_packet_tx,
-                    "ip6__ecn": ip__ecn,
-                    "ip6__dscp": ip__dscp,
-                }
-                if ip__ttl is not None:
-                    ip6_kwargs["ip6__hop"] = ip__ttl
-                return self._if._phtx_ip6(**ip6_kwargs)
-            case False, False, True, True:
-                self._if._packet_stats_tx.udp__send += 1
-                # RFC 791 §2.3 / RFC 1122 §3.3.3: an outbound UDP
-                # datagram larger than the link MTU is fragmented,
-                # not dropped, so DF=0 by default. This matches
-                # Linux, whose default UDP socket (no IP_MTU_DISCOVER
-                # set) fragments rather than path-MTU-discovers.
-                # Phase 3: per-socket DF / PMTUD opt-in lands when
-                # setsockopt(IP_MTU_DISCOVER) is wired through.
-                ip4_kwargs: dict[str, Any] = {
-                    "ip4__src": cast(Ip4Address, ip__src),
-                    "ip4__dst": cast(Ip4Address, ip__dst),
-                    "ip4__flag_df": False,
-                    "ip4__payload": udp_packet_tx,
-                    "ip4__ecn": ip__ecn,
-                    "ip4__dscp": ip__dscp,
-                }
-                if ip__ttl is not None:
-                    ip4_kwargs["ip4__ttl"] = ip__ttl
-                # Per-socket IPv4 options block (RFC 1122 §4.1.3.2)
-                # threads through from setsockopt(IP_OPTIONS) on
-                # the originating UDP socket.
-                if ip4__options is not None and len(ip4__options) > 0:
-                    ip4_kwargs["ip4__options"] = ip4__options
-                return self._if._phtx_ip4(**ip4_kwargs)
-            case _:
-                raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
+        if ip__src.is_ip6 is True and ip__dst.is_ip6 is True and ip__src.is_ip4 is False and ip__dst.is_ip4 is False:
+            self._if._packet_stats_tx.udp__send += 1
+            ip6_kwargs: dict[str, Any] = {
+                "ip6__src": cast(Ip6Address, ip__src),
+                "ip6__dst": cast(Ip6Address, ip__dst),
+                "ip6__payload": udp_packet_tx,
+                "ip6__ecn": ip__ecn,
+                "ip6__dscp": ip__dscp,
+            }
+            if ip__ttl is not None:
+                ip6_kwargs["ip6__hop"] = ip__ttl
+            return self._if._phtx_ip6(**ip6_kwargs)
+        elif ip__src.is_ip6 is False and ip__dst.is_ip6 is False and ip__src.is_ip4 is True and ip__dst.is_ip4 is True:
+            self._if._packet_stats_tx.udp__send += 1
+            # RFC 791 §2.3 / RFC 1122 §3.3.3: an outbound UDP
+            # datagram larger than the link MTU is fragmented,
+            # not dropped, so DF=0 by default. This matches
+            # Linux, whose default UDP socket (no IP_MTU_DISCOVER
+            # set) fragments rather than path-MTU-discovers.
+            # Phase 3: per-socket DF / PMTUD opt-in lands when
+            # setsockopt(IP_MTU_DISCOVER) is wired through.
+            ip4_kwargs: dict[str, Any] = {
+                "ip4__src": cast(Ip4Address, ip__src),
+                "ip4__dst": cast(Ip4Address, ip__dst),
+                "ip4__flag_df": False,
+                "ip4__payload": udp_packet_tx,
+                "ip4__ecn": ip__ecn,
+                "ip4__dscp": ip__dscp,
+            }
+            if ip__ttl is not None:
+                ip4_kwargs["ip4__ttl"] = ip__ttl
+            # Per-socket IPv4 options block (RFC 1122 §4.1.3.2)
+            # threads through from setsockopt(IP_OPTIONS) on
+            # the originating UDP socket.
+            if ip4__options is not None and len(ip4__options) > 0:
+                ip4_kwargs["ip4__options"] = ip4__options
+            return self._if._phtx_ip4(**ip4_kwargs)
+        else:
+            raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
 
     def send_udp_packet(
         self,

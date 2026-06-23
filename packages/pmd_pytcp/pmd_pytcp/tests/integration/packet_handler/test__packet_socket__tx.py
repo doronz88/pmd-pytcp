@@ -32,8 +32,11 @@ pmd_pytcp/tests/integration/packet_handler/test__packet_socket__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
-from typing import Any, cast, override
+from typing import Any, cast
+from typing_extensions import override
 from unittest.mock import patch
 
 from pmd_pytcp.socket import SOCK_RAW, AddressFamily, socket

@@ -30,7 +30,9 @@ pmd_net_proto/lib/errors.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 
 class PyTcpError(Exception):

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip4/test__ip4__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -51,6 +53,7 @@ from pmd_net_proto import (
     Ip4OptionType,
     Ip4OptionUnknown,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -371,7 +374,7 @@ class TestIp4OptionsParser(TestCase):
         """
 
         self.assertEqual(
-            Ip4Options.from_buffer(memoryview(self._buffer)),
+            Ip4Options.from_buffer(memoryview(as_buffer(self._buffer))),
             self._expected,
             msg=f"Unexpected parse result for case: {self._description}",
         )

@@ -33,6 +33,8 @@ pmd_pytcp/tests/integration/protocols/icmp/test__icmp__sysctls.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.protocols.icmp import icmp__constants
 from pmd_pytcp.protocols.icmp.icmp__error_emitter import IcmpErrorRateLimiter
 from pmd_pytcp.stack import sysctl

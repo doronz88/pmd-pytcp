@@ -35,9 +35,11 @@ pmd_pytcp/protocols/ip4/acd/ip4_acd.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import random
 import time
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto import (
@@ -216,7 +218,7 @@ class Ip4Acd:
             while True:
                 try:
                     frame, _ = sock.recvfrom()
-                except BlockingIOError, TimeoutError:
+                except (BlockingIOError, TimeoutError):
                     if time.monotonic() >= deadline:
                         return False
                     time.sleep(_CONFLICT_POLL_TICK__SEC)
@@ -253,7 +255,7 @@ class Ip4Acd:
         while True:
             try:
                 frame, _ = self._sock.recvfrom()
-            except BlockingIOError, TimeoutError:
+            except (BlockingIOError, TimeoutError):
                 return None
             arp = self._parse_arp(frame)
             if arp is not None and self._is_ongoing_conflict(arp, self._claimed):
@@ -383,7 +385,7 @@ class Ip4Acd:
         while True:
             try:
                 frame, _ = sock.recvfrom()
-            except BlockingIOError, TimeoutError:
+            except (BlockingIOError, TimeoutError):
                 if time.monotonic() >= deadline:
                     return None
                 time.sleep(_CONFLICT_POLL_TICK__SEC)

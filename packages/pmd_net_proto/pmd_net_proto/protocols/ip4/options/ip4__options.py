@@ -30,8 +30,10 @@ pmd_net_proto/protocols/ip4/options/ip4__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC
-from typing import Self, override
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_option import ProtoOptions
@@ -56,6 +58,7 @@ from pmd_net_proto.protocols.ip4.options.ip4__option__timestamp import (
 from pmd_net_proto.protocols.ip4.options.ip4__option__unknown import (
     Ip4OptionUnknown,
 )
+from pmd_net_proto._compat import as_buffer
 
 IP4__OPTIONS__MAX_LEN = 40
 
@@ -151,7 +154,7 @@ class Ip4Options(ProtoOptions):
                 break
 
             if frame[offset] == int(Ip4OptionType.NOP):
-                offset += IP4__OPTION__NOP__LEN
+                offset += as_buffer(IP4__OPTION__NOP__LEN)
                 continue
 
             if (value := frame[offset + 1]) < 2:
@@ -187,28 +190,28 @@ class Ip4Options(ProtoOptions):
         options: list[Ip4Option] = []
 
         while offset < len(buffer):
-            match Ip4OptionType.from_bytes(buffer[offset : offset + 1]):
-                case Ip4OptionType.EOL:
-                    options.append(Ip4OptionEol.from_buffer(buffer[offset:]))
-                    break
-                case Ip4OptionType.NOP:
-                    options.append(Ip4OptionNop.from_buffer(buffer[offset:]))
-                case Ip4OptionType.LSRR:
-                    options.append(Ip4OptionLsrr.from_buffer(buffer[offset:]))
-                case Ip4OptionType.SSRR:
-                    options.append(Ip4OptionSsrr.from_buffer(buffer[offset:]))
-                case Ip4OptionType.ROUTER_ALERT:
-                    options.append(Ip4OptionRouterAlert.from_buffer(buffer[offset:]))
-                case Ip4OptionType.RR:
-                    options.append(Ip4OptionRr.from_buffer(buffer[offset:]))
-                case Ip4OptionType.TIMESTAMP:
-                    options.append(Ip4OptionTimestamp.from_buffer(buffer[offset:]))
-                case Ip4OptionType.CIPSO:
-                    options.append(Ip4OptionCipso.from_buffer(buffer[offset:]))
-                case _:
-                    options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
+            _match_subject = Ip4OptionType.from_bytes(buffer[offset : offset + 1])
+            if _match_subject == Ip4OptionType.EOL:
+                options.append(Ip4OptionEol.from_buffer(buffer[offset:]))
+                break
+            elif _match_subject == Ip4OptionType.NOP:
+                options.append(Ip4OptionNop.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip4OptionType.LSRR:
+                options.append(Ip4OptionLsrr.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip4OptionType.SSRR:
+                options.append(Ip4OptionSsrr.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip4OptionType.ROUTER_ALERT:
+                options.append(Ip4OptionRouterAlert.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip4OptionType.RR:
+                options.append(Ip4OptionRr.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip4OptionType.TIMESTAMP:
+                options.append(Ip4OptionTimestamp.from_buffer(buffer[offset:]))
+            elif _match_subject == Ip4OptionType.CIPSO:
+                options.append(Ip4OptionCipso.from_buffer(buffer[offset:]))
+            else:
+                options.append(Ip4OptionUnknown.from_buffer(buffer[offset:]))
 
-            offset += options[-1].len
+            offset += as_buffer(options[-1].len)
 
         return cls(*options)
 

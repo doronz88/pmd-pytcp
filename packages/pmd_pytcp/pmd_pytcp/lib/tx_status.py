@@ -30,6 +30,8 @@ pmd_pytcp/lib/tx_status.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import auto
 
 from pmd_pytcp.lib.name_enum import NameEnum

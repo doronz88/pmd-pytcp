@@ -35,6 +35,8 @@ pmd_pytcp/client/client__sysctl.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, cast
 
 from pmd_pytcp.client.client__base import _ClientApiProxy

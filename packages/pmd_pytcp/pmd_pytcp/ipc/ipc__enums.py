@@ -35,6 +35,8 @@ pmd_pytcp/ipc/ipc__enums.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
 
 

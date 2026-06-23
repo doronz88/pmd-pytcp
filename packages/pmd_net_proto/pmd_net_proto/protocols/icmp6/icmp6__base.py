@@ -30,11 +30,14 @@ pmd_net_proto/protocols/icmp6/icmp6__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.proto import Proto
 from pmd_net_proto.protocols.icmp6.message.icmp6__message import Icmp6Message
+from pmd_net_proto._compat import as_buffer
 
 
 class Icmp6(Proto):
@@ -76,10 +79,19 @@ class Icmp6(Proto):
         Get the ICMPv6 packet as a memoryview.
         """
 
-        buffer = memoryview(self._message)
-        buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
+        buffer = bytearray(as_buffer(self._message))
+        buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2, "big")
 
-        return buffer
+        return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def message(self) -> Icmp6Message:

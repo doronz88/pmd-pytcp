@@ -48,10 +48,14 @@ pmd_pytcp/ipc/ipc__dgram_frame.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_pytcp.ipc.ipc__errors import IpcFrameError
+from typing_extensions import TypeAliasType
+from pmd_pytcp._compat import as_buffer
 
 IPC__DGRAM__TAG_NONE: int = 0
 IPC__DGRAM__TAG_IP4: int = 4
@@ -66,7 +70,7 @@ IPC__DGRAM__CMSG_DATALEN_LEN: int = 2
 
 # An ancillary control message — a Linux '(cmsg_level, cmsg_type,
 # cmsg_data)' triple as produced by 'recvmsg'.
-type Cmsg = tuple[int, int, bytes]
+Cmsg = TypeAliasType("Cmsg", tuple[int, int, bytes])
 
 
 def encode_dgram(
@@ -142,7 +146,7 @@ def decode_dgram(blob: Buffer, /) -> tuple[tuple[str, int] | None, list[Cmsg], b
         raise IpcFrameError("Datagram frame is truncated before its cmsg count.")
 
     ncmsg = data[offset]
-    offset += IPC__DGRAM__NCMSG_LEN
+    offset += as_buffer(IPC__DGRAM__NCMSG_LEN)
 
     cmsg: list[Cmsg] = []
     cmsg_meta_len = IPC__DGRAM__CMSG_LEVEL_LEN + IPC__DGRAM__CMSG_TYPE_LEN + IPC__DGRAM__CMSG_DATALEN_LEN
@@ -157,10 +161,10 @@ def decode_dgram(blob: Buffer, /) -> tuple[tuple[str, int] | None, list[Cmsg], b
         datalen = int.from_bytes(
             data[offset + cmsg_meta_len - IPC__DGRAM__CMSG_DATALEN_LEN : offset + cmsg_meta_len], "big"
         )
-        offset += cmsg_meta_len
+        offset += as_buffer(cmsg_meta_len)
         if len(data) < offset + datalen:
             raise IpcFrameError("Datagram frame is truncated inside a cmsg payload.")
         cmsg.append((level, ctype, data[offset : offset + datalen]))
-        offset += datalen
+        offset += as_buffer(datalen)
 
     return address, cmsg, data[offset:]

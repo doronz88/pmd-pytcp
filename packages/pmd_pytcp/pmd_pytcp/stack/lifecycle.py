@@ -40,6 +40,8 @@ pmd_pytcp/stack/lifecycle.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from pmd_net_addr import (
@@ -259,58 +261,57 @@ def add_interface(
     arp_cache: ArpCache | None = None
 
     packet_handler: PacketHandlerL2 | PacketHandlerL3
-    match layer:
-        case InterfaceLayer.L2:
-            assert mac_address is not None, "MAC address must be provided for Layer 2 (TAP) interface."
-            arp_cache = ArpCache()
-            packet_handler = PacketHandlerL2(
-                mac_address=mac_address,
-                interface_mtu=mtu,
-                interface_name=interface_name,
-                ip4_support=ip4_support,
-                ip4_host=ip4_host,
-                ip4_dhcp=ip4_dhcp,
-                ip6_support=ip6_support,
-                ip6_host=ip6_host,
-                ip6_gua_autoconfig=ip6_gua_autoconfig,
-                ip6_lla_autoconfig=ip6_lla_autoconfig,
-                rx_ring=rx_ring,
-                tx_ring=tx_ring,
-                packet_stats_rx=packet_stats_rx,
-                packet_stats_tx=packet_stats_tx,
-                link_stats=link_stats,
-            )
-            # Bind the per-interface neighbor caches to this handler
-            # and the reverse owner back-reference so the caches'
-            # solicit / flush callbacks route through this interface.
-            # ARP is L2-only; ND is used by both layers. '_iface_name'
-            # plumbs the interface name into the per-iface
-            # 'neighbor.<ifname>.*' sysctl resolution path.
-            packet_handler._arp_cache = arp_cache
-            packet_handler._nd_cache = nd_cache
-            arp_cache._owner = packet_handler
-            arp_cache._iface_name = interface_name
-            nd_cache._owner = packet_handler
-            nd_cache._iface_name = interface_name
-        case InterfaceLayer.L3:
-            assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
-            packet_handler = PacketHandlerL3(
-                interface_mtu=mtu,
-                interface_name=interface_name,
-                ip4_support=ip4_support,
-                ip4_host=ip4_host,
-                ip6_support=ip6_support,
-                ip6_host=ip6_host,
-                rx_ring=rx_ring,
-                tx_ring=tx_ring,
-                packet_stats_rx=packet_stats_rx,
-                packet_stats_tx=packet_stats_tx,
-                link_stats=link_stats,
-            )
-            # L3 (TUN) has no ARP; bind only the ND cache + its owner.
-            packet_handler._nd_cache = nd_cache
-            nd_cache._owner = packet_handler
-            nd_cache._iface_name = interface_name
+    if layer == InterfaceLayer.L2:
+        assert mac_address is not None, "MAC address must be provided for Layer 2 (TAP) interface."
+        arp_cache = ArpCache()
+        packet_handler = PacketHandlerL2(
+            mac_address=mac_address,
+            interface_mtu=mtu,
+            interface_name=interface_name,
+            ip4_support=ip4_support,
+            ip4_host=ip4_host,
+            ip4_dhcp=ip4_dhcp,
+            ip6_support=ip6_support,
+            ip6_host=ip6_host,
+            ip6_gua_autoconfig=ip6_gua_autoconfig,
+            ip6_lla_autoconfig=ip6_lla_autoconfig,
+            rx_ring=rx_ring,
+            tx_ring=tx_ring,
+            packet_stats_rx=packet_stats_rx,
+            packet_stats_tx=packet_stats_tx,
+            link_stats=link_stats,
+        )
+        # Bind the per-interface neighbor caches to this handler
+        # and the reverse owner back-reference so the caches'
+        # solicit / flush callbacks route through this interface.
+        # ARP is L2-only; ND is used by both layers. '_iface_name'
+        # plumbs the interface name into the per-iface
+        # 'neighbor.<ifname>.*' sysctl resolution path.
+        packet_handler._arp_cache = arp_cache
+        packet_handler._nd_cache = nd_cache
+        arp_cache._owner = packet_handler
+        arp_cache._iface_name = interface_name
+        nd_cache._owner = packet_handler
+        nd_cache._iface_name = interface_name
+    elif layer == InterfaceLayer.L3:
+        assert mac_address is None, "MAC address must NOT be provided for Layer 3 (TUN) interface."
+        packet_handler = PacketHandlerL3(
+            interface_mtu=mtu,
+            interface_name=interface_name,
+            ip4_support=ip4_support,
+            ip4_host=ip4_host,
+            ip6_support=ip6_support,
+            ip6_host=ip6_host,
+            rx_ring=rx_ring,
+            tx_ring=tx_ring,
+            packet_stats_rx=packet_stats_rx,
+            packet_stats_tx=packet_stats_tx,
+            link_stats=link_stats,
+        )
+        # L3 (TUN) has no ARP; bind only the ND cache + its owner.
+        packet_handler._nd_cache = nd_cache
+        nd_cache._owner = packet_handler
+        nd_cache._iface_name = interface_name
 
     # The table allocates the next ifindex (first_ifindex when empty,
     # else max+1) and stamps it onto the handler, atomically under its

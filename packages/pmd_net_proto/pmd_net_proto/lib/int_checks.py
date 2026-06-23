@@ -31,6 +31,8 @@ pmd_net_proto/lib/int_checks.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 UINT_2__MIN = 0x00
 UINT_2__MAX = 0x03
 

@@ -36,10 +36,12 @@ pmd_pytcp/tests/unit/ipc/test__ipc__dgram_bridge.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import queue
 import socket
 import time
-from typing import override
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_pytcp.ipc.ipc__dgram_bridge import DatagramBridge

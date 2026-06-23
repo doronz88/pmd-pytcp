@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__oro.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 

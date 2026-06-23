@@ -30,6 +30,8 @@ pmd_net_addr/tests/unit/test__ip4_mask.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -43,6 +45,7 @@ from pmd_net_addr import (
     Ip6Mask,
     IpVersion,
 )
+from pmd_net_addr._compat import as_buffer
 
 
 @parameterized_class(
@@ -411,7 +414,7 @@ class TestNetAddrIp4Mask(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._ip4_mask)),
+            bytes(memoryview(as_buffer(self._ip4_mask))),
             self._results["__bytes__"],
         )
 

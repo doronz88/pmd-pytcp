@@ -35,6 +35,8 @@ pmd_pytcp/daemon/__main__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import argparse
 
 from pmd_net_addr import (

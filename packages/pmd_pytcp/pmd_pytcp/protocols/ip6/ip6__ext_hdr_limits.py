@@ -35,6 +35,8 @@ pmd_pytcp/protocols/ip6/ip6__ext_hdr_limits.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
 
 from pmd_net_proto.lib.proto_option import ProtoOption
@@ -48,6 +50,7 @@ from pmd_net_proto.protocols.ip6_hbh.options.ip6_hbh__option__padn import (
 from pmd_net_proto.protocols.ip6_hbh.options.ip6_hbh__option__unknown import (
     Ip6HbhOptionUnknown,
 )
+from pmd_pytcp._compat import as_buffer
 
 
 class Ip6ExtHdrCapViolation(Exception):
@@ -100,7 +103,7 @@ def check_ext_hdr_option_caps(options: Iterable[ProtoOption], /) -> None:
     for option in options:
         option_count += 1
         if isinstance(option, Ip6HbhOptionPad1):
-            pad_bytes += IP6_HBH__OPTION__PAD1__LEN
+            pad_bytes += as_buffer(IP6_HBH__OPTION__PAD1__LEN)
         elif isinstance(option, Ip6HbhOptionPadN):
             pad_bytes += len(option)
         elif isinstance(option, Ip6HbhOptionUnknown):

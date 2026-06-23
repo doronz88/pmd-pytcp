@@ -41,6 +41,8 @@ pmd_pytcp/tests/integration/socket/test__socket__tcp_ip_ttl.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto import EthernetParser, EtherType, Ip4Parser, Ip6Parser
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp.socket import (

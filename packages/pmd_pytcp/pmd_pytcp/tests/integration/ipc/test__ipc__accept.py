@@ -45,10 +45,13 @@ pmd_pytcp/tests/integration/ipc/test__ipc__accept.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 import threading
-from typing import cast, override
+from typing import cast
+from typing_extensions import override
 
 from pmd_pytcp import stack
 from pmd_pytcp.client import ClientStack, ClientTcpSocket, connect

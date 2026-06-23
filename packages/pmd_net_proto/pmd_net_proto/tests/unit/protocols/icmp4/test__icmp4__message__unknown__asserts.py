@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/icmp4/test__icmp4__message__unknown__asserts.
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -256,7 +258,7 @@ class TestIcmp4MessageUnknownParserAsserts(TestCase):
                     b"\x00\x00\x00\x00\x00\x00\x00\x00"
                 )
                 buffer[0] = type_value
-                buffer[2:4] = inet_cksum(buffer).to_bytes(2)
+                buffer[2:4] = inet_cksum(buffer).to_bytes(2, "big")
 
                 with self.assertRaises(AssertionError) as error:
                     Icmp4MessageUnknown.from_buffer(buffer)

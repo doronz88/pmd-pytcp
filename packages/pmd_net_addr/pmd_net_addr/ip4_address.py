@@ -30,13 +30,17 @@ pmd_net_addr/ip4_address.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
-from typing import ClassVar, Self, final, override
+from typing import ClassVar
+from typing_extensions import Self, final, override
 
 from pmd_net_addr.errors import Ip4AddressFormatError, Ip4AddressSanityError, NetAddrError
 from pmd_net_addr.ip_address import IpAddress
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.mac_address import MAC__IP4_MULTICAST_PREFIX, MacAddress
+from pmd_net_addr._compat import as_buffer
 
 IP4__ADDRESS_LEN = 4
 IP4__MASK = 0xFF_FF_FF_FF
@@ -80,7 +84,7 @@ class Ip4Address(IpAddress):
 
         if isinstance(address, (memoryview, bytes, bytearray)):
             if len(address) == 4:
-                self._address = int.from_bytes(address)
+                self._address = int.from_bytes(address, "big")
                 return
 
         if isinstance(address, str):
@@ -92,7 +96,7 @@ class Ip4Address(IpAddress):
             # leading zeros, fewer than four parts) that would
             # otherwise silently reinterpret the address.
             try:
-                self._address = int.from_bytes(socket.inet_pton(socket.AF_INET, address.strip()))
+                self._address = int.from_bytes(socket.inet_pton(socket.AF_INET, address.strip()), "big")
                 return
             except OSError:
                 pass
@@ -113,7 +117,16 @@ class Ip4Address(IpAddress):
         Get the IPv4 address as a memoryview.
         """
 
-        return memoryview(bytearray(self._address.to_bytes(IP4__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._address.to_bytes(IP4__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     @override

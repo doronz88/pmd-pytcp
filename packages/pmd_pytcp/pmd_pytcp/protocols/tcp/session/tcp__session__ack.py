@@ -48,6 +48,8 @@ packages/pmd_pytcp/pmd_pytcp/protocols/tcp/session/tcp__session__ack.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from typing import TYPE_CHECKING
 
@@ -67,6 +69,7 @@ from pmd_pytcp.protocols.tcp.tcp__loss_recovery import pipe
 from pmd_pytcp.protocols.tcp.tcp__rack import tlp_process_ack
 from pmd_pytcp.protocols.tcp.tcp__rto import update
 from pmd_pytcp.protocols.tcp.tcp__seq import add32, ge32, gt32, le32, lt32
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.protocols.tcp.session import TcpSession
@@ -248,7 +251,7 @@ class TcpAckProcessor:
         # cum-ACKs do not - the accumulator is scoped to a
         # single recovery episode.
         if session._cc.recovery_point != 0:
-            session._cc.prr_delivered += bytes_acked
+            session._cc.prr_delivered += as_buffer(bytes_acked)
         # Cwnd update on cum-ACK that advances SND.UNA.
         # Three branches gated on recovery state:
         #   - in recovery, partial cum-ACK (snd_una hasn't
@@ -339,7 +342,7 @@ class TcpAckProcessor:
                 # 5681 §3.1 congestion-avoidance growth via
                 # 'cwnd_grow_per_ack'.
                 if session._cc.cwnd < session._cc.ssthresh and session._cc.hystart_state.in_css:
-                    session._cc.cwnd += css_growth_increment(bytes_acked, session._win.snd_mss)
+                    session._cc.cwnd += as_buffer(css_growth_increment(bytes_acked, session._win.snd_mss))
                 else:
                     session._cc.cwnd = cwnd_grow_per_ack(
                         session._cc.cwnd, session._cc.ssthresh, bytes_acked, session._win.snd_mss

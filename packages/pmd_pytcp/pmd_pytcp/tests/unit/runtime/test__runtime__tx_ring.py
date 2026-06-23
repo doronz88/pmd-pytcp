@@ -30,9 +30,12 @@ pmd_pytcp/tests/unit/runtime/test__runtime__tx_ring.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import threading
-from typing import Any, override
+from typing import Any
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -47,6 +50,7 @@ from pmd_net_proto import (
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.tx_ring import TxRing
+from pmd_pytcp._compat import as_buffer
 
 
 class _TxRingFixture(TestCase):
@@ -212,7 +216,7 @@ class TestTxRingSubsystemLoop(_TxRingFixture):
         pkt.__len__.return_value = 64
 
         def assemble(buffers: list[Buffer]) -> None:
-            buffers.append(b"x" * 64)
+            buffers.append(as_buffer(b"x" * 64))
 
         pkt.assemble.side_effect = assemble
         return pkt
@@ -410,7 +414,7 @@ class TestTxRingInnerDrain(_TxRingFixture):
         pkt.__len__.return_value = 64
 
         def assemble(buffers: list[Buffer]) -> None:
-            buffers.append(b"x" * 64)
+            buffers.append(as_buffer(b"x" * 64))
 
         pkt.assemble.side_effect = assemble
         return pkt
@@ -538,7 +542,7 @@ class TestTxRingSharedPacketStats(_TxRingFixture):
 
         pkt = MagicMock(spec=EthernetAssembler)
         pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(b"x" * 64)
+        pkt.assemble.side_effect = lambda buffers: buffers.append(as_buffer(b"x" * 64))
         ring.enqueue(pkt)
 
         with patch(
@@ -622,7 +626,7 @@ class TestTxRingDropCounters(_TxRingFixture):
         def _make_pkt() -> MagicMock:
             pkt = MagicMock(spec=EthernetAssembler)
             pkt.__len__.return_value = 64
-            pkt.assemble.side_effect = lambda buffers: buffers.append(b"x" * 64)
+            pkt.assemble.side_effect = lambda buffers: buffers.append(as_buffer(b"x" * 64))
             return pkt
 
         for _ in range(2):
@@ -914,7 +918,7 @@ class TestTxRingDispatch(_TxRingFixture):
         def _make_ethernet() -> MagicMock:
             pkt = MagicMock(spec=EthernetAssembler)
             pkt.__len__.return_value = 64
-            pkt.assemble.side_effect = lambda buffers: buffers.append(b"x" * 64)
+            pkt.assemble.side_effect = lambda buffers: buffers.append(as_buffer(b"x" * 64))
             return pkt
 
         executed: list[bool] = []

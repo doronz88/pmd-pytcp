@@ -32,6 +32,8 @@ pmd_net_addr/tests/unit/test__lazy_click.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys

@@ -41,6 +41,8 @@ pmd_pytcp/protocols/dhcp6/dhcp6__uid.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_pytcp.protocols.dhcp4 import dhcp4__uid
 
@@ -65,4 +67,4 @@ def get_iaid(*, interface_idx: int = 0) -> int:
     IAID so a dual-stack host presents a consistent identity.
     """
 
-    return int.from_bytes(dhcp4__uid.get_iaid(interface_idx=interface_idx))
+    return int.from_bytes(dhcp4__uid.get_iaid(interface_idx=interface_idx), "big")

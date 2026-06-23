@@ -34,6 +34,8 @@ pmd_net_proto/tests/unit/protocols/ethernet/test__ethernet__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -41,6 +43,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pmd_net_addr import MacAddress
 from pmd_net_proto import EthernetHeader, EthernetParser, EtherType, PacketRx
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -374,7 +377,7 @@ class TestEthernetParserOperation(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._parser)),
+            bytes(memoryview(as_buffer(self._parser))),
             self._frame_rx,
             msg=f"Unexpected buffer bytes for case: {self._description}",
         )

@@ -37,6 +37,8 @@ pmd_pytcp/tests/lib/ethernet_testcase.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_net_proto.lib.enums import EtherType
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -74,7 +76,7 @@ class EthernetTestCase(NetworkTestCase):
 
         dst = dst_mac if dst_mac is not None else STACK__MAC_ADDRESS
         src = src_mac if src_mac is not None else HOST_A__MAC_ADDRESS
-        return bytes(dst) + bytes(src) + int(ether_type).to_bytes(2) + payload
+        return bytes(dst) + bytes(src) + int(ether_type).to_bytes(2, "big") + payload
 
     @staticmethod
     def _build_broadcast_ethernet_frame(

@@ -36,7 +36,8 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp import stack

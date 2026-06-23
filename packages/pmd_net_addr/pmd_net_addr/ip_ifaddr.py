@@ -30,8 +30,11 @@ pmd_net_addr/ip_ifaddr.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import ClassVar, Self, override
+from typing import ClassVar, Generic, TypeVar
+from typing_extensions import Self, override
 
 from pmd_net_addr.base import Base
 from pmd_net_addr.errors import IfAddrSanityError, NetAddrError
@@ -42,10 +45,9 @@ from pmd_net_addr.ip6_address import Ip6Address
 from pmd_net_addr.ip6_network import Ip6Network
 
 
-class IfAddr[
-    A: (Ip6Address, Ip4Address),
-    N: (Ip6Network, Ip4Network),
-](Base, Ip, ABC):
+A = TypeVar("A", Ip6Address, Ip4Address)
+N = TypeVar("N", Ip6Network, Ip4Network)
+class IfAddr(Base, Ip, ABC, Generic[A, N]):
     """
     IP interface address support base class.
     """
@@ -165,13 +167,12 @@ class IfAddr[
         str-style width / alignment.
         """
 
-        match format_spec:
-            case "" | "pl":
-                return str(self)
-            case "nm":
-                return f"{self._address}/{type(self._address)(int(self._network.mask))}"
-            case "hm":
-                return f"{self._address}/{self._network.hostmask}"
+        if (format_spec == "" or format_spec == "pl"):
+            return str(self)
+        elif format_spec == "nm":
+            return f"{self._address}/{type(self._address)(int(self._network.mask))}"
+        elif format_spec == "hm":
+            return f"{self._address}/{self._network.hostmask}"
 
         if format_spec[-1:] == "s":
             return format(str(self), format_spec)

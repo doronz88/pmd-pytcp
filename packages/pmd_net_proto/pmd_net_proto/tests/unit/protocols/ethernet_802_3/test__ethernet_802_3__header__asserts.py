@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ethernet_802_3/test__ethernet_802_3__header__
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -46,6 +48,7 @@ from pmd_net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
     ETHERNET_802_3__HEADER__STRUCT,
     Ethernet8023HeaderProperties,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestEthernet8023HeaderAsserts(TestCase):
@@ -263,7 +266,7 @@ class TestEthernet8023HeaderOperation(TestCase):
 
         header = Ethernet8023Header(**self._valid_kwargs())
 
-        frame = bytes(memoryview(header))
+        frame = bytes(memoryview(as_buffer(header)))
 
         self.assertEqual(
             frame,
@@ -284,7 +287,7 @@ class TestEthernet8023HeaderOperation(TestCase):
 
         original = Ethernet8023Header(**self._valid_kwargs())
 
-        rebuilt = Ethernet8023Header.from_buffer(bytes(memoryview(original)))
+        rebuilt = Ethernet8023Header.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,
@@ -301,7 +304,7 @@ class TestEthernet8023HeaderOperation(TestCase):
         """
 
         original = Ethernet8023Header(**self._valid_kwargs())
-        padded = bytes(memoryview(original)) + b"\xde\xad\xbe\xef"
+        padded = bytes(memoryview(as_buffer(original))) + b"\xde\xad\xbe\xef"
 
         rebuilt = Ethernet8023Header.from_buffer(padded)
 

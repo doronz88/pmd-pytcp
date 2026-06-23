@@ -31,6 +31,8 @@ pmd_pytcp/tests/integration/protocols/ip6/test__ip6__routing.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 from unittest.mock import MagicMock
 

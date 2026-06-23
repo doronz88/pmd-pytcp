@@ -33,7 +33,10 @@ pmd_pytcp/tests/integration/protocols/ip4/test__ip4__acd_engine.py
 ver 3.0.7
 """
 
-from typing import Any, cast, override
+from __future__ import annotations
+
+from typing import Any, cast
+from typing_extensions import override
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, MacAddress

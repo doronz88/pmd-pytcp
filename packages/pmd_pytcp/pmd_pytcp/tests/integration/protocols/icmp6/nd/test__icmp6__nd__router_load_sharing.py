@@ -48,6 +48,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__router_load_shar
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip6Address, MacAddress
 from pmd_net_proto import Icmp6NdRoutePreference
 from pmd_pytcp.tests.lib.nd_testcase import NdTestCase

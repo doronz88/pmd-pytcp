@@ -30,7 +30,9 @@ pmd_pytcp/socket/udp__metadata.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
 from pmd_net_proto.lib.tracker import Tracker
@@ -77,77 +79,76 @@ class UdpMetadata:
         Get list of the listening socket IDs that match the metadata.
         """
 
-        match self.ip__ver, self.udp__local_port, self.udp__remote_port:
-            case IpVersion.IP4, 68, 67:
-                # DHCPv4 client sockets keep their local at 0.0.0.0
-                # for the whole RFC 2131 §4.4 lifecycle (see
-                # 'UdpSocket._get_ip_addresses'). The 'connect()'
-                # target varies by FSM phase:
-                #   - INIT / REBINDING: 255.255.255.255 (broadcast).
-                #   - RENEWING: server unicast (the leasing server).
-                # Both phases have to be findable by RX, so we
-                # enumerate one ID per connect-target shape.
-                return [
-                    SocketId(
-                        address_family=AddressFamily.INET4,
-                        socket_type=SocketType.DGRAM,
-                        local_address=Ip4Address(),
-                        local_port=68,
-                        remote_address=self.ip__remote_address,
-                        remote_port=67,
-                    ),  # RENEWING: unicast reply from the leasing server.
-                    SocketId(
-                        address_family=AddressFamily.INET4,
-                        socket_type=SocketType.DGRAM,
-                        local_address=Ip4Address(),
-                        local_port=68,
-                        remote_address=Ip4Address("255.255.255.255"),
-                        remote_port=67,
-                    ),  # INIT / REBINDING: broadcast reply.
-                ]
-            case IpVersion.IP6, 546, 547:
-                return [
-                    SocketId(
-                        address_family=AddressFamily.INET6,
-                        socket_type=SocketType.DGRAM,
-                        local_address=Ip6Address(),
-                        local_port=546,
-                        remote_address=Ip6Address("ff02::1:2"),
-                        remote_port=547,
-                    ),  # ID for the DHCPv6 client operation.
-                    SocketId(
-                        address_family=AddressFamily.INET6,
-                        socket_type=SocketType.DGRAM,
-                        local_address=Ip6Address(),
-                        local_port=546,
-                        remote_address=Ip6Address("ff02::1:3"),
-                        remote_port=547,
-                    ),  # ID for the DHCPv6 client operation.
-                ]
-            case _:
-                return [
-                    SocketId(
-                        address_family=AddressFamily.from_ver(self.ip__ver),
-                        socket_type=SocketType.DGRAM,
-                        local_address=self.ip__local_address,
-                        local_port=self.udp__local_port,
-                        remote_address=self.ip__remote_address,
-                        remote_port=self.udp__remote_port,
-                    ),
-                    SocketId(
-                        address_family=AddressFamily.from_ver(self.ip__ver),
-                        socket_type=SocketType.DGRAM,
-                        local_address=self.ip__local_address,
-                        local_port=self.udp__local_port,
-                        remote_address=self.ip__remote_address.unspecified,
-                        remote_port=0,
-                    ),
-                    SocketId(
-                        address_family=AddressFamily.from_ver(self.ip__ver),
-                        socket_type=SocketType.DGRAM,
-                        local_address=self.ip__local_address.unspecified,
-                        local_port=self.udp__local_port,
-                        remote_address=self.ip__remote_address.unspecified,
-                        remote_port=0,
-                    ),
-                ]
+        if self.ip__ver == IpVersion.IP4 and self.udp__local_port == 68 and self.udp__remote_port == 67:
+            # DHCPv4 client sockets keep their local at 0.0.0.0
+            # for the whole RFC 2131 §4.4 lifecycle (see
+            # 'UdpSocket._get_ip_addresses'). The 'connect()'
+            # target varies by FSM phase:
+            #   - INIT / REBINDING: 255.255.255.255 (broadcast).
+            #   - RENEWING: server unicast (the leasing server).
+            # Both phases have to be findable by RX, so we
+            # enumerate one ID per connect-target shape.
+            return [
+                SocketId(
+                    address_family=AddressFamily.INET4,
+                    socket_type=SocketType.DGRAM,
+                    local_address=Ip4Address(),
+                    local_port=68,
+                    remote_address=self.ip__remote_address,
+                    remote_port=67,
+                ),  # RENEWING: unicast reply from the leasing server.
+                SocketId(
+                    address_family=AddressFamily.INET4,
+                    socket_type=SocketType.DGRAM,
+                    local_address=Ip4Address(),
+                    local_port=68,
+                    remote_address=Ip4Address("255.255.255.255"),
+                    remote_port=67,
+                ),  # INIT / REBINDING: broadcast reply.
+            ]
+        elif self.ip__ver == IpVersion.IP6 and self.udp__local_port == 546 and self.udp__remote_port == 547:
+            return [
+                SocketId(
+                    address_family=AddressFamily.INET6,
+                    socket_type=SocketType.DGRAM,
+                    local_address=Ip6Address(),
+                    local_port=546,
+                    remote_address=Ip6Address("ff02::1:2"),
+                    remote_port=547,
+                ),  # ID for the DHCPv6 client operation.
+                SocketId(
+                    address_family=AddressFamily.INET6,
+                    socket_type=SocketType.DGRAM,
+                    local_address=Ip6Address(),
+                    local_port=546,
+                    remote_address=Ip6Address("ff02::1:3"),
+                    remote_port=547,
+                ),  # ID for the DHCPv6 client operation.
+            ]
+        else:
+            return [
+                SocketId(
+                    address_family=AddressFamily.from_ver(self.ip__ver),
+                    socket_type=SocketType.DGRAM,
+                    local_address=self.ip__local_address,
+                    local_port=self.udp__local_port,
+                    remote_address=self.ip__remote_address,
+                    remote_port=self.udp__remote_port,
+                ),
+                SocketId(
+                    address_family=AddressFamily.from_ver(self.ip__ver),
+                    socket_type=SocketType.DGRAM,
+                    local_address=self.ip__local_address,
+                    local_port=self.udp__local_port,
+                    remote_address=self.ip__remote_address.unspecified,
+                    remote_port=0,
+                ),
+                SocketId(
+                    address_family=AddressFamily.from_ver(self.ip__ver),
+                    socket_type=SocketType.DGRAM,
+                    local_address=self.ip__local_address.unspecified,
+                    local_port=self.udp__local_port,
+                    remote_address=self.ip__remote_address.unspecified,
+                    remote_port=0,
+                ),
+            ]

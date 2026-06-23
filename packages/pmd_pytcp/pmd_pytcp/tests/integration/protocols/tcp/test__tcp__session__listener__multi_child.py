@@ -56,6 +56,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__listener__multi_ch
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 
 from pmd_net_addr import Ip4Address

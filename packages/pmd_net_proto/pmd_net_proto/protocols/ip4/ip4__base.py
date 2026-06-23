@@ -30,8 +30,10 @@ pmd_net_proto/protocols/ip4/ip4__base.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from typing import override
+from typing_extensions import TypeAliasType, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -46,11 +48,14 @@ from pmd_net_proto.protocols.ip4.options.ip4__options import (
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
 from pmd_net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from pmd_net_proto.protocols.udp.udp__assembler import UdpAssembler
+from typing import Generic, TypeVar, Union
+from pmd_net_proto._compat import as_buffer
 
-type Ip4Payload = (Icmp4Assembler | IgmpAssembler | TcpAssembler | UdpAssembler | RawAssembler)
+Ip4Payload = TypeAliasType("Ip4Payload", Union[Icmp4Assembler, IgmpAssembler, TcpAssembler, UdpAssembler, RawAssembler])
 
 
-class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsProperties):
+P = TypeVar("P", Ip4Payload, Buffer)
+class Ip4(Proto, Ip4HeaderProperties, Ip4OptionsProperties, Generic[P]):
     """
     The IPv4 protocol base.
     """
@@ -101,12 +106,21 @@ class Ip4[P: (Ip4Payload, Buffer)](Proto, Ip4HeaderProperties, Ip4OptionsPropert
         if isinstance(self._payload, (TcpAssembler, UdpAssembler, RawAssembler)):
             self._payload.pshdr_sum = self.pshdr_sum
 
-        buffer = bytearray(self._header)
-        buffer += bytearray(self._options)
-        buffer[10:12] = inet_cksum(buffer).to_bytes(2)
-        buffer += bytearray(self._payload)
+        buffer = bytearray(as_buffer(self._header))
+        buffer += bytearray(as_buffer(self._options))
+        buffer[10:12] = inet_cksum(buffer).to_bytes(2, "big")
+        buffer += bytearray(as_buffer(self._payload))
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def pshdr_sum(self) -> int:

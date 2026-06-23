@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ip6_frag__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from typing import TYPE_CHECKING
 

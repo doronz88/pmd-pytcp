@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__unknown.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -43,6 +45,7 @@ from pmd_net_proto import (
 )
 from pmd_net_proto.lib.int_checks import UINT_8__MAX
 from pmd_net_proto.protocols.dhcp4.options.dhcp4__option import DHCP4__OPTION__LEN
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp4OptionUnknownAsserts(TestCase):
@@ -215,7 +218,7 @@ class TestDhcp4OptionUnknownAsserts(TestCase):
                 "__repr__": (
                     f"Dhcp4OptionUnknown(type={Dhcp4OptionType.from_int(99)!r}, "
                     f"len={UINT_8__MAX}, "
-                    f"data={(b'\xaa' * (UINT_8__MAX - DHCP4__OPTION__LEN))!r})"
+                    f"data={(bytes([0xAA]) * (UINT_8__MAX - DHCP4__OPTION__LEN))!r})"
                 ),
                 "__bytes__": (
                     b"\x63" + bytes([UINT_8__MAX - DHCP4__OPTION__LEN]) + b"\xaa" * (UINT_8__MAX - DHCP4__OPTION__LEN)
@@ -303,7 +306,7 @@ class TestDhcp4OptionUnknownAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._option)),
+            bytes(memoryview(as_buffer(self._option))),
             self._results["__bytes__"],
             msg=f"Unexpected memoryview output for case: {self._description}",
         )

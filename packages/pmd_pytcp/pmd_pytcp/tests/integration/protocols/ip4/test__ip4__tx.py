@@ -34,7 +34,10 @@ pmd_pytcp/tests/integration/protocols/ip4/test__ip4__tx.py
 ver 3.0.7
 """
 
-from typing import Any, override
+from __future__ import annotations
+
+from typing import Any
+from typing_extensions import override
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
@@ -1509,7 +1512,7 @@ class TestIp4TxRfc6864AtomicId(Ip4TestCase):
             msg="Atomic outbound must emit exactly one frame.",
         )
         self.assertEqual(
-            int.from_bytes(self._frames_tx[0][_IP4__ID_OFFSET : _IP4__ID_OFFSET + 2]),
+            int.from_bytes(self._frames_tx[0][_IP4__ID_OFFSET : _IP4__ID_OFFSET + 2], "big"),
             0,
             msg="Atomic outbound IPv4 datagrams must carry Identification = 0.",
         )

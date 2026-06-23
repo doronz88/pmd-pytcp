@@ -42,6 +42,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__enhanced_dad.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from pmd_net_addr import Ip6Address, MacAddress

@@ -45,8 +45,10 @@ pmd_pytcp/tests/integration/socket/test__socket__tcp_info.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState

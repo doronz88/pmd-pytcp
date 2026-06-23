@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ethernet_802_3/ethernet_802_3__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import MacAddress
 from pmd_net_proto.lib.buffer import Buffer
@@ -43,6 +45,7 @@ from pmd_net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
     Ethernet8023Header,
 )
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
+from pmd_net_proto._compat import as_buffer
 
 
 class Ethernet8023Assembler(Ethernet8023[Ethernet8023Payload], ProtoAssembler):
@@ -79,6 +82,6 @@ class Ethernet8023Assembler(Ethernet8023[Ethernet8023Payload], ProtoAssembler):
         Assemble the Ethernet 802.3 packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
 
         self._payload.assemble(buffers)

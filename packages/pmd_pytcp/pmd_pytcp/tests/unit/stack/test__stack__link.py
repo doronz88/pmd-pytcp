@@ -35,6 +35,8 @@ pmd_pytcp/tests/unit/stack/test__stack__link.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
 from unittest.mock import patch

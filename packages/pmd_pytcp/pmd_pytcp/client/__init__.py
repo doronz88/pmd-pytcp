@@ -51,6 +51,8 @@ pmd_pytcp/client/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.client.client__datagram_socket import ClientRawSocket, ClientUdpSocket
 from pmd_pytcp.client.client__packet_socket import ClientPacketSocket
 from pmd_pytcp.client.client__tcp_socket import ClientTcpSocket

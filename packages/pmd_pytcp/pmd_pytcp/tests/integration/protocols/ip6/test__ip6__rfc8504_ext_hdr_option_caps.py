@@ -40,6 +40,8 @@ pmd_pytcp/tests/integration/protocols/ip6/test__ip6__rfc8504_ext_hdr_option_caps
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto import IpProto

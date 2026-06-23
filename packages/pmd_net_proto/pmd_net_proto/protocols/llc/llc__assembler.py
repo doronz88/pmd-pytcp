@@ -34,7 +34,9 @@ pmd_net_proto/protocols/llc/llc__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_assembler import ProtoAssembler
@@ -42,6 +44,7 @@ from pmd_net_proto.lib.tracker import Tracker
 from pmd_net_proto.protocols.llc.llc__base import Llc
 from pmd_net_proto.protocols.llc.llc__enums import LlcControl, LlcSap
 from pmd_net_proto.protocols.llc.llc__header import LlcHeader
+from pmd_net_proto._compat import as_buffer
 
 
 class LlcAssembler(Llc, ProtoAssembler):
@@ -76,5 +79,5 @@ class LlcAssembler(Llc, ProtoAssembler):
         Assemble the LLC packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
-        buffers.append(self._payload)
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
+        buffers.append(as_buffer(self._payload))

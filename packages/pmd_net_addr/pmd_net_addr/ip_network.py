@@ -30,9 +30,12 @@ pmd_net_addr/ip_network.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, ClassVar, Self, overload, override
+from typing import ClassVar, Generic, TYPE_CHECKING, TypeVar, overload
+from typing_extensions import Self, override
 
 from pmd_net_addr.base import Base
 from pmd_net_addr.errors import IpNetworkSanityError, NetAddrError
@@ -43,13 +46,16 @@ from pmd_net_addr.ip4_wildcard import Ip4Wildcard
 from pmd_net_addr.ip6_address import Ip6Address
 from pmd_net_addr.ip6_mask import Ip6Mask
 from pmd_net_addr.ip6_wildcard import Ip6Wildcard
+from pmd_net_addr._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_net_addr.ip4_network import Ip4Network
     from pmd_net_addr.ip6_network import Ip6Network
 
 
-class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, ABC):
+A = TypeVar("A", Ip6Address, Ip4Address)
+M = TypeVar("M", Ip6Mask, Ip4Mask)
+class IpNetwork(Base, Ip, ABC, Generic[A, M]):
     """
     IP network support base class.
     """
@@ -320,13 +326,12 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         width / alignment.
         """
 
-        match format_spec:
-            case "" | "pl":
-                return str(self)
-            case "nm":
-                return f"{self._address}/{type(self._address)(int(self._mask))}"
-            case "hm":
-                return f"{self._address}/{self.hostmask}"
+        if (format_spec == "" or format_spec == "pl"):
+            return str(self)
+        elif format_spec == "nm":
+            return f"{self._address}/{type(self._address)(int(self._mask))}"
+        elif format_spec == "hm":
+            return f"{self._address}/{self.hostmask}"
 
         if format_spec[-1:] == "s":
             return format(str(self), format_spec)
@@ -374,7 +379,7 @@ class IpNetwork[A: (Ip6Address, Ip4Address), M: (Ip6Mask, Ip4Mask)](Base, Ip, AB
         count = self.num_addresses
 
         if index < 0:
-            index += count
+            index += as_buffer(count)
 
         if not 0 <= index < count:
             raise type(self)._sanity_error(f"network index out of range: {index}")

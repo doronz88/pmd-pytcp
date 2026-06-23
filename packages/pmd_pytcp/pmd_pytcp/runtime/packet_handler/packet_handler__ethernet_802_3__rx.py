@@ -39,6 +39,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ethernet_802_3__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_proto import (
@@ -246,31 +248,30 @@ class Ethernet8023RxHandler:
         carrying.
         """
 
-        match pid:
-            case SnapCiscoProtocol.CDP:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_cdp__drop += 1
-                proto = "CDP"
-            case SnapCiscoProtocol.CGMP:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_cgmp__drop += 1
-                proto = "CGMP"
-            case SnapCiscoProtocol.VTP:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_vtp__drop += 1
-                proto = "VTP"
-            case SnapCiscoProtocol.DTP:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_dtp__drop += 1
-                proto = "DTP"
-            case SnapCiscoProtocol.PVST_PLUS_BPDU:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_pvst_plus__drop += 1
-                proto = "PVST+ BPDU"
-            case SnapCiscoProtocol.VLAN_BRIDGE:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_vlan_bridge__drop += 1
-                proto = "VLAN-Bridge"
-            case SnapCiscoProtocol.UDLD:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_udld__drop += 1
-                proto = "UDLD"
-            case _:
-                self._if._packet_stats_rx.ethernet_802_3__snap_cisco_unknown__drop += 1
-                proto = f"Cisco-unknown(0x{pid:04x})"
+        if pid == SnapCiscoProtocol.CDP:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_cdp__drop += 1
+            proto = "CDP"
+        elif pid == SnapCiscoProtocol.CGMP:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_cgmp__drop += 1
+            proto = "CGMP"
+        elif pid == SnapCiscoProtocol.VTP:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_vtp__drop += 1
+            proto = "VTP"
+        elif pid == SnapCiscoProtocol.DTP:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_dtp__drop += 1
+            proto = "DTP"
+        elif pid == SnapCiscoProtocol.PVST_PLUS_BPDU:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_pvst_plus__drop += 1
+            proto = "PVST+ BPDU"
+        elif pid == SnapCiscoProtocol.VLAN_BRIDGE:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_vlan_bridge__drop += 1
+            proto = "VLAN-Bridge"
+        elif pid == SnapCiscoProtocol.UDLD:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_udld__drop += 1
+            proto = "UDLD"
+        else:
+            self._if._packet_stats_rx.ethernet_802_3__snap_cisco_unknown__drop += 1
+            proto = f"Cisco-unknown(0x{pid:04x})"
 
         __debug__ and log(
             "ether",

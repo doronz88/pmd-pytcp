@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/igmp/test__igmp__message__unknown.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto.protocols.igmp.igmp__errors import IgmpSanityError

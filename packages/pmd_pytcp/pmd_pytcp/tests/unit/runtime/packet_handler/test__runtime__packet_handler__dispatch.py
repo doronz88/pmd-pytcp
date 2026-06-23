@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__dispa
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 from unittest.mock import MagicMock
 

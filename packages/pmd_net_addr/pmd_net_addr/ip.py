@@ -30,6 +30,8 @@ pmd_net_addr/ip.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC
 
 from pmd_net_addr.ip_version import IpVersion

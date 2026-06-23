@@ -31,6 +31,8 @@ pmd_pytcp/protocols/tcp/tcp__tracing.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import functools
 from collections.abc import Callable
 from typing import Any

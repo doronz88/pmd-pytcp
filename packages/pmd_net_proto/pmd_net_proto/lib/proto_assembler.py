@@ -30,6 +30,8 @@ pmd_net_proto/lib/proto_assembler.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod
 
 from pmd_net_proto.lib.buffer import Buffer

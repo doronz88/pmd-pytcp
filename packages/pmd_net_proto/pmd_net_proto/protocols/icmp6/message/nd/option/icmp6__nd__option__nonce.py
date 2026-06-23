@@ -38,8 +38,11 @@ pmd_net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option__nonce.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass, field
-from typing import Self, override
+from __future__ import annotations
+
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.protocols.icmp6.icmp6__errors import Icmp6IntegrityError
@@ -119,11 +122,20 @@ class Icmp6NdOptionNonce(Icmp6NdOption):
         Get the ICMPv6 ND Nonce option as a memoryview.
         """
 
-        buffer = bytearray(ICMP6__ND__OPTION__NONCE__LEN)
+        buffer = bytearray(as_buffer(ICMP6__ND__OPTION__NONCE__LEN))
         buffer[0] = int(self.type)
         buffer[1] = ICMP6__ND__OPTION__NONCE__LEN >> 3
         buffer[2 : 2 + ICMP6__ND__OPTION__NONCE__NONCE_BYTES] = self.nonce
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:

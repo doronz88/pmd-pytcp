@@ -30,9 +30,12 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option__rapid_commit.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.protocols.dhcp6.dhcp6__errors import Dhcp6IntegrityError
@@ -99,6 +102,15 @@ class Dhcp6OptionRapidCommit(Dhcp6Option):
         )
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -108,7 +120,7 @@ class Dhcp6OptionRapidCommit(Dhcp6Option):
 
         # RFC 8415 §21.14 — "The Rapid Commit option ... has no data;
         # its option-len MUST be 0."
-        if (value := int.from_bytes(buffer[2:4])) != 0:
+        if (value := int.from_bytes(buffer[2:4], "big")) != 0:
             raise Dhcp6IntegrityError(
                 f"The DHCPv6 Rapid Commit option length value must be 0 (RFC 8415 §21.14). Got: {value!r}"
             )
@@ -125,7 +137,7 @@ class Dhcp6OptionRapidCommit(Dhcp6Option):
             f"be {DHCP6__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := int.from_bytes(buffer[0:2])) == int(Dhcp6OptionType.RAPID_COMMIT), (
+        assert (value := int.from_bytes(buffer[0:2], "big")) == int(Dhcp6OptionType.RAPID_COMMIT), (
             f"The DHCPv6 Rapid Commit option type must be {Dhcp6OptionType.RAPID_COMMIT!r}. "
             f"Got: {Dhcp6OptionType.from_int(value)!r}"
         )

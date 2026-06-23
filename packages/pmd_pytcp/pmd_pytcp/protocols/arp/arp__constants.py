@@ -39,6 +39,8 @@ ver 3.0.7
 # defending the same IP from generating an "endless loop
 # flooding the network with broadcast traffic" (the §2.4(c)
 # MUST NOT failure mode).
+from __future__ import annotations
+
 ARP__DEFEND_INTERVAL = 10
 
 # Cache-aging timeouts and the per-destination outbound-

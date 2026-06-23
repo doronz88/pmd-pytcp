@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__icmp4__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_addr import Ip4Address
@@ -84,35 +86,28 @@ class Icmp4TxHandler:
 
         __debug__ and log("icmp4", f"{icmp4_packet_tx.tracker} - {icmp4_packet_tx}")
 
-        match icmp4__message.type, icmp4__message.code:
-            case Icmp4Type.ECHO_REPLY, _:
-                self._if._packet_stats_tx.icmp4__echo_reply__send += 1
-            case (
-                Icmp4Type.DESTINATION_UNREACHABLE,
-                Icmp4DestinationUnreachableCode.PORT,
-            ):
-                self._if._packet_stats_tx.icmp4__destination_unreachable__port__send += 1
-            case (
-                Icmp4Type.DESTINATION_UNREACHABLE,
-                Icmp4DestinationUnreachableCode.PROTOCOL,
-            ):
-                self._if._packet_stats_tx.icmp4__destination_unreachable__protocol__send += 1
-            case Icmp4Type.PARAMETER_PROBLEM, _:
-                self._if._packet_stats_tx.icmp4__parameter_problem__send += 1
-            case Icmp4Type.ECHO_REQUEST, _:
-                self._if._packet_stats_tx.icmp4__echo_request__send += 1
-            case _:
-                # Defensive drop: unsupported ICMPv4 type/code shouldn't
-                # reach the TX path (the call sites enumerate their
-                # message types), but if one does, count + drop is
-                # robust where 'raise' would crash the calling thread.
-                self._if._packet_stats_tx.icmp4__unknown__drop += 1
-                __debug__ and log(
-                    "icmp4",
-                    f"{icmp4_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv4 "
-                    f"type {icmp4__message.type}, code {icmp4__message.code}</>",
-                )
-                return TxStatus.DROPPED__ICMP4__UNKNOWN
+        if icmp4__message.type == Icmp4Type.ECHO_REPLY:
+            self._if._packet_stats_tx.icmp4__echo_reply__send += 1
+        elif icmp4__message.type == Icmp4Type.DESTINATION_UNREACHABLE and icmp4__message.code == Icmp4DestinationUnreachableCode.PORT:
+            self._if._packet_stats_tx.icmp4__destination_unreachable__port__send += 1
+        elif icmp4__message.type == Icmp4Type.DESTINATION_UNREACHABLE and icmp4__message.code == Icmp4DestinationUnreachableCode.PROTOCOL:
+            self._if._packet_stats_tx.icmp4__destination_unreachable__protocol__send += 1
+        elif icmp4__message.type == Icmp4Type.PARAMETER_PROBLEM:
+            self._if._packet_stats_tx.icmp4__parameter_problem__send += 1
+        elif icmp4__message.type == Icmp4Type.ECHO_REQUEST:
+            self._if._packet_stats_tx.icmp4__echo_request__send += 1
+        else:
+            # Defensive drop: unsupported ICMPv4 type/code shouldn't
+            # reach the TX path (the call sites enumerate their
+            # message types), but if one does, count + drop is
+            # robust where 'raise' would crash the calling thread.
+            self._if._packet_stats_tx.icmp4__unknown__drop += 1
+            __debug__ and log(
+                "icmp4",
+                f"{icmp4_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv4 "
+                f"type {icmp4__message.type}, code {icmp4__message.code}</>",
+            )
+            return TxStatus.DROPPED__ICMP4__UNKNOWN
 
         return self._if._phtx_ip4(
             ip4__src=ip4__src,

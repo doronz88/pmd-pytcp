@@ -55,6 +55,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__sen
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.session import TcpSession
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall

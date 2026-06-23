@@ -30,8 +30,10 @@ pmd_net_proto/protocols/ip6/ip6__base.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from typing import override
+from typing_extensions import TypeAliasType, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
@@ -48,20 +50,14 @@ from pmd_net_proto.protocols.ip6_routing.ip6_routing__assembler import (
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
 from pmd_net_proto.protocols.tcp.tcp__assembler import TcpAssembler
 from pmd_net_proto.protocols.udp.udp__assembler import UdpAssembler
+from typing import Generic, TypeVar, Union
+from pmd_net_proto._compat import as_buffer
 
-type Ip6Payload = (
-    Ip6HbhAssembler
-    | Ip6RoutingAssembler
-    | Ip6FragAssembler
-    | Ip6DestOptsAssembler
-    | Icmp6Assembler
-    | TcpAssembler
-    | UdpAssembler
-    | RawAssembler
-)
+Ip6Payload = TypeAliasType("Ip6Payload", Union[Ip6HbhAssembler, Ip6RoutingAssembler, Ip6FragAssembler, Ip6DestOptsAssembler, Icmp6Assembler, TcpAssembler, UdpAssembler, RawAssembler])
 
 
-class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
+P = TypeVar("P", Ip6Payload, Buffer)
+class Ip6(Proto, Ip6HeaderProperties, Generic[P]):
     """
     The IPv6 protocol base.
     """
@@ -110,10 +106,19 @@ class Ip6[P: (Ip6Payload, Buffer)](Proto, Ip6HeaderProperties):
         ):
             self._payload.pshdr_sum = self.pshdr_sum
 
-        buffer = bytearray(self._header)
-        buffer += bytearray(self._payload)
+        buffer = bytearray(as_buffer(self._header))
+        buffer += bytearray(as_buffer(self._payload))
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def pshdr_sum(self) -> int:

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/arp/test__arp__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -46,6 +48,7 @@ from pmd_net_proto.protocols.arp.arp__enums import (
     ARP__HARDWARE_LEN__ETHERNET,
     ARP__PROTOCOL_LEN__IP4,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestArpHeaderAsserts(TestCase):
@@ -342,7 +345,7 @@ class TestArpHeaderOperation(TestCase):
         )
 
         self.assertEqual(
-            bytes(memoryview(header)),
+            bytes(memoryview(as_buffer(header))),
             (
                 b"\x00\x01\x08\x00\x06\x04\x00\x01\x01\x02\x03\x04\x05\x06\x0b\x16"
                 b"\x21\x2c\x0a\x0b\x0c\x0d\x0e\x0f\x65\x66\x67\x68"
@@ -365,7 +368,7 @@ class TestArpHeaderOperation(TestCase):
             tpa=Ip4Address("7.7.7.7"),
         )
 
-        rebuilt = ArpHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = ArpHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(rebuilt, original, msg="Roundtrip through from_buffer must preserve equality.")
 
@@ -384,7 +387,7 @@ class TestArpHeaderOperation(TestCase):
             tha=MacAddress("0a:0b:0c:0d:0e:0f"),
             tpa=Ip4Address("101.102.103.104"),
         )
-        padded = bytes(memoryview(original)) + b"\xde\xad\xbe\xef"
+        padded = bytes(memoryview(as_buffer(original))) + b"\xde\xad\xbe\xef"
 
         rebuilt = ArpHeader.from_buffer(padded)
 

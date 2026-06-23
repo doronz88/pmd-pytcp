@@ -30,12 +30,15 @@ pmd_net_proto/protocols/udp/udp__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.proto import Proto
 from pmd_net_proto.protocols.udp.udp__header import UdpHeader, UdpHeaderProperties
+from pmd_net_proto._compat import as_buffer
 
 
 class Udp(Proto, UdpHeaderProperties):
@@ -89,8 +92,8 @@ class Udp(Proto, UdpHeaderProperties):
         Get the UDP packet as a memoryview.
         """
 
-        buffer = bytearray(self._header)
-        buffer += self._payload
+        buffer = bytearray(as_buffer(self._header))
+        buffer += as_buffer(self._payload)
         if self._udp__no_cksum:
             # RFC 6935 §5 alternative mode: emit the literal
             # value 0x0000.
@@ -101,9 +104,18 @@ class Udp(Proto, UdpHeaderProperties):
             # 0x0000 remains unambiguously the "no checksum
             # generated" sentinel.
             cksum = inet_cksum(buffer, init=self.pshdr_sum)
-            buffer[6:8] = (cksum or 0xFFFF).to_bytes(2)
+            buffer[6:8] = (cksum or 0xFFFF).to_bytes(2, "big")
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def header(self) -> UdpHeader:

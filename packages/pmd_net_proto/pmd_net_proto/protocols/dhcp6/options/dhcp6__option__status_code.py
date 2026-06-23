@@ -30,9 +30,12 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option__status_code.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.protocols.dhcp6.dhcp6__enums import Dhcp6StatusCode
@@ -124,6 +127,15 @@ class Dhcp6OptionStatusCode(Dhcp6Option):
         buffer[DHCP6__OPTION__LEN + DHCP6__OPTION__STATUS_CODE__CODE__LEN :] = self.status_message.encode("utf-8")
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -131,7 +143,7 @@ class Dhcp6OptionStatusCode(Dhcp6Option):
         Ensure integrity of the DHCPv6 Status Code option before parsing it.
         """
 
-        option_len = int.from_bytes(buffer[2:4])
+        option_len = int.from_bytes(buffer[2:4], "big")
 
         if option_len < DHCP6__OPTION__STATUS_CODE__CODE__LEN:
             raise Dhcp6IntegrityError(
@@ -157,19 +169,19 @@ class Dhcp6OptionStatusCode(Dhcp6Option):
             f"be {DHCP6__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := int.from_bytes(buffer[0:2])) == int(Dhcp6OptionType.STATUS_CODE), (
+        assert (value := int.from_bytes(buffer[0:2], "big")) == int(Dhcp6OptionType.STATUS_CODE), (
             f"The DHCPv6 Status Code option type must be {Dhcp6OptionType.STATUS_CODE!r}. "
             f"Got: {Dhcp6OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        option_len = int.from_bytes(buffer[2:4])
+        option_len = int.from_bytes(buffer[2:4], "big")
         code_offset = DHCP6__OPTION__LEN
         message_offset = code_offset + DHCP6__OPTION__STATUS_CODE__CODE__LEN
 
         return cls(
-            Dhcp6StatusCode.from_int(int.from_bytes(buffer[code_offset:message_offset])),
+            Dhcp6StatusCode.from_int(int.from_bytes(buffer[code_offset:message_offset], "big")),
             # RFC 8415 §21.13 — status-message is a UTF-8 string for
             # display. Decode tolerantly ('errors="replace"') so a
             # malformed-UTF-8 message does not turn a server REPLY into

@@ -30,13 +30,16 @@ pmd_net_addr/ip6_mask.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import re
-from typing import Self, final, override
 
 from pmd_net_addr.errors import Ip6MaskFormatError
 from pmd_net_addr.ip6_address import IP6__ADDRESS_LEN, IP6__MASK
 from pmd_net_addr.ip_mask import IpMask
 from pmd_net_addr.ip_version import IpVersion
+from pmd_net_addr._compat import as_buffer
+from typing_extensions import Self, final, override
 
 
 @final
@@ -73,7 +76,7 @@ class Ip6Mask(IpMask):
 
         if isinstance(mask, (memoryview, bytes, bytearray)):
             if len(mask) == IP6__ADDRESS_LEN:
-                candidate = int.from_bytes(mask)
+                candidate = int.from_bytes(mask, "big")
                 if self._is_contiguous_mask(candidate, IP6__ADDRESS_LEN * 8):
                     self._mask = candidate
                     return
@@ -96,4 +99,13 @@ class Ip6Mask(IpMask):
         Get the IPv6 mask as a memoryview.
         """
 
-        return memoryview(bytearray(self._mask.to_bytes(IP6__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._mask.to_bytes(IP6__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+

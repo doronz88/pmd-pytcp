@@ -45,6 +45,8 @@ pmd_pytcp/tests/lib/ethernet_802_3_testcase.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_net_proto.lib.enums import EtherType
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -70,7 +72,7 @@ def _build_802_3_frame(*, dst_mac: MacAddress, src_mac: MacAddress, payload: byt
     length.
     """
 
-    return bytes(dst_mac) + bytes(src_mac) + len(payload).to_bytes(2) + payload
+    return bytes(dst_mac) + bytes(src_mac) + len(payload).to_bytes(2, "big") + payload
 
 
 class Ethernet8023TestCase(NetworkTestCase):
@@ -101,9 +103,9 @@ class Ethernet8023TestCase(NetworkTestCase):
         dst = dst_mac if dst_mac is not None else STP_BPDU__DEST_MAC
         src = src_mac if src_mac is not None else HOST_A__MAC_ADDRESS
         llc_and_payload = (
-            int(LlcSap.LAYER_MGMT).to_bytes(1)
-            + int(LlcSap.LAYER_MGMT).to_bytes(1)
-            + int(LlcControl.UI).to_bytes(1)
+            int(LlcSap.LAYER_MGMT).to_bytes(1, "big")
+            + int(LlcSap.LAYER_MGMT).to_bytes(1, "big")
+            + int(LlcControl.UI).to_bytes(1, "big")
             + bpdu_payload
         )
         return _build_802_3_frame(
@@ -134,11 +136,11 @@ class Ethernet8023TestCase(NetworkTestCase):
         dst = dst_mac if dst_mac is not None else STACK__MAC_ADDRESS
         src = src_mac if src_mac is not None else HOST_A__MAC_ADDRESS
         llc_snap_and_payload = (
-            int(LlcSap.SNAP).to_bytes(1)
-            + int(LlcSap.SNAP).to_bytes(1)
-            + int(LlcControl.UI).to_bytes(1)
-            + int(SnapOui.ENCAP_ETHERTYPE).to_bytes(3)
-            + int(ether_type).to_bytes(2)
+            int(LlcSap.SNAP).to_bytes(1, "big")
+            + int(LlcSap.SNAP).to_bytes(1, "big")
+            + int(LlcControl.UI).to_bytes(1, "big")
+            + int(SnapOui.ENCAP_ETHERTYPE).to_bytes(3, "big")
+            + int(ether_type).to_bytes(2, "big")
             + snap_payload
         )
         return _build_802_3_frame(
@@ -169,11 +171,11 @@ class Ethernet8023TestCase(NetworkTestCase):
         dst = dst_mac if dst_mac is not None else CISCO_DISCOVERY__DEST_MAC
         src = src_mac if src_mac is not None else HOST_A__MAC_ADDRESS
         llc_snap_and_payload = (
-            int(LlcSap.SNAP).to_bytes(1)
-            + int(LlcSap.SNAP).to_bytes(1)
-            + int(LlcControl.UI).to_bytes(1)
-            + int(SnapOui.CISCO).to_bytes(3)
-            + int(cisco_protocol).to_bytes(2)
+            int(LlcSap.SNAP).to_bytes(1, "big")
+            + int(LlcSap.SNAP).to_bytes(1, "big")
+            + int(LlcControl.UI).to_bytes(1, "big")
+            + int(SnapOui.CISCO).to_bytes(3, "big")
+            + int(cisco_protocol).to_bytes(2, "big")
             + snap_payload
         )
         return _build_802_3_frame(
@@ -196,9 +198,9 @@ class Ethernet8023TestCase(NetworkTestCase):
 
         src = src_mac if src_mac is not None else HOST_A__MAC_ADDRESS
         llc_and_payload = (
-            int(LlcSap.NOVELL_IPX).to_bytes(1)
-            + int(LlcSap.NOVELL_IPX).to_bytes(1)
-            + int(LlcControl.UI).to_bytes(1)
+            int(LlcSap.NOVELL_IPX).to_bytes(1, "big")
+            + int(LlcSap.NOVELL_IPX).to_bytes(1, "big")
+            + int(LlcControl.UI).to_bytes(1, "big")
             + ipx_payload
         )
         return _build_802_3_frame(

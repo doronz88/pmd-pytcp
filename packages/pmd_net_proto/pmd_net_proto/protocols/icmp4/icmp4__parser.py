@@ -30,7 +30,9 @@ pmd_net_proto/protocols/icmp4/icmp4__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -88,19 +90,19 @@ class Icmp4Parser(Icmp4, ProtoParser):
         type byte. Falls back to Icmp4MessageUnknown for unrecognised types.
         """
 
-        match Icmp4Type.from_int(self._frame[0]):
-            case Icmp4Type.ECHO_REPLY:
-                return Icmp4MessageEchoReply
-            case Icmp4Type.DESTINATION_UNREACHABLE:
-                return Icmp4MessageDestinationUnreachable
-            case Icmp4Type.ECHO_REQUEST:
-                return Icmp4MessageEchoRequest
-            case Icmp4Type.TIME_EXCEEDED:
-                return Icmp4MessageTimeExceeded
-            case Icmp4Type.PARAMETER_PROBLEM:
-                return Icmp4MessageParameterProblem
-            case _:
-                return Icmp4MessageUnknown
+        _match_subject = Icmp4Type.from_int(self._frame[0])
+        if _match_subject == Icmp4Type.ECHO_REPLY:
+            return Icmp4MessageEchoReply
+        elif _match_subject == Icmp4Type.DESTINATION_UNREACHABLE:
+            return Icmp4MessageDestinationUnreachable
+        elif _match_subject == Icmp4Type.ECHO_REQUEST:
+            return Icmp4MessageEchoRequest
+        elif _match_subject == Icmp4Type.TIME_EXCEEDED:
+            return Icmp4MessageTimeExceeded
+        elif _match_subject == Icmp4Type.PARAMETER_PROBLEM:
+            return Icmp4MessageParameterProblem
+        else:
+            return Icmp4MessageUnknown
 
     @override
     def _validate_integrity(self) -> None:

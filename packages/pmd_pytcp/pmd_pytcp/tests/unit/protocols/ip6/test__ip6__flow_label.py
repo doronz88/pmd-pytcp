@@ -31,6 +31,8 @@ pmd_pytcp/tests/unit/protocols/ip6/test__ip6__flow_label.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 from unittest.mock import patch
 

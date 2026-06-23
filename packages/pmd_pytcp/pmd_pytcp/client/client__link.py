@@ -35,6 +35,8 @@ pmd_pytcp/client/client__link.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 
 from pmd_net_addr import MacAddress

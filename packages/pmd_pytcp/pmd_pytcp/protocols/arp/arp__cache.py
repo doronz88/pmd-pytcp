@@ -38,7 +38,10 @@ pmd_pytcp/protocols/arp/arp__cache.py
 ver 3.0.7
 """
 
-from typing import TYPE_CHECKING, override
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler

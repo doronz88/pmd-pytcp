@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__req_ip_addr.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -45,6 +47,7 @@ from pmd_net_proto import (
 from pmd_net_proto.protocols.dhcp4.options.dhcp4__option__req_ip_addr import (
     DHCP4__OPTION__REQ_IP_ADDR__LEN,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp4OptionReqIpAddrAsserts(TestCase):
@@ -286,7 +289,7 @@ class TestDhcp4OptionReqIpAddrAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._option)),
+            bytes(memoryview(as_buffer(self._option))),
             self._results["__bytes__"],
             msg=f"Unexpected memoryview output for case: {self._description}",
         )

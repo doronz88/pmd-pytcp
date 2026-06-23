@@ -33,8 +33,11 @@ pmd_pytcp/lib/ip4_multicast_filter.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import field
+from pmd_pytcp._compat import dataclass
 from enum import Enum, auto
 
 from pmd_net_addr import Ip4Address
@@ -101,11 +104,10 @@ class Ip4MulticastFilter:
         exclude_lists: list[frozenset[Ip4Address]] = []
 
         for filter_ in filters:
-            match filter_.mode:
-                case Ip4MulticastFilterMode.INCLUDE:
-                    include_sources |= filter_.sources
-                case Ip4MulticastFilterMode.EXCLUDE:
-                    exclude_lists.append(filter_.sources)
+            if filter_.mode == Ip4MulticastFilterMode.INCLUDE:
+                include_sources |= filter_.sources
+            elif filter_.mode == Ip4MulticastFilterMode.EXCLUDE:
+                exclude_lists.append(filter_.sources)
 
         if exclude_lists:
             excluded = set(exclude_lists[0]).intersection(*exclude_lists[1:])

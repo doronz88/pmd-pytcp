@@ -38,6 +38,8 @@ pmd_pytcp/ipc/ipc__frame.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 import struct
 

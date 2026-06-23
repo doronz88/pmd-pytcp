@@ -34,6 +34,8 @@ pmd_pytcp/tests/lib/network_testcase.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, cast
 from unittest import TestCase
 from unittest.mock import create_autospec, patch

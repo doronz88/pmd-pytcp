@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ethernet/test__ethernet__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -41,6 +43,7 @@ from pmd_net_proto.protocols.ethernet.ethernet__header import (
     ETHERNET__HEADER__STRUCT,
     EthernetHeaderProperties,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestEthernetHeaderAsserts(TestCase):
@@ -213,7 +216,7 @@ class TestEthernetHeaderOperation(TestCase):
 
         header = EthernetHeader(**self._valid_kwargs())
 
-        frame = bytes(memoryview(header))
+        frame = bytes(memoryview(as_buffer(header)))
 
         self.assertEqual(
             frame,
@@ -234,7 +237,7 @@ class TestEthernetHeaderOperation(TestCase):
 
         original = EthernetHeader(**self._valid_kwargs())
 
-        rebuilt = EthernetHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = EthernetHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,
@@ -251,7 +254,7 @@ class TestEthernetHeaderOperation(TestCase):
         """
 
         original = EthernetHeader(**self._valid_kwargs())
-        padded = bytes(memoryview(original)) + b"\xde\xad\xbe\xef"
+        padded = bytes(memoryview(as_buffer(original))) + b"\xde\xad\xbe\xef"
 
         rebuilt = EthernetHeader.from_buffer(padded)
 

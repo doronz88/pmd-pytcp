@@ -30,13 +30,16 @@ pmd_net_addr/ip4_wildcard.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
-from typing import Self, final, override
 
 from pmd_net_addr.errors import Ip4WildcardFormatError
 from pmd_net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.ip_wildcard import IpWildcard
+from pmd_net_addr._compat import as_buffer
+from typing_extensions import Self, final, override
 
 
 @final
@@ -76,7 +79,7 @@ class Ip4Wildcard(IpWildcard):
 
         if isinstance(wildcard, (memoryview, bytes, bytearray)):
             if len(wildcard) == IP4__ADDRESS_LEN:
-                self._wildcard = int.from_bytes(wildcard)
+                self._wildcard = int.from_bytes(wildcard, "big")
                 return
 
         if isinstance(wildcard, str):
@@ -87,7 +90,7 @@ class Ip4Wildcard(IpWildcard):
             # leading zeros and silently reinterpret the dotted
             # wildcard.
             try:
-                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET, wildcard.strip()))
+                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET, wildcard.strip()), "big")
                 return
             except OSError:
                 pass
@@ -108,4 +111,13 @@ class Ip4Wildcard(IpWildcard):
         Get the IPv4 wildcard as a memoryview.
         """
 
-        return memoryview(bytearray(self._wildcard.to_bytes(IP4__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._wildcard.to_bytes(IP4__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+

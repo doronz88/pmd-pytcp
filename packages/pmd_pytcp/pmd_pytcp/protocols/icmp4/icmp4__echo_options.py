@@ -38,6 +38,8 @@ pmd_pytcp/protocols/icmp4/icmp4__echo_options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 
 from pmd_net_proto import (
@@ -64,22 +66,21 @@ def echo_reply_options(inbound: Ip4Options, /) -> Ip4Options:
     reply_options: list[Ip4Option] = []
 
     for option in inbound:
-        match option:
-            case Ip4OptionLsrr():
-                reply_options.append(
-                    Ip4OptionLsrr(
-                        pointer=IP4__OPTION__LSRR__POINTER_BASE,
-                        route=list(reversed(option.route)),
-                    )
+        if isinstance(option, Ip4OptionLsrr):
+            reply_options.append(
+                Ip4OptionLsrr(
+                    pointer=IP4__OPTION__LSRR__POINTER_BASE,
+                    route=list(reversed(option.route)),
                 )
-            case Ip4OptionSsrr():
-                reply_options.append(
-                    Ip4OptionSsrr(
-                        pointer=IP4__OPTION__SSRR__POINTER_BASE,
-                        route=list(reversed(option.route)),
-                    )
+            )
+        elif isinstance(option, Ip4OptionSsrr):
+            reply_options.append(
+                Ip4OptionSsrr(
+                    pointer=IP4__OPTION__SSRR__POINTER_BASE,
+                    route=list(reversed(option.route)),
                 )
-            case _:
-                reply_options.append(cast(Ip4Option, option))
+            )
+        else:
+            reply_options.append(cast(Ip4Option, option))
 
     return Ip4Options(*reply_options)

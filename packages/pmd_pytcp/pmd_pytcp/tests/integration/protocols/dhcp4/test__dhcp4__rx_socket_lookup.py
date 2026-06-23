@@ -52,6 +52,8 @@ pmd_pytcp/tests/integration/protocols/dhcp4/test__dhcp4__rx_socket_lookup.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip4Mask, MacAddress

@@ -54,6 +54,8 @@ pmd_pytcp/tests/lib/arp_testcase.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 from unittest.mock import MagicMock, patch
 
@@ -78,6 +80,7 @@ from pmd_pytcp.tests.lib.network_testcase import (
     STACK__MAC_ADDRESS,
     NetworkTestCase,
 )
+from pmd_pytcp._compat import as_buffer
 
 __all__ = (
     "ArpTestCase",
@@ -173,7 +176,7 @@ class ArpTestCase(NetworkTestCase):
         'dt' seconds.
         """
 
-        self._monotonic_t += dt
+        self._monotonic_t += as_buffer(dt)
 
     # -- frame helpers ----------------------------------------------------
 
@@ -241,7 +244,7 @@ class ArpTestCase(NetworkTestCase):
             b"\x08\x00"  # prtype: IPv4
             b"\x06"  # hrlen
             b"\x04"  # prlen
-            + arp_oper_raw.to_bytes(2)
+            + arp_oper_raw.to_bytes(2, "big")
             + bytes(arp_sha)
             + bytes(arp_spa)
             + bytes(arp_tha)

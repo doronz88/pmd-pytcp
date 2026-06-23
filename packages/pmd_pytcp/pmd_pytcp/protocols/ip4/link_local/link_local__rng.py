@@ -46,6 +46,8 @@ pmd_pytcp/protocols/ip4/link_local/link_local__rng.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 
 from pmd_net_addr import Ip4Address, MacAddress

@@ -31,7 +31,9 @@ pmd_pytcp/tests/unit/protocols/dhcp6/test__dhcp6__uid.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_net_addr import MacAddress

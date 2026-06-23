@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__arp__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -101,13 +103,12 @@ class ArpTxHandler:
             self._if._packet_stats_tx.arp__no_proto_support__drop += 1
             return TxStatus.DROPPED__ARP__NO_PROTOCOL_SUPPORT
 
-        match arp__oper:
-            case ArpOperation.REQUEST:
-                self._if._packet_stats_tx.arp__op_request__send += 1
-            case ArpOperation.REPLY:
-                self._if._packet_stats_tx.arp__op_reply__send += 1
-            case _:
-                raise ValueError(f"Invalid ARP operation: {arp__oper}")
+        if arp__oper == ArpOperation.REQUEST:
+            self._if._packet_stats_tx.arp__op_request__send += 1
+        elif arp__oper == ArpOperation.REPLY:
+            self._if._packet_stats_tx.arp__op_reply__send += 1
+        else:
+            raise ValueError(f"Invalid ARP operation: {arp__oper}")
 
         arp_packet_tx = ArpAssembler(
             arp__oper=arp__oper,

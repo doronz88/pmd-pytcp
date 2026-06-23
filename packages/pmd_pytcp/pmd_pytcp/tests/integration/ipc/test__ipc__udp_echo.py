@@ -41,10 +41,13 @@ pmd_pytcp/tests/integration/ipc/test__ipc__udp_echo.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 import time
-from typing import cast, override
+from typing import cast
+from typing_extensions import override
 
 from pmd_net_proto.protocols.ethernet.ethernet__assembler import EthernetAssembler
 from pmd_net_proto.protocols.ip4.ip4__assembler import Ip4Assembler

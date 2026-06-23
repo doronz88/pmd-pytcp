@@ -32,6 +32,8 @@ pmd_pytcp/tests/unit/socket/test__socket__sockaddr_ll.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import dataclasses
 from unittest import TestCase
 

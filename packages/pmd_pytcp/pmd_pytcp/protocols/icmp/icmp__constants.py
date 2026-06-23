@@ -43,6 +43,8 @@ ver 3.0.7
 # exposes a comparable knob as 'net.ipv4.icmp_ratelimit' (in ms per
 # token; PyTCP uses pps for directness — divide 1000 by the PyTCP
 # value to get the Linux-equivalent period).
+from __future__ import annotations
+
 ICMP__ERROR__RATE_PPS = 100
 
 # Maximum burst size for the ICMP error rate limiter, in tokens. A

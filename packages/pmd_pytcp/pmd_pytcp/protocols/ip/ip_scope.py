@@ -36,6 +36,8 @@ pmd_pytcp/protocols/ip/ip_scope.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
 
 

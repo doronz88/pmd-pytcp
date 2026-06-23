@@ -32,6 +32,8 @@ pmd_pytcp/socket/packet__socket_table.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from typing import TYPE_CHECKING
 
