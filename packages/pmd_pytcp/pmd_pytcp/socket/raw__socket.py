@@ -30,11 +30,14 @@ pmd_pytcp/socket/raw__socket.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 import os
 import threading
 from collections.abc import Iterable
-from typing import cast, override
+from typing import cast
+from typing_extensions import override
 
 from pmd_net_addr import (
     Ip4Address,
@@ -91,13 +94,12 @@ class RawSocket(socket):
         self._packet_rx_md: list[RawMetadata] = []
         self._packet_rx_md_ready = threading.Semaphore(0)
 
-        match self._address_family:
-            case AddressFamily.INET6:
-                self._local_ip_address = Ip6Address()
-                self._remote_ip_address = Ip6Address()
-            case AddressFamily.INET4:
-                self._local_ip_address = Ip4Address()
-                self._remote_ip_address = Ip4Address()
+        if self._address_family == AddressFamily.INET6:
+            self._local_ip_address = Ip6Address()
+            self._remote_ip_address = Ip6Address()
+        elif self._address_family == AddressFamily.INET4:
+            self._local_ip_address = Ip4Address()
+            self._remote_ip_address = Ip4Address()
 
         self._local_port = int(self._ip_proto)
         self._remote_port = 0
@@ -188,30 +190,29 @@ class RawSocket(socket):
 
         local_ip_address: Ip6Address | Ip4Address
 
-        match self._address_family:
-            case AddressFamily.INET6:
-                try:
-                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.local_ip6_unicast()) | {
-                        Ip6Address()
-                    }:
-                        raise OSError(
-                            errno.EADDRNOTAVAIL,
-                            "Cannot assign requested address - [Local IP address not owned by stack]",
-                        )
-                except Ip6AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
+        if self._address_family == AddressFamily.INET6:
+            try:
+                if (local_ip_address := Ip6Address(address[0])) not in set(stack.local_ip6_unicast()) | {
+                    Ip6Address()
+                }:
+                    raise OSError(
+                        errno.EADDRNOTAVAIL,
+                        "Cannot assign requested address - [Local IP address not owned by stack]",
+                    )
+            except Ip6AddressFormatError as error:
+                raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
-            case AddressFamily.INET4:
-                try:
-                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.local_ip4_unicast()) | {
-                        Ip4Address()
-                    }:
-                        raise OSError(
-                            errno.EADDRNOTAVAIL,
-                            "Cannot assign requested address - [Local IP address not owned by stack]",
-                        )
-                except Ip4AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
+        elif self._address_family == AddressFamily.INET4:
+            try:
+                if (local_ip_address := Ip4Address(address[0])) not in set(stack.local_ip4_unicast()) | {
+                    Ip4Address()
+                }:
+                    raise OSError(
+                        errno.EADDRNOTAVAIL,
+                        "Cannot assign requested address - [Local IP address not owned by stack]",
+                    )
+            except Ip4AddressFormatError as error:
+                raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
         stack.sockets.unregister(self)
         self._local_ip_address = local_ip_address
@@ -265,27 +266,26 @@ class RawSocket(socket):
         if not stack.has_route_to(self._remote_ip_address):
             raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
-        match self._address_family:
-            case AddressFamily.INET6:
-                stack.egress_packet_handler(cast(Ip6Address, self._remote_ip_address)).send_ip6_packet(
-                    ip6__local_address=cast(Ip6Address, self._local_ip_address),
-                    ip6__remote_address=cast(Ip6Address, self._remote_ip_address),
-                    ip6__next=self._ip_proto,
-                    ip6__payload=data,
-                    ip6__hop=self._effective_ip_ttl(),
-                    ip6__ecn=self._effective_ip_ecn(),
-                    ip6__dscp=self._effective_ip_dscp(),
-                )
-            case AddressFamily.INET4:
-                stack.egress_packet_handler(cast(Ip4Address, self._remote_ip_address)).send_ip4_packet(
-                    ip4__local_address=cast(Ip4Address, self._local_ip_address),
-                    ip4__remote_address=cast(Ip4Address, self._remote_ip_address),
-                    ip4__proto=self._ip_proto,
-                    ip4__payload=data,
-                    ip4__ttl=self._effective_ip_ttl(),
-                    ip4__ecn=self._effective_ip_ecn(),
-                    ip4__dscp=self._effective_ip_dscp(),
-                )
+        if self._address_family == AddressFamily.INET6:
+            stack.egress_packet_handler(cast(Ip6Address, self._remote_ip_address)).send_ip6_packet(
+                ip6__local_address=cast(Ip6Address, self._local_ip_address),
+                ip6__remote_address=cast(Ip6Address, self._remote_ip_address),
+                ip6__next=self._ip_proto,
+                ip6__payload=data,
+                ip6__hop=self._effective_ip_ttl(),
+                ip6__ecn=self._effective_ip_ecn(),
+                ip6__dscp=self._effective_ip_dscp(),
+            )
+        elif self._address_family == AddressFamily.INET4:
+            stack.egress_packet_handler(cast(Ip4Address, self._remote_ip_address)).send_ip4_packet(
+                ip4__local_address=cast(Ip4Address, self._local_ip_address),
+                ip4__remote_address=cast(Ip4Address, self._remote_ip_address),
+                ip4__proto=self._ip_proto,
+                ip4__payload=data,
+                ip4__ttl=self._effective_ip_ttl(),
+                ip4__ecn=self._effective_ip_ecn(),
+                ip4__dscp=self._effective_ip_dscp(),
+            )
 
         # Phase 4b fire-and-forget: the packet is accepted into the
         # stack the moment it is queued on the TX worker; report the
@@ -315,27 +315,26 @@ class RawSocket(socket):
         if not stack.has_route_to(remote_ip_address):
             raise OSError(errno.EHOSTUNREACH, "No route to host - [No route to destination]")
 
-        match self._address_family:
-            case AddressFamily.INET6:
-                stack.egress_packet_handler(cast(Ip6Address, remote_ip_address)).send_ip6_packet(
-                    ip6__local_address=cast(Ip6Address, local_ip_address),
-                    ip6__remote_address=cast(Ip6Address, remote_ip_address),
-                    ip6__next=self._ip_proto,
-                    ip6__payload=data,
-                    ip6__hop=self._effective_ip_ttl(),
-                    ip6__ecn=self._effective_ip_ecn(),
-                    ip6__dscp=self._effective_ip_dscp(),
-                )
-            case AddressFamily.INET4:
-                stack.egress_packet_handler(cast(Ip4Address, remote_ip_address)).send_ip4_packet(
-                    ip4__local_address=cast(Ip4Address, local_ip_address),
-                    ip4__remote_address=cast(Ip4Address, remote_ip_address),
-                    ip4__proto=self._ip_proto,
-                    ip4__payload=data,
-                    ip4__ttl=self._effective_ip_ttl(),
-                    ip4__ecn=self._effective_ip_ecn(),
-                    ip4__dscp=self._effective_ip_dscp(),
-                )
+        if self._address_family == AddressFamily.INET6:
+            stack.egress_packet_handler(cast(Ip6Address, remote_ip_address)).send_ip6_packet(
+                ip6__local_address=cast(Ip6Address, local_ip_address),
+                ip6__remote_address=cast(Ip6Address, remote_ip_address),
+                ip6__next=self._ip_proto,
+                ip6__payload=data,
+                ip6__hop=self._effective_ip_ttl(),
+                ip6__ecn=self._effective_ip_ecn(),
+                ip6__dscp=self._effective_ip_dscp(),
+            )
+        elif self._address_family == AddressFamily.INET4:
+            stack.egress_packet_handler(cast(Ip4Address, remote_ip_address)).send_ip4_packet(
+                ip4__local_address=cast(Ip4Address, local_ip_address),
+                ip4__remote_address=cast(Ip4Address, remote_ip_address),
+                ip4__proto=self._ip_proto,
+                ip4__payload=data,
+                ip4__ttl=self._effective_ip_ttl(),
+                ip4__ecn=self._effective_ip_ecn(),
+                ip4__dscp=self._effective_ip_dscp(),
+            )
 
         # Phase 4b fire-and-forget — see 'send' above.
         sent_data_len = len(data)

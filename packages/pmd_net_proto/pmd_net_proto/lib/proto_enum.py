@@ -30,8 +30,10 @@ pmd_net_proto/lib/proto_enum.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import Enum
-from typing import Self, override
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 
@@ -104,7 +106,7 @@ class ProtoEnum(Enum):
 
         try:
             return cls(value)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return cls._register_unknown(value)
 
     @classmethod
@@ -113,7 +115,7 @@ class ProtoEnum(Enum):
         Extract the enum value from the provided bytes.
         """
 
-        return cls.from_int(int.from_bytes(data[:size]))
+        return cls.from_int(int.from_bytes(data[:size], "big"))
 
     @classmethod
     def get_known_values(cls) -> list[int]:
@@ -142,7 +144,7 @@ class ProtoEnumByte(ProtoEnum):
         Get the enum value as bytes.
         """
 
-        return int(self).to_bytes(1)
+        return int(self).to_bytes(1, "big")
 
     @classmethod
     def from_bytes(cls, data: Buffer, /) -> Self:
@@ -163,7 +165,7 @@ class ProtoEnumWord(ProtoEnum):
         Get the enum value as bytes.
         """
 
-        return int(self).to_bytes(2)
+        return int(self).to_bytes(2, "big")
 
     @classmethod
     def from_bytes(cls, data: Buffer, /) -> Self:

@@ -32,9 +32,11 @@ pmd_net_proto/protocols/igmp/message/igmp__message__unknown.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass
-from typing import Self, override
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint16
@@ -99,15 +101,24 @@ class IgmpMessageUnknown(IgmpMessage):
 
         struct.pack_into(
             IGMP__UNKNOWN__HEADER__STRUCT,
-            buffer := bytearray(IGMP__UNKNOWN__HEADER__LEN),
+            buffer := bytearray(as_buffer(IGMP__UNKNOWN__HEADER__LEN)),
             0,
             int(self.type),
             0,
             0,
         )
-        buffer += self.data
+        buffer += as_buffer(self.data)
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def validate_sanity(self) -> None:
@@ -161,4 +172,4 @@ class IgmpMessageUnknown(IgmpMessage):
         Assemble the IGMP unknown message into the buffer list.
         """
 
-        buffers.append(bytearray(memoryview(self)))
+        buffers.append(as_buffer(bytearray(memoryview(as_buffer(self)))))

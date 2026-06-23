@@ -30,7 +30,9 @@ pmd_net_proto/protocols/igmp/igmp__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -89,19 +91,19 @@ class IgmpParser(Igmp, ProtoParser):
         unrecognised types (RFC 3376 §4 — silently ignored).
         """
 
-        match IgmpType.from_int(self._frame[0]):
-            case IgmpType.MEMBERSHIP_QUERY:
-                return IgmpMessageQuery
-            case IgmpType.V3_MEMBERSHIP_REPORT:
-                return IgmpMessageV3Report
-            case IgmpType.V2_MEMBERSHIP_REPORT:
-                return IgmpMessageV2Report
-            case IgmpType.V2_LEAVE_GROUP:
-                return IgmpMessageV2Leave
-            case IgmpType.V1_MEMBERSHIP_REPORT:
-                return IgmpMessageV1Report
-            case _:
-                return IgmpMessageUnknown
+        _match_subject = IgmpType.from_int(self._frame[0])
+        if _match_subject == IgmpType.MEMBERSHIP_QUERY:
+            return IgmpMessageQuery
+        elif _match_subject == IgmpType.V3_MEMBERSHIP_REPORT:
+            return IgmpMessageV3Report
+        elif _match_subject == IgmpType.V2_MEMBERSHIP_REPORT:
+            return IgmpMessageV2Report
+        elif _match_subject == IgmpType.V2_LEAVE_GROUP:
+            return IgmpMessageV2Leave
+        elif _match_subject == IgmpType.V1_MEMBERSHIP_REPORT:
+            return IgmpMessageV1Report
+        else:
+            return IgmpMessageUnknown
 
     @override
     def _validate_integrity(self) -> None:

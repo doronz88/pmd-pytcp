@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__tcp__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 
 from pmd_net_addr import Ip4Address, Ip6Address
@@ -222,34 +224,33 @@ class TcpTxHandler:
 
         __debug__ and log("tcp", f"{tcp_packet_tx.tracker} - {tcp_packet_tx}")
 
-        match ip__src.is_ip6, ip__dst.is_ip6, ip__src.is_ip4, ip__dst.is_ip4:
-            case True, True, False, False:
-                self._if._packet_stats_tx.tcp__send += 1
-                return self._if._phtx_ip6(
-                    ip6__src=cast(Ip6Address, ip__src),
-                    ip6__dst=cast(Ip6Address, ip__dst),
-                    ip6__hop=ip__ttl,
-                    ip6__ecn=ip__ecn,
-                    ip6__dscp=ip__dscp,
-                    ip6__payload=tcp_packet_tx,
-                )
-            case False, False, True, True:
-                self._if._packet_stats_tx.tcp__send += 1
-                # RFC 1191 §3 / RFC 9293 §3.7.5: outbound TCP segments
-                # set DF=1 to elicit ICMP Frag-Needed for path-MTU
-                # discovery rather than allowing in-network
-                # fragmentation.
-                return self._if._phtx_ip4(
-                    ip4__src=cast(Ip4Address, ip__src),
-                    ip4__dst=cast(Ip4Address, ip__dst),
-                    ip4__ttl=ip__ttl,
-                    ip4__ecn=ip__ecn,
-                    ip4__dscp=ip__dscp,
-                    ip4__flag_df=True,
-                    ip4__payload=tcp_packet_tx,
-                )
-            case _:
-                raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
+        if ip__src.is_ip6 is True and ip__dst.is_ip6 is True and ip__src.is_ip4 is False and ip__dst.is_ip4 is False:
+            self._if._packet_stats_tx.tcp__send += 1
+            return self._if._phtx_ip6(
+                ip6__src=cast(Ip6Address, ip__src),
+                ip6__dst=cast(Ip6Address, ip__dst),
+                ip6__hop=ip__ttl,
+                ip6__ecn=ip__ecn,
+                ip6__dscp=ip__dscp,
+                ip6__payload=tcp_packet_tx,
+            )
+        elif ip__src.is_ip6 is False and ip__dst.is_ip6 is False and ip__src.is_ip4 is True and ip__dst.is_ip4 is True:
+            self._if._packet_stats_tx.tcp__send += 1
+            # RFC 1191 §3 / RFC 9293 §3.7.5: outbound TCP segments
+            # set DF=1 to elicit ICMP Frag-Needed for path-MTU
+            # discovery rather than allowing in-network
+            # fragmentation.
+            return self._if._phtx_ip4(
+                ip4__src=cast(Ip4Address, ip__src),
+                ip4__dst=cast(Ip4Address, ip__dst),
+                ip4__ttl=ip__ttl,
+                ip4__ecn=ip__ecn,
+                ip4__dscp=ip__dscp,
+                ip4__flag_df=True,
+                ip4__payload=tcp_packet_tx,
+            )
+        else:
+            raise ValueError(f"Invalid IP address version combination: {ip__src} -> {ip__dst}")
 
     def send_tcp_packet(
         self,

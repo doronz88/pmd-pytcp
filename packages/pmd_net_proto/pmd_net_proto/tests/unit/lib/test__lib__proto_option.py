@@ -30,8 +30,11 @@ pmd_net_proto/tests/unit/lib/test__lib__proto_option.py
 ver 3.0.7
 """
 
-from dataclasses import FrozenInstanceError, dataclass
-from typing import Self
+from __future__ import annotations
+
+from dataclasses import FrozenInstanceError
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 from unittest import TestCase
 
 from pmd_net_proto.lib.buffer import Buffer
@@ -61,6 +64,15 @@ class _FixtureOption(ProtoOption):
 
     def __buffer__(self, _: int) -> memoryview:
         return memoryview(bytes(self.type) + self.len.to_bytes(1, "big"))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @classmethod
     def from_buffer(cls, buffer: Buffer, /) -> Self:
@@ -202,7 +214,7 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self.assertEqual(bytes(memoryview(self._option)), b"\x01\x02")
+        self.assertEqual(bytes(memoryview(as_buffer(self._option))), b"\x01\x02")
 
     def test__net_proto__lib__proto_option__from_buffer_roundtrip(self) -> None:
         """
@@ -211,7 +223,7 @@ class TestNetProtoLibProtoOptionConcrete(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        reconstructed = _FixtureOption.from_buffer(bytes(memoryview(self._option)))
+        reconstructed = _FixtureOption.from_buffer(bytes(memoryview(as_buffer(self._option))))
 
         self.assertEqual(reconstructed, self._option)
 
@@ -301,7 +313,7 @@ class TestNetProtoLibProtoOptionsEmpty(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self.assertEqual(bytes(memoryview(self._options)), b"")
+        self.assertEqual(bytes(memoryview(as_buffer(self._options))), b"")
 
     def test__net_proto__lib__proto_options__empty_iter(self) -> None:
         """
@@ -376,7 +388,7 @@ class TestNetProtoLibProtoOptionsPopulated(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._options)),
+            bytes(memoryview(as_buffer(self._options))),
             b"\x01\x02" + b"\x02\x03" + b"\x03\x04",
         )
 

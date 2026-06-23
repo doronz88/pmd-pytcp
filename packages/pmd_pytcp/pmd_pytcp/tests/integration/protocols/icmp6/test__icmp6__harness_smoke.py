@@ -34,6 +34,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/test__icmp6__harness_smoke.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip6Address, MacAddress
 from pmd_net_proto import Icmp6MessageEchoReply, Icmp6Type
 from pmd_pytcp.tests.lib.icmp_testcase import IcmpTestCase

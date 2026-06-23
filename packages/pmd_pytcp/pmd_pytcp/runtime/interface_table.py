@@ -31,6 +31,8 @@ pmd_pytcp/runtime/interface_table.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING

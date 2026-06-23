@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/llc/test__llc__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto import LlcControl, LlcIntegrityError, LlcParser, LlcSap, PacketRx

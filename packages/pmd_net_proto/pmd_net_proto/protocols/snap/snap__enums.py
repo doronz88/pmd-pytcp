@@ -34,6 +34,8 @@ pmd_net_proto/protocols/snap/snap__enums.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
 
 

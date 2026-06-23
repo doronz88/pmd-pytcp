@@ -34,6 +34,8 @@ pmd_pytcp/tests/lib/dhcp4_mock_server.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections import deque
 from typing import Callable
 from unittest.mock import MagicMock
@@ -68,6 +70,7 @@ from pmd_net_proto.protocols.dhcp4.options.dhcp4__option__subnet_mask import (
     Dhcp4OptionSubnetMask,
 )
 from pmd_net_proto.protocols.dhcp4.options.dhcp4__options import Dhcp4Options
+from pmd_pytcp._compat import as_buffer
 
 _UNSET: object = object()
 
@@ -245,7 +248,7 @@ class Dhcp4MockServer:
             item = self._reply_queue.popleft()
             if isinstance(item, BaseException):
                 raise item
-            return memoryview(item())
+            return memoryview(as_buffer(item()))
 
         mock_socket.send.side_effect = on_send
         mock_socket.recv__mv.side_effect = on_recv

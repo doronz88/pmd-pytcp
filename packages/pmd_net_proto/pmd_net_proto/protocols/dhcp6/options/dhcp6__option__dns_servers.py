@@ -30,9 +30,12 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option__dns_servers.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip6Address
 from pmd_net_proto.lib.buffer import Buffer
@@ -134,6 +137,15 @@ class Dhcp6OptionDnsServers(Dhcp6Option):
             )
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -141,7 +153,7 @@ class Dhcp6OptionDnsServers(Dhcp6Option):
         Ensure integrity of the DHCPv6 DNS Recursive Name Server option before parsing it.
         """
 
-        option_len = int.from_bytes(buffer[2:4])
+        option_len = int.from_bytes(buffer[2:4], "big")
 
         if option_len < DHCP6__OPTION__DNS_SERVERS__ELEMENT__LEN:
             raise Dhcp6IntegrityError(
@@ -173,14 +185,14 @@ class Dhcp6OptionDnsServers(Dhcp6Option):
             f"be {DHCP6__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := int.from_bytes(buffer[0:2])) == int(Dhcp6OptionType.DNS_SERVERS), (
+        assert (value := int.from_bytes(buffer[0:2], "big")) == int(Dhcp6OptionType.DNS_SERVERS), (
             f"The DHCPv6 DNS Recursive Name Server option type must be {Dhcp6OptionType.DNS_SERVERS!r}. "
             f"Got: {Dhcp6OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        option_len = int.from_bytes(buffer[2:4])
+        option_len = int.from_bytes(buffer[2:4], "big")
 
         return cls(
             [

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp6/test__dhcp6__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from typing import Any
 from unittest import TestCase
@@ -41,6 +43,7 @@ from pmd_net_proto import (
     Dhcp6Header,
     Dhcp6MessageType,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp6HeaderAsserts(TestCase):
@@ -208,7 +211,7 @@ class TestDhcp6HeaderOperation(TestCase):
 
         header = Dhcp6Header(msg_type=Dhcp6MessageType.SOLICIT, xid=0xAABBCC)
 
-        frame = bytes(memoryview(header))
+        frame = bytes(memoryview(as_buffer(header)))
 
         self.assertEqual(len(frame), DHCP6__HEADER__LEN, msg="Buffer must be 4 bytes long.")
         self.assertEqual(frame, b"\x01\xaa\xbb\xcc", msg="Unexpected msg-type/transaction-id bytes.")
@@ -222,7 +225,7 @@ class TestDhcp6HeaderOperation(TestCase):
 
         original = Dhcp6Header(**self._valid_kwargs())
 
-        rebuilt = Dhcp6Header.from_buffer(bytes(memoryview(original)))
+        rebuilt = Dhcp6Header.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,
@@ -239,7 +242,7 @@ class TestDhcp6HeaderOperation(TestCase):
         """
 
         original = Dhcp6Header(**self._valid_kwargs())
-        padded = bytes(memoryview(original)) + b"\xde\xad\xbe\xef"
+        padded = bytes(memoryview(as_buffer(original))) + b"\xde\xad\xbe\xef"
 
         rebuilt = Dhcp6Header.from_buffer(padded)
 

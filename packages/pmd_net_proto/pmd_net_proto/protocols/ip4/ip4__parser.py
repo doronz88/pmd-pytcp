@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip4/ip4__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -101,7 +103,7 @@ class Ip4Parser(Ip4[Buffer], ProtoParser):
             )
 
         hlen = (self._frame[0] & 0b00001111) << 2
-        plen = int.from_bytes(self._frame[2:4])
+        plen = int.from_bytes(self._frame[2:4], "big")
 
         # RFC 791 §3.1 — IHL (header length, in 32-bit words) is the
         # length of the internet header and "the minimum value for a

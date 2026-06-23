@@ -30,8 +30,10 @@ pmd_net_proto/protocols/igmp/message/igmp__message.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod
-from dataclasses import dataclass
+from pmd_net_proto._compat import dataclass
 from enum import IntEnum
 
 from pmd_net_proto.lib.buffer import Buffer

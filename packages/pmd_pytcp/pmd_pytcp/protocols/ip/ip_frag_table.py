@@ -30,8 +30,10 @@ pmd_pytcp/protocols/ip/ip_frag_table.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass
+from pmd_pytcp._compat import as_buffer, dataclass
 from enum import Enum
 from time import time
 
@@ -227,7 +229,7 @@ class IpFragTable:
             return IpFragAddResult(outcome=IpFragAddOutcome.ECN_MIXED__DROP)
 
         # Build the joined payload buffer in offset order.
-        joined = bytearray(payload_len)
+        joined = bytearray(as_buffer(payload_len))
         for entry_offset in sorted(self._flows[flow_id].payload):
             chunk = self._flows[flow_id].payload[entry_offset]
             struct.pack_into(f"{len(chunk)}s", joined, entry_offset, bytes(chunk))

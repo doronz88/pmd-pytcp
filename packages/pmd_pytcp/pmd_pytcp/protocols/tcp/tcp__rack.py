@@ -45,7 +45,9 @@ pmd_pytcp/protocols/tcp/tcp__rack.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import as_buffer, dataclass
 
 # RFC 8985 §5.2 invalid-timestamp marker. A segment's 'xmit_ts'
 # field is set to 'INFINITE_TS' when the segment is no longer
@@ -428,7 +430,7 @@ def tlp_calc_pto(
     if srtt_ms is not None and srtt_ms > 0:
         pto = 2 * srtt_ms
         if flight_size <= smss:
-            pto += max_ack_delay_ms
+            pto += as_buffer(max_ack_delay_ms)
     else:
         pto = 1000
 

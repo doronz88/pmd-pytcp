@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ip6__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -157,16 +159,15 @@ class Ip6TxHandler:
         if len(ip6_packet_tx) <= self._if._interface_mtu:
             self._if._packet_stats_tx.ip6__mtu_ok__send += 1
             __debug__ and log("ip6", f"{ip6_packet_tx.tracker} - {ip6_packet_tx}")
-            match self._if._interface_layer:
-                case InterfaceLayer.L2:
-                    return self._if._phtx_ethernet(
-                        ethernet__src=MacAddress(),
-                        ethernet__dst=MacAddress(),
-                        ethernet__payload=ip6_packet_tx,
-                    )
-                case InterfaceLayer.L3:
-                    self.__send_out_packet(ip6_packet_tx=ip6_packet_tx)
-                    return TxStatus.PASSED__IP6__TO_TX_RING
+            if self._if._interface_layer == InterfaceLayer.L2:
+                return self._if._phtx_ethernet(
+                    ethernet__src=MacAddress(),
+                    ethernet__dst=MacAddress(),
+                    ethernet__payload=ip6_packet_tx,
+                )
+            elif self._if._interface_layer == InterfaceLayer.L3:
+                self.__send_out_packet(ip6_packet_tx=ip6_packet_tx)
+                return TxStatus.PASSED__IP6__TO_TX_RING
 
         # Fragment packet and send out.
         self._if._packet_stats_tx.ip6__mtu_exceed__frag += 1

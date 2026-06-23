@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip6_hbh/test__ip6_hbh__option__pad1.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto.protocols.ip6_hbh.options.ip6_hbh__option import Ip6HbhOptionType

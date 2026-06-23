@@ -30,13 +30,16 @@ pmd_net_proto/protocols/raw/raw__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.enums import EtherType, IpProto
 from pmd_net_proto.lib.proto_assembler import ProtoAssembler
 from pmd_net_proto.lib.tracker import Tracker
 from pmd_net_proto.protocols.raw.raw__base import Raw
+from pmd_net_proto._compat import as_buffer
 
 
 class RawAssembler(Raw, ProtoAssembler):
@@ -70,4 +73,4 @@ class RawAssembler(Raw, ProtoAssembler):
         Assemble the Raw packet into list of buffers.
         """
 
-        buffers.append(self._payload)
+        buffers.append(as_buffer(self._payload))

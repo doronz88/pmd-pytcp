@@ -29,3 +29,5 @@ pmd_net_proto/lib/__init__.py
 
 ver 3.0.7
 """
+
+from __future__ import annotations

@@ -32,6 +32,8 @@ pmd_pytcp/tests/unit/protocols/tcp/fsm/test__tcp__fsm.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import cast
 from unittest import TestCase

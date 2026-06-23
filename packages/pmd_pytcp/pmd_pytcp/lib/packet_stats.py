@@ -30,9 +30,13 @@ pmd_pytcp/lib/packet_stats.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, fields
+from dataclasses import fields
+from pmd_pytcp._compat import dataclass
+from typing import Generic, TypeVar
 
 
 @dataclass(slots=True)
@@ -436,7 +440,8 @@ class PacketStatsTx(PacketStats):
     udp__unknown__drop: int = 0
 
 
-class PacketStatsShards[T: PacketStats]:
+T = TypeVar("T", bound=PacketStats)
+class PacketStatsShards(Generic[T]):
     """
     Per-thread shards of a 'PacketStats' dataclass for free-threaded
     (no-GIL) counter accumulation. Each writing thread increments its

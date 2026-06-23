@@ -1,7 +1,7 @@
-# Cross-platform validation. The stack is Linux-first; these jobs prove it imports and that
-# its host-portability surface (the Unix-only fcntl guard, the logging integration, the
-# stack-init helpers) works on Linux, macOS and Windows. Scoped to the import smoke plus the
-# unit suites that are green today; broadening to the whole suite is tracked separately.
+# Cross-platform / cross-version validation. The stack is Linux-first; these jobs prove it
+# imports and that its full test suite passes on Linux, macOS and Windows across every
+# supported interpreter (Python 3.9 - 3.14). The 3.9 floor is held by the back-compat layer
+# (pmd_*/_compat.py, typing_extensions, `from __future__ import annotations`).
 
 name: Tests
 
@@ -15,18 +15,21 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.14"
-      - name: Create venv + install packages (editable) + pytest
+          python-version: ${{ matrix.python-version }}
+      - name: Create venv + install packages (editable) + test deps
         run: |
           uv venv
-          uv pip install pytest parameterized -e ./packages/pmd_net_addr -e ./packages/pmd_net_proto -e ./packages/pmd_pytcp
-      - name: Import smoke (guards the Windows fcntl import path)
+          uv pip install pytest parameterized click -e ./packages/pmd_net_addr -e ./packages/pmd_net_proto -e ./packages/pmd_pytcp
+      - name: Import smoke (proves the migration imports on every interpreter / OS)
         run: uv run --no-project python -c "import pmd_pytcp, pmd_pytcp.stack, pmd_pytcp.socket, pmd_net_addr, pmd_net_proto; print('import OK')"
-      - name: Unit tests (logger + stack init)
+      - name: net_proto unit suite
+        run: uv run --no-project python -m pytest packages/pmd_net_proto/pmd_net_proto/tests/unit -q
+      - name: pytcp unit suite (logger + stack init)
         run: uv run --no-project python -m pytest packages/pmd_pytcp/pmd_pytcp/tests/unit/lib packages/pmd_pytcp/pmd_pytcp/tests/unit/stack -q

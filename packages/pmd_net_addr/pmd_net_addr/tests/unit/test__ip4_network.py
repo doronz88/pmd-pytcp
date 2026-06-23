@@ -30,6 +30,8 @@ pmd_net_addr/tests/unit/test__ip4_network.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import Any
 from unittest import TestCase

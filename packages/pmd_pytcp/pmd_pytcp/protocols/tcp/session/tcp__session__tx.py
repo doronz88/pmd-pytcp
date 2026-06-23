@@ -50,6 +50,8 @@ packages/pmd_pytcp/pmd_pytcp/protocols/tcp/session/tcp__session__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from typing import TYPE_CHECKING
 

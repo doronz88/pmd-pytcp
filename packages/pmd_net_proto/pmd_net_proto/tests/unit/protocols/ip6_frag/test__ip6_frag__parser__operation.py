@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip6_frag/test__ip6_frag__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import Any
 from unittest import TestCase

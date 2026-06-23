@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip6/test__ip6__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -48,6 +50,7 @@ from pmd_net_proto import (
     Ip6Header,
     IpProto,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestIp6HeaderAsserts(TestCase):
@@ -345,7 +348,7 @@ class TestIp6HeaderAsserts(TestCase):
             dst=Ip6Address("2001:db8::2"),
         )
 
-        rebuilt = Ip6Header.from_buffer(bytes(memoryview(original)))
+        rebuilt = Ip6Header.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

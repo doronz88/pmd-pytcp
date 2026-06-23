@@ -36,13 +36,16 @@ pmd_pytcp/tests/unit/test__packaging__dist_wheels.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import shutil
 import subprocess
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import ClassVar, override
+from typing import ClassVar
+from typing_extensions import override
 from unittest import TestCase
 
 _REPO_ROOT = Path(__file__).resolve().parents[5]

@@ -30,7 +30,9 @@ pmd_pytcp/socket/tcp__metadata.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
 from pmd_net_proto import Tracker

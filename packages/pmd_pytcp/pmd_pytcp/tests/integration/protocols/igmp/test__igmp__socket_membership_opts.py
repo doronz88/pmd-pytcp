@@ -31,8 +31,10 @@ pmd_net_proto/../pmd_pytcp/tests/integration/protocols/igmp/test__igmp__socket_m
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import sys
-from typing import override
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_pytcp import stack

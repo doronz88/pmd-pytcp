@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/ip6_dest_opts/test__ip6_dest_opts__option__tu
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

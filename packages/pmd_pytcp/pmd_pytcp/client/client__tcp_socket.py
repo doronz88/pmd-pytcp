@@ -38,8 +38,10 @@ pmd_pytcp/client/client__tcp_socket.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
-from typing import Self
+from typing_extensions import Self
 
 from pmd_net_proto.lib.enums import IpProto
 from pmd_pytcp.ipc.ipc__client import IpcClient

@@ -30,6 +30,8 @@ pmd_pytcp/socket/socket_table.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Iterator, Mapping
 

@@ -38,6 +38,8 @@ pmd_pytcp/tests/unit/protocols/arp/test__arp__cache.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 

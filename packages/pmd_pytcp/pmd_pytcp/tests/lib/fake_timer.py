@@ -31,11 +31,14 @@ pmd_pytcp/tests/lib/fake_timer.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import heapq
 from collections.abc import Callable
 from typing import Any
 
 from pmd_pytcp.runtime.timer import TimerHandle
+from pmd_pytcp._compat import as_buffer
 
 # Heap-key priority band. Retained as a fixed middle tuple
 # element so the heap key '(deadline_ms, prio, seq)' stays
@@ -101,7 +104,7 @@ class FakeTimer:
         if delta:
             rebased: list[tuple[int, int, int, TimerHandle]] = []
             for _deadline_ms, prio, seq, handle in self._heap:
-                handle.deadline_ms += delta
+                handle.deadline_ms += as_buffer(delta)
                 rebased.append((handle.deadline_ms, prio, seq, handle))
             heapq.heapify(rebased)
             self._heap = rebased

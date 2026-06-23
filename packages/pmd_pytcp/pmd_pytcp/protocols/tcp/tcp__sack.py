@@ -32,6 +32,8 @@ pmd_pytcp/protocols/tcp/tcp__sack.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto.lib.int_checks import UINT_32__MAX, is_uint32
 from pmd_pytcp.protocols.tcp.tcp__seq import Seq32, ge32, in_range32, le32, lt32, sub32
 

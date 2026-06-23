@@ -38,6 +38,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__so_linger.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from unittest.mock import patch
 

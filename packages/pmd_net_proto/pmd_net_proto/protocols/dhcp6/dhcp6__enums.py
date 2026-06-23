@@ -30,7 +30,9 @@ pmd_net_proto/protocols/dhcp6/dhcp6__enums.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.proto_enum import ProtoEnumByte, ProtoEnumWord
 
@@ -60,33 +62,32 @@ class Dhcp6MessageType(ProtoEnumByte):
         Get the value as a string.
         """
 
-        match self:
-            case Dhcp6MessageType.SOLICIT:
-                name = "Solicit"
-            case Dhcp6MessageType.ADVERTISE:
-                name = "Advertise"
-            case Dhcp6MessageType.REQUEST:
-                name = "Request"
-            case Dhcp6MessageType.CONFIRM:
-                name = "Confirm"
-            case Dhcp6MessageType.RENEW:
-                name = "Renew"
-            case Dhcp6MessageType.REBIND:
-                name = "Rebind"
-            case Dhcp6MessageType.REPLY:
-                name = "Reply"
-            case Dhcp6MessageType.RELEASE:
-                name = "Release"
-            case Dhcp6MessageType.DECLINE:
-                name = "Decline"
-            case Dhcp6MessageType.RECONFIGURE:
-                name = "Reconfigure"
-            case Dhcp6MessageType.INFORMATION_REQUEST:
-                name = "Information-Request"
-            case Dhcp6MessageType.RELAY_FORW:
-                name = "Relay-Forward"
-            case Dhcp6MessageType.RELAY_REPL:
-                name = "Relay-Reply"
+        if self == Dhcp6MessageType.SOLICIT:
+            name = "Solicit"
+        elif self == Dhcp6MessageType.ADVERTISE:
+            name = "Advertise"
+        elif self == Dhcp6MessageType.REQUEST:
+            name = "Request"
+        elif self == Dhcp6MessageType.CONFIRM:
+            name = "Confirm"
+        elif self == Dhcp6MessageType.RENEW:
+            name = "Renew"
+        elif self == Dhcp6MessageType.REBIND:
+            name = "Rebind"
+        elif self == Dhcp6MessageType.REPLY:
+            name = "Reply"
+        elif self == Dhcp6MessageType.RELEASE:
+            name = "Release"
+        elif self == Dhcp6MessageType.DECLINE:
+            name = "Decline"
+        elif self == Dhcp6MessageType.RECONFIGURE:
+            name = "Reconfigure"
+        elif self == Dhcp6MessageType.INFORMATION_REQUEST:
+            name = "Information-Request"
+        elif self == Dhcp6MessageType.RELAY_FORW:
+            name = "Relay-Forward"
+        elif self == Dhcp6MessageType.RELAY_REPL:
+            name = "Relay-Reply"
 
         return f"{self.value}" if self.is_unknown else name
 
@@ -110,20 +111,19 @@ class Dhcp6StatusCode(ProtoEnumWord):
         Get the value as a string.
         """
 
-        match self:
-            case Dhcp6StatusCode.SUCCESS:
-                name = "Success"
-            case Dhcp6StatusCode.UNSPEC_FAIL:
-                name = "UnspecFail"
-            case Dhcp6StatusCode.NO_ADDRS_AVAIL:
-                name = "NoAddrsAvail"
-            case Dhcp6StatusCode.NO_BINDING:
-                name = "NoBinding"
-            case Dhcp6StatusCode.NOT_ON_LINK:
-                name = "NotOnLink"
-            case Dhcp6StatusCode.USE_MULTICAST:
-                name = "UseMulticast"
-            case Dhcp6StatusCode.NO_PREFIX_AVAIL:
-                name = "NoPrefixAvail"
+        if self == Dhcp6StatusCode.SUCCESS:
+            name = "Success"
+        elif self == Dhcp6StatusCode.UNSPEC_FAIL:
+            name = "UnspecFail"
+        elif self == Dhcp6StatusCode.NO_ADDRS_AVAIL:
+            name = "NoAddrsAvail"
+        elif self == Dhcp6StatusCode.NO_BINDING:
+            name = "NoBinding"
+        elif self == Dhcp6StatusCode.NOT_ON_LINK:
+            name = "NotOnLink"
+        elif self == Dhcp6StatusCode.USE_MULTICAST:
+            name = "UseMulticast"
+        elif self == Dhcp6StatusCode.NO_PREFIX_AVAIL:
+            name = "NoPrefixAvail"
 
         return f"{self.value}" if self.is_unknown else name

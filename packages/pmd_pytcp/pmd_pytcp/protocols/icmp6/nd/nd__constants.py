@@ -39,6 +39,8 @@ pmd_pytcp/protocols/icmp6/nd/nd__constants.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from pmd_pytcp.stack.sysctl import register

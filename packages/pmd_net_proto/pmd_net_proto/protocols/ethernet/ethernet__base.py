@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ethernet/ethernet__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import TypeAliasType, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
@@ -45,11 +47,14 @@ from pmd_net_proto.protocols.ip4.ip4__assembler import (
 )
 from pmd_net_proto.protocols.ip6.ip6__assembler import Ip6Assembler
 from pmd_net_proto.protocols.raw.raw__assembler import RawAssembler
+from typing import Generic, TypeVar, Union
+from pmd_net_proto._compat import as_buffer
 
-type EthernetPayload = (ArpAssembler | Ip4Assembler | Ip4FragAssembler | Ip6Assembler | RawAssembler)
+EthernetPayload = TypeAliasType("EthernetPayload", Union[ArpAssembler, Ip4Assembler, Ip4FragAssembler, Ip6Assembler, RawAssembler])
 
 
-class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
+P = TypeVar("P", EthernetPayload, Buffer)
+class Ethernet(Proto, EthernetHeaderProperties, Generic[P]):
     """
     The Ethernet protocol base.
     """
@@ -90,10 +95,19 @@ class Ethernet[P: (EthernetPayload, Buffer)](Proto, EthernetHeaderProperties):
         Get the Ethernet packet as a memoryview.
         """
 
-        buffer = bytearray(self._header)
-        buffer += bytearray(self._payload)
+        buffer = bytearray(as_buffer(self._header))
+        buffer += bytearray(as_buffer(self._payload))
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def header(self) -> EthernetHeader:

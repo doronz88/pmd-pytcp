@@ -30,9 +30,12 @@ pmd_net_proto/protocols/ip6_hbh/options/ip6_hbh__option__jumbo_payload.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import UINT_16__MAX, is_uint32
@@ -112,7 +115,7 @@ class Ip6HbhOptionJumboPayload(Ip6HbhOption):
 
         struct.pack_into(
             IP6_HBH__OPTION__JUMBO_PAYLOAD__STRUCT,
-            buffer := bytearray(IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN),
+            buffer := bytearray(as_buffer(IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN)),
             0,
             int(self.type),
             IP6_HBH__OPTION__JUMBO_PAYLOAD__OPT_DATA_LEN,
@@ -120,6 +123,15 @@ class Ip6HbhOptionJumboPayload(Ip6HbhOption):
         )
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -146,7 +158,7 @@ class Ip6HbhOptionJumboPayload(Ip6HbhOption):
         # greater than 65,535." Values ≤ 65535 would have fit in
         # the standard 16-bit Payload Length field, so a Jumbo
         # Payload option carrying such a value is a spec violation.
-        value = int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN])
+        value = int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN], "big")
         if value <= UINT_16__MAX:
             raise Ip6HbhIntegrityError(
                 f"The IPv6 HBH Jumbo Payload option value must be greater than "
@@ -172,4 +184,4 @@ class Ip6HbhOptionJumboPayload(Ip6HbhOption):
 
         cls._validate_integrity(buffer)
 
-        return cls(value=int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN]))
+        return cls(value=int.from_bytes(buffer[IP6_HBH__OPTION__LEN:IP6_HBH__OPTION__JUMBO_PAYLOAD__LEN], "big"))

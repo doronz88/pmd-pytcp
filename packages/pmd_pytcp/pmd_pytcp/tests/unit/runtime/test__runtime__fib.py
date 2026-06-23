@@ -30,9 +30,11 @@ pmd_pytcp/tests/unit/runtime/test__runtime__fib.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import dataclasses
 import threading
-from typing import override
+from typing_extensions import override
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]

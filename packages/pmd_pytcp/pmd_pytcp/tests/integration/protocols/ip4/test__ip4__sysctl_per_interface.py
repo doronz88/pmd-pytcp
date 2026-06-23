@@ -39,7 +39,9 @@ pmd_pytcp/tests/integration/protocols/ip4/test__ip4__sysctl_per_interface.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_pytcp.stack import sysctl as sysctl_module

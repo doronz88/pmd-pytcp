@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/icmp4/test__icmp4__parser__sanity_checks.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase
@@ -38,6 +40,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pmd_net_proto import Icmp4Parser, Icmp4SanityError, Ip4Parser, PacketRx
 from pmd_net_proto.lib.inet_cksum import inet_cksum
+from pmd_net_proto._compat import as_buffer
 
 
 def _with_cksum(frame_no_cksum: bytes) -> bytes:
@@ -46,10 +49,10 @@ def _with_cksum(frame_no_cksum: bytes) -> bytes:
     checksum computed over the whole frame (with bytes [2:4] zeroed).
     """
 
-    zeroed = bytearray(frame_no_cksum)
+    zeroed = bytearray(as_buffer(frame_no_cksum))
     zeroed[2:4] = b"\x00\x00"
     cksum = inet_cksum(memoryview(bytes(zeroed)))
-    out = bytearray(frame_no_cksum)
+    out = bytearray(as_buffer(frame_no_cksum))
     out[2:4] = cksum.to_bytes(2, "big")
     return bytes(out)
 

@@ -30,7 +30,9 @@ pmd_net_proto/protocols/icmp6/message/nd/option/icmp6__nd__options.py
 ver 3.0.7
 """
 
-from typing import Self, override
+from __future__ import annotations
+
+from typing_extensions import Self, override
 
 from pmd_net_addr import MacAddress
 from pmd_net_proto.lib.buffer import Buffer
@@ -74,6 +76,7 @@ from pmd_net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__tlla imp
 from pmd_net_proto.protocols.icmp6.message.nd.option.icmp6__nd__option__unknown import (
     Icmp6NdOptionUnknown,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class Icmp6NdOptions(ProtoOptions):
@@ -176,30 +179,30 @@ class Icmp6NdOptions(ProtoOptions):
         options: list[Icmp6NdOption] = []
 
         while offset < len(buffer):
-            match Icmp6NdOptionType.from_bytes(buffer[offset : offset + 1]):
-                case Icmp6NdOptionType.SLLA:
-                    options.append(Icmp6NdOptionSlla.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.TLLA:
-                    options.append(Icmp6NdOptionTlla.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.PI:
-                    options.append(Icmp6NdOptionPi.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.REDIRECTED_HEADER:
-                    options.append(Icmp6NdOptionRedirectedHeader.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.MTU:
-                    options.append(Icmp6NdOptionMtu.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.NONCE:
-                    options.append(Icmp6NdOptionNonce.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.ROUTE_INFO:
-                    options.append(Icmp6NdOptionRouteInfo.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.RDNSS:
-                    options.append(Icmp6NdOptionRdnss.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.RA_FLAGS_EXTENSION:
-                    options.append(Icmp6NdOptionRaFlags.from_buffer(buffer[offset:]))
-                case Icmp6NdOptionType.DNSSL:
-                    options.append(Icmp6NdOptionDnssl.from_buffer(buffer[offset:]))
-                case _:
-                    options.append(Icmp6NdOptionUnknown.from_buffer(buffer[offset:]))
+            _match_subject = Icmp6NdOptionType.from_bytes(buffer[offset : offset + 1])
+            if _match_subject == Icmp6NdOptionType.SLLA:
+                options.append(Icmp6NdOptionSlla.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.TLLA:
+                options.append(Icmp6NdOptionTlla.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.PI:
+                options.append(Icmp6NdOptionPi.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.REDIRECTED_HEADER:
+                options.append(Icmp6NdOptionRedirectedHeader.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.MTU:
+                options.append(Icmp6NdOptionMtu.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.NONCE:
+                options.append(Icmp6NdOptionNonce.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.ROUTE_INFO:
+                options.append(Icmp6NdOptionRouteInfo.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.RDNSS:
+                options.append(Icmp6NdOptionRdnss.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.RA_FLAGS_EXTENSION:
+                options.append(Icmp6NdOptionRaFlags.from_buffer(buffer[offset:]))
+            elif _match_subject == Icmp6NdOptionType.DNSSL:
+                options.append(Icmp6NdOptionDnssl.from_buffer(buffer[offset:]))
+            else:
+                options.append(Icmp6NdOptionUnknown.from_buffer(buffer[offset:]))
 
-            offset += options[-1].len
+            offset += as_buffer(options[-1].len)
 
         return cls(*options)

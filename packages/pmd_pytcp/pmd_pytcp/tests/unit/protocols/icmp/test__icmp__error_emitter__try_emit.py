@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__try_emit.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_pytcp.protocols.icmp.icmp__error_emitter import (

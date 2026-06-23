@@ -30,6 +30,8 @@ pmd_pytcp/socket/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 import os
 import socket as _stdlib_socket
@@ -40,7 +42,8 @@ from abc import ABC
 from collections.abc import Iterable
 from enum import IntEnum
 from types import TracebackType
-from typing import Any, override
+from typing import Any
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
 from pmd_net_proto.lib.enums import EtherType, IpProto
@@ -395,11 +398,10 @@ class AddressFamily(NameEnum):
         Get the address family from an IP version.
         """
 
-        match ver:
-            case IpVersion.IP4:
-                return AddressFamily.INET4
-            case IpVersion.IP6:
-                return AddressFamily.INET6
+        if ver == IpVersion.IP4:
+            return AddressFamily.INET4
+        elif ver == IpVersion.IP6:
+            return AddressFamily.INET6
 
 
 class SocketType(NameEnum):
@@ -688,46 +690,45 @@ class socket(ABC):
         (subclasses then dispatch their TCP/UDP-specific options).
         """
 
-        match optname:
-            case _ if optname == SO_REUSEADDR:
-                self._so_reuseaddr = bool(value)
-                return True
-            case _ if optname == SO_REUSEPORT:
-                self._so_reuseport = bool(value)
-                return True
-            case _ if optname == SO_BROADCAST:
-                self._so_broadcast = bool(value)
-                return True
-            case _ if optname == SO_SNDBUF:
-                self._so_sndbuf = int(value)
-                return True
-            case _ if optname == SO_RCVBUF:
-                self._so_rcvbuf = int(value)
-                return True
-            case _ if optname == SO_RCVTIMEO:
-                self._so_rcvtimeo = float(value) if value else None
-                return True
-            case _ if optname == SO_SNDTIMEO:
-                self._so_sndtimeo = float(value) if value else None
-                return True
-            case _ if optname == SO_OOBINLINE:
-                # RFC 6093 §6 recommends universal inline delivery
-                # of TCP urgent data; PyTCP's RFC 6093 adherence
-                # record documents that the stack delivers ALL
-                # inbound data inline regardless of URG. The
-                # SO_OOBINLINE setsockopt accepts '1' as a no-op
-                # confirming the universal-inline posture and
-                # rejects '0' (which would opt INTO the
-                # out-of-band delivery RFC 6093 §6 advises
-                # against) — apps that try to disable it see
-                # actionable feedback rather than a silent failure.
-                if not value:
-                    raise OSError(
-                        errno.EINVAL,
-                        "SO_OOBINLINE cannot be disabled — PyTCP universally inlines "
-                        "TCP urgent data per RFC 6093 §6.",
-                    )
-                return True
+        if optname == SO_REUSEADDR:
+            self._so_reuseaddr = bool(value)
+            return True
+        elif optname == SO_REUSEPORT:
+            self._so_reuseport = bool(value)
+            return True
+        elif optname == SO_BROADCAST:
+            self._so_broadcast = bool(value)
+            return True
+        elif optname == SO_SNDBUF:
+            self._so_sndbuf = int(value)
+            return True
+        elif optname == SO_RCVBUF:
+            self._so_rcvbuf = int(value)
+            return True
+        elif optname == SO_RCVTIMEO:
+            self._so_rcvtimeo = float(value) if value else None
+            return True
+        elif optname == SO_SNDTIMEO:
+            self._so_sndtimeo = float(value) if value else None
+            return True
+        elif optname == SO_OOBINLINE:
+            # RFC 6093 §6 recommends universal inline delivery
+            # of TCP urgent data; PyTCP's RFC 6093 adherence
+            # record documents that the stack delivers ALL
+            # inbound data inline regardless of URG. The
+            # SO_OOBINLINE setsockopt accepts '1' as a no-op
+            # confirming the universal-inline posture and
+            # rejects '0' (which would opt INTO the
+            # out-of-band delivery RFC 6093 §6 advises
+            # against) — apps that try to disable it see
+            # actionable feedback rather than a silent failure.
+            if not value:
+                raise OSError(
+                    errno.EINVAL,
+                    "SO_OOBINLINE cannot be disabled — PyTCP universally inlines "
+                    "TCP urgent data per RFC 6093 §6.",
+                )
+            return True
         return False
 
     def _ipproto_ip_setsockopt(self, optname: int, value: int | bytes, /) -> bool:
@@ -740,61 +741,60 @@ class socket(ABC):
         cmsg on recvmsg).
         """
 
-        match optname:
-            case _ if optname == IP_TTL:
-                if not isinstance(value, int):
-                    raise OSError(errno.EINVAL, f"IP_TTL value must be int, got {type(value).__name__}")
-                if not 0 < int(value) < 256:
-                    raise OSError(errno.EINVAL, f"IP_TTL must be in 1..255, got {value!r}")
-                self._ip_ttl = int(value)
-                return True
-            case _ if optname == IP_TOS:
-                if not isinstance(value, int):
-                    raise OSError(errno.EINVAL, f"IP_TOS value must be int, got {type(value).__name__}")
-                self._ip_tos = int(value) & 0xFF
-                return True
-            case _ if optname == IP_OPTIONS:
-                if not isinstance(value, (bytes, bytearray, memoryview)):
-                    raise OSError(errno.EINVAL, f"IP_OPTIONS value must be bytes, got {type(value).__name__}")
-                self._ip_options = _validate_ip4_options_bytes(bytes(value))
-                return True
-            case _ if optname in (IP_RECVOPTS, IP_RETOPTS):
-                if not isinstance(value, int):
-                    raise OSError(errno.EINVAL, f"IP_RECVOPTS value must be int, got {type(value).__name__}")
-                self._ip_recvopts = bool(value)
-                return True
-            case _ if optname == IP_RECVTOS:
-                if not isinstance(value, int):
-                    raise OSError(errno.EINVAL, f"IP_RECVTOS value must be int, got {type(value).__name__}")
-                self._ip_recvtos = bool(value)
-                return True
-            case _ if optname == IP_RECVERR:
-                if not isinstance(value, int):
-                    raise OSError(errno.EINVAL, f"IP_RECVERR value must be int, got {type(value).__name__}")
-                self._ip_recverr = bool(value)
-                return True
-            case _ if optname in (IP_ADD_MEMBERSHIP, IP_DROP_MEMBERSHIP):
-                if not isinstance(value, (bytes, bytearray, memoryview)):
-                    raise OSError(
-                        errno.EINVAL,
-                        f"IP_ADD/DROP_MEMBERSHIP value must be an ip_mreq bytes object, got {type(value).__name__}",
-                    )
-                self._ipproto_ip_membership(optname, bytes(value))
-                return True
-            case _ if optname in (
+        if optname == IP_TTL:
+            if not isinstance(value, int):
+                raise OSError(errno.EINVAL, f"IP_TTL value must be int, got {type(value).__name__}")
+            if not 0 < int(value) < 256:
+                raise OSError(errno.EINVAL, f"IP_TTL must be in 1..255, got {value!r}")
+            self._ip_ttl = int(value)
+            return True
+        elif optname == IP_TOS:
+            if not isinstance(value, int):
+                raise OSError(errno.EINVAL, f"IP_TOS value must be int, got {type(value).__name__}")
+            self._ip_tos = int(value) & 0xFF
+            return True
+        elif optname == IP_OPTIONS:
+            if not isinstance(value, (bytes, bytearray, memoryview)):
+                raise OSError(errno.EINVAL, f"IP_OPTIONS value must be bytes, got {type(value).__name__}")
+            self._ip_options = _validate_ip4_options_bytes(bytes(value))
+            return True
+        elif optname in (IP_RECVOPTS, IP_RETOPTS):
+            if not isinstance(value, int):
+                raise OSError(errno.EINVAL, f"IP_RECVOPTS value must be int, got {type(value).__name__}")
+            self._ip_recvopts = bool(value)
+            return True
+        elif optname == IP_RECVTOS:
+            if not isinstance(value, int):
+                raise OSError(errno.EINVAL, f"IP_RECVTOS value must be int, got {type(value).__name__}")
+            self._ip_recvtos = bool(value)
+            return True
+        elif optname == IP_RECVERR:
+            if not isinstance(value, int):
+                raise OSError(errno.EINVAL, f"IP_RECVERR value must be int, got {type(value).__name__}")
+            self._ip_recverr = bool(value)
+            return True
+        elif optname in (IP_ADD_MEMBERSHIP, IP_DROP_MEMBERSHIP):
+            if not isinstance(value, (bytes, bytearray, memoryview)):
+                raise OSError(
+                    errno.EINVAL,
+                    f"IP_ADD/DROP_MEMBERSHIP value must be an ip_mreq bytes object, got {type(value).__name__}",
+                )
+            self._ipproto_ip_membership(optname, bytes(value))
+            return True
+        elif optname in (
                 IP_ADD_SOURCE_MEMBERSHIP,
                 IP_DROP_SOURCE_MEMBERSHIP,
                 IP_BLOCK_SOURCE,
                 IP_UNBLOCK_SOURCE,
             ):
-                if not isinstance(value, (bytes, bytearray, memoryview)):
-                    raise OSError(
-                        errno.EINVAL,
-                        f"IP source-membership value must be an ip_mreq_source bytes object, "
-                        f"got {type(value).__name__}",
-                    )
-                self._ipproto_ip_source_membership(optname, bytes(value))
-                return True
+            if not isinstance(value, (bytes, bytearray, memoryview)):
+                raise OSError(
+                    errno.EINVAL,
+                    f"IP source-membership value must be an ip_mreq_source bytes object, "
+                    f"got {type(value).__name__}",
+                )
+            self._ipproto_ip_source_membership(optname, bytes(value))
+            return True
         return False
 
     def _resolve_membership_interface(self, interface_address: Ip4Address, imr_ifindex: int, /) -> int:
@@ -942,32 +942,31 @@ class socket(ABC):
         include = Ip4MulticastFilterMode.INCLUDE
         exclude = Ip4MulticastFilterMode.EXCLUDE
 
-        match optname:
-            case _ if optname == IP_ADD_SOURCE_MEMBERSHIP:
-                if current is None:
-                    return Ip4MulticastFilter(include, frozenset({source}))
-                if current.mode is exclude:
-                    raise OSError(errno.EINVAL, "IP_ADD_SOURCE_MEMBERSHIP on an EXCLUDE-mode group")
-                return Ip4MulticastFilter(include, current.sources | {source})
-            case _ if optname == IP_DROP_SOURCE_MEMBERSHIP:
-                if current is None:
-                    raise OSError(errno.EADDRNOTAVAIL, "Socket is not a member of the group")
-                if current.mode is exclude:
-                    raise OSError(errno.EINVAL, "IP_DROP_SOURCE_MEMBERSHIP on an EXCLUDE-mode group")
-                if source not in current.sources:
-                    raise OSError(errno.EADDRNOTAVAIL, f"Source {source} is not in the include list")
-                remaining = current.sources - {source}
-                return Ip4MulticastFilter(include, remaining) if remaining else None
-            case _ if optname == IP_BLOCK_SOURCE:
-                if current is None or current.mode is include:
-                    raise OSError(errno.EINVAL, "IP_BLOCK_SOURCE requires an EXCLUDE-mode (any-source) membership")
-                return Ip4MulticastFilter(exclude, current.sources | {source})
-            case _ if optname == IP_UNBLOCK_SOURCE:
-                if current is None or current.mode is include:
-                    raise OSError(errno.EINVAL, "IP_UNBLOCK_SOURCE requires an EXCLUDE-mode (any-source) membership")
-                if source not in current.sources:
-                    raise OSError(errno.EADDRNOTAVAIL, f"Source {source} is not blocked")
-                return Ip4MulticastFilter(exclude, current.sources - {source})
+        if optname == IP_ADD_SOURCE_MEMBERSHIP:
+            if current is None:
+                return Ip4MulticastFilter(include, frozenset({source}))
+            if current.mode is exclude:
+                raise OSError(errno.EINVAL, "IP_ADD_SOURCE_MEMBERSHIP on an EXCLUDE-mode group")
+            return Ip4MulticastFilter(include, current.sources | {source})
+        elif optname == IP_DROP_SOURCE_MEMBERSHIP:
+            if current is None:
+                raise OSError(errno.EADDRNOTAVAIL, "Socket is not a member of the group")
+            if current.mode is exclude:
+                raise OSError(errno.EINVAL, "IP_DROP_SOURCE_MEMBERSHIP on an EXCLUDE-mode group")
+            if source not in current.sources:
+                raise OSError(errno.EADDRNOTAVAIL, f"Source {source} is not in the include list")
+            remaining = current.sources - {source}
+            return Ip4MulticastFilter(include, remaining) if remaining else None
+        elif optname == IP_BLOCK_SOURCE:
+            if current is None or current.mode is include:
+                raise OSError(errno.EINVAL, "IP_BLOCK_SOURCE requires an EXCLUDE-mode (any-source) membership")
+            return Ip4MulticastFilter(exclude, current.sources | {source})
+        elif optname == IP_UNBLOCK_SOURCE:
+            if current is None or current.mode is include:
+                raise OSError(errno.EINVAL, "IP_UNBLOCK_SOURCE requires an EXCLUDE-mode (any-source) membership")
+            if source not in current.sources:
+                raise OSError(errno.EADDRNOTAVAIL, f"Source {source} is not blocked")
+            return Ip4MulticastFilter(exclude, current.sources - {source})
 
         raise OSError(errno.EINVAL, f"Unsupported source-membership option {optname}")
 
@@ -977,21 +976,20 @@ class socket(ABC):
         the option is not handled here.
         """
 
-        match optname:
-            case _ if optname == IP_TTL:
-                return self._ip_ttl or 0
-            case _ if optname == IP_TOS:
-                return self._ip_tos
-            case _ if optname == IP_OPTIONS:
-                return self._ip_options
-            case _ if optname in (IP_RECVOPTS, IP_RETOPTS):
-                return int(self._ip_recvopts)
-            case _ if optname == IP_RECVTOS:
-                return int(self._ip_recvtos)
-            case _ if optname == IP_RECVERR:
-                return int(self._ip_recverr)
-            case _ if optname == IP_MTU:
-                return self._effective_pmtu()
+        if optname == IP_TTL:
+            return self._ip_ttl or 0
+        elif optname == IP_TOS:
+            return self._ip_tos
+        elif optname == IP_OPTIONS:
+            return self._ip_options
+        elif optname in (IP_RECVOPTS, IP_RETOPTS):
+            return int(self._ip_recvopts)
+        elif optname == IP_RECVTOS:
+            return int(self._ip_recvtos)
+        elif optname == IP_RECVERR:
+            return int(self._ip_recverr)
+        elif optname == IP_MTU:
+            return self._effective_pmtu()
         return None
 
     def _ipproto_ipv6_setsockopt(self, optname: int, value: int | bytes, /) -> bool:
@@ -1001,33 +999,32 @@ class socket(ABC):
         override) and IPV6_TCLASS (8-bit Traffic Class).
         """
 
-        match optname:
-            case _ if optname == IPV6_UNICAST_HOPS:
-                if not 0 < int(value) < 256:
-                    raise OSError(errno.EINVAL, f"IPV6_UNICAST_HOPS must be in 1..255, got {value!r}")
-                self._ipv6_unicast_hops = int(value)
-                return True
-            case _ if optname == IPV6_TCLASS:
-                self._ipv6_tclass = int(value) & 0xFF
-                return True
-            case _ if optname == IPV6_RECVTCLASS:
-                self._ipv6_recvtclass = bool(value)
-                return True
-            case _ if optname == IPV6_RECVERR:
-                self._ipv6_recverr = bool(value)
-                return True
-            case _ if optname == IPV6_V6ONLY:
-                self._ipv6_v6only = bool(value)
-                return True
-            case _ if optname in (IPV6_JOIN_GROUP, IPV6_LEAVE_GROUP):
-                if not isinstance(value, (bytes, bytearray, memoryview)):
-                    raise OSError(
-                        errno.EINVAL,
-                        f"IPV6_JOIN/LEAVE_GROUP value must be an ipv6_mreq bytes object, "
-                        f"got {type(value).__name__}",
-                    )
-                self._ipproto_ipv6_membership(optname, bytes(value))
-                return True
+        if optname == IPV6_UNICAST_HOPS:
+            if not 0 < int(value) < 256:
+                raise OSError(errno.EINVAL, f"IPV6_UNICAST_HOPS must be in 1..255, got {value!r}")
+            self._ipv6_unicast_hops = int(value)
+            return True
+        elif optname == IPV6_TCLASS:
+            self._ipv6_tclass = int(value) & 0xFF
+            return True
+        elif optname == IPV6_RECVTCLASS:
+            self._ipv6_recvtclass = bool(value)
+            return True
+        elif optname == IPV6_RECVERR:
+            self._ipv6_recverr = bool(value)
+            return True
+        elif optname == IPV6_V6ONLY:
+            self._ipv6_v6only = bool(value)
+            return True
+        elif optname in (IPV6_JOIN_GROUP, IPV6_LEAVE_GROUP):
+            if not isinstance(value, (bytes, bytearray, memoryview)):
+                raise OSError(
+                    errno.EINVAL,
+                    f"IPV6_JOIN/LEAVE_GROUP value must be an ipv6_mreq bytes object, "
+                    f"got {type(value).__name__}",
+                )
+            self._ipproto_ipv6_membership(optname, bytes(value))
+            return True
         return False
 
     def _ipproto_ipv6_membership(self, optname: int, mreq: bytes, /) -> None:
@@ -1112,19 +1109,18 @@ class socket(ABC):
         the option is not handled here.
         """
 
-        match optname:
-            case _ if optname == IPV6_UNICAST_HOPS:
-                return self._ipv6_unicast_hops or 0
-            case _ if optname == IPV6_TCLASS:
-                return self._ipv6_tclass
-            case _ if optname == IPV6_RECVTCLASS:
-                return int(self._ipv6_recvtclass)
-            case _ if optname == IPV6_RECVERR:
-                return int(self._ipv6_recverr)
-            case _ if optname == IPV6_V6ONLY:
-                return int(self._ipv6_v6only)
-            case _ if optname == IPV6_MTU:
-                return self._effective_pmtu()
+        if optname == IPV6_UNICAST_HOPS:
+            return self._ipv6_unicast_hops or 0
+        elif optname == IPV6_TCLASS:
+            return self._ipv6_tclass
+        elif optname == IPV6_RECVTCLASS:
+            return int(self._ipv6_recvtclass)
+        elif optname == IPV6_RECVERR:
+            return int(self._ipv6_recverr)
+        elif optname == IPV6_V6ONLY:
+            return int(self._ipv6_v6only)
+        elif optname == IPV6_MTU:
+            return self._effective_pmtu()
         return None
 
     def _effective_ip_ttl(self) -> int | None:
@@ -1217,27 +1213,26 @@ class socket(ABC):
         'int'; SO_LINGER returns the packed 'struct linger' bytes.
         """
 
-        match optname:
-            case _ if optname == SO_REUSEADDR:
-                return int(self._so_reuseaddr)
-            case _ if optname == SO_REUSEPORT:
-                return int(self._so_reuseport)
-            case _ if optname == SO_LINGER:
-                return self._so_linger_get()
-            case _ if optname == SO_BROADCAST:
-                return int(self._so_broadcast)
-            case _ if optname == SO_SNDBUF:
-                return self._so_sndbuf or 0
-            case _ if optname == SO_RCVBUF:
-                return self._so_rcvbuf or 0
-            case _ if optname == SO_RCVTIMEO:
-                return int(self._so_rcvtimeo) if self._so_rcvtimeo else 0
-            case _ if optname == SO_SNDTIMEO:
-                return int(self._so_sndtimeo) if self._so_sndtimeo else 0
-            case _ if optname == SO_OOBINLINE:
-                # Always 1 — PyTCP's RFC 6093 §6 universal-inline
-                # design (see the setsockopt comment above).
-                return 1
+        if optname == SO_REUSEADDR:
+            return int(self._so_reuseaddr)
+        elif optname == SO_REUSEPORT:
+            return int(self._so_reuseport)
+        elif optname == SO_LINGER:
+            return self._so_linger_get()
+        elif optname == SO_BROADCAST:
+            return int(self._so_broadcast)
+        elif optname == SO_SNDBUF:
+            return self._so_sndbuf or 0
+        elif optname == SO_RCVBUF:
+            return self._so_rcvbuf or 0
+        elif optname == SO_RCVTIMEO:
+            return int(self._so_rcvtimeo) if self._so_rcvtimeo else 0
+        elif optname == SO_SNDTIMEO:
+            return int(self._so_sndtimeo) if self._so_sndtimeo else 0
+        elif optname == SO_OOBINLINE:
+            # Always 1 — PyTCP's RFC 6093 §6 universal-inline
+            # design (see the setsockopt comment above).
+            return 1
         return None
 
     def __new__(
@@ -1264,21 +1259,20 @@ class socket(ABC):
             if protocol.__class__ is int and protocol == 0:
                 protocol = None
 
-            match family, type, protocol:
-                case (AddressFamily.PACKET, SocketType.RAW, _):
-                    return cls.__new__(PacketSocket)
-                case (AddressFamily.PACKET, _, _):
-                    raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
-                case _, SocketType.STREAM, IpProto.TCP | None:
-                    return cls.__new__(TcpSocket)
-                case _, SocketType.DGRAM, IpProto.UDP | None:
-                    return cls.__new__(UdpSocket)
-                case _, SocketType.RAW, None:
-                    raise OSError(errno.EPROTONOSUPPORT, os.strerror(errno.EPROTONOSUPPORT))
-                case (AddressFamily.INET6 | AddressFamily.INET4, SocketType.RAW, IpProto()):
-                    return cls.__new__(RawSocket)
-                case _:
-                    raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
+            if family == AddressFamily.PACKET and type == SocketType.RAW:
+                return cls.__new__(PacketSocket)
+            elif family == AddressFamily.PACKET:
+                raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
+            elif type == SocketType.STREAM and (protocol == IpProto.TCP or protocol is None):
+                return cls.__new__(TcpSocket)
+            elif type == SocketType.DGRAM and (protocol == IpProto.UDP or protocol is None):
+                return cls.__new__(UdpSocket)
+            elif type == SocketType.RAW and protocol is None:
+                raise OSError(errno.EPROTONOSUPPORT, os.strerror(errno.EPROTONOSUPPORT))
+            elif (family == AddressFamily.INET6 or family == AddressFamily.INET4) and type == SocketType.RAW and isinstance(protocol, IpProto):
+                return cls.__new__(RawSocket)
+            else:
+                raise ValueError(f"Invalid socket {family=}, {type=}, {protocol=} combination.")
 
         return super().__new__(cls)
 

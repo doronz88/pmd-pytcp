@@ -38,8 +38,10 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, override
+from dataclasses import field
+from pmd_pytcp._compat import dataclass
+from typing import TYPE_CHECKING
+from typing_extensions import override
 
 from pmd_net_addr import (
     Ip4Address,
@@ -2799,7 +2801,7 @@ class PacketHandlerL2(
         assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
 
         if (packet_rx := self._rx_ring.dequeue()) is not None:
-            if int.from_bytes(packet_rx.frame[12:14]) <= ETHERNET_802_3__PACKET__MAX_LEN:
+            if int.from_bytes(packet_rx.frame[12:14], "big") <= ETHERNET_802_3__PACKET__MAX_LEN:
                 self._phrx_ethernet_802_3(packet_rx)
             else:
                 self._phrx_ethernet(packet_rx)

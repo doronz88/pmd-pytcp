@@ -34,6 +34,8 @@ pmd_net_proto/tests/unit/protocols/llc/test__llc__parser__integrity_checks.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/lib/test__lib__proto_enum.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import enum
 import os
 import subprocess

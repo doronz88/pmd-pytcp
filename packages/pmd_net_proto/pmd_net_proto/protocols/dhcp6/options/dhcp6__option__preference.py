@@ -30,9 +30,12 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__option__preference.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint8
@@ -109,6 +112,15 @@ class Dhcp6OptionPreference(Dhcp6Option):
         )
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -116,13 +128,13 @@ class Dhcp6OptionPreference(Dhcp6Option):
         Ensure integrity of the DHCPv6 Preference option before parsing it.
         """
 
-        if (value := DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4])) != DHCP6__OPTION__PREFERENCE__LEN:
+        if (value := DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4], "big")) != DHCP6__OPTION__PREFERENCE__LEN:
             raise Dhcp6IntegrityError(
                 "The DHCPv6 Preference option length value must be "
                 f"{DHCP6__OPTION__PREFERENCE__LEN} bytes. Got: {value!r}"
             )
 
-        if (value := DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4])) > len(buffer):
+        if (value := DHCP6__OPTION__LEN + int.from_bytes(buffer[2:4], "big")) > len(buffer):
             raise Dhcp6IntegrityError(
                 "The DHCPv6 Preference option length value must be less than or equal "
                 f"to the length of provided bytes ({len(buffer)}). Got: {value!r}"
@@ -139,11 +151,11 @@ class Dhcp6OptionPreference(Dhcp6Option):
             f"The minimum length of the DHCPv6 Preference option must " f"be {DHCP6__OPTION__LEN} bytes. Got: {value!r}"
         )
 
-        assert (value := int.from_bytes(buffer[0:2])) == int(Dhcp6OptionType.PREFERENCE), (
+        assert (value := int.from_bytes(buffer[0:2], "big")) == int(Dhcp6OptionType.PREFERENCE), (
             f"The DHCPv6 Preference option type must be {Dhcp6OptionType.PREFERENCE!r}. "
             f"Got: {Dhcp6OptionType.from_int(value)!r}"
         )
 
         cls._validate_integrity(buffer)
 
-        return cls(int.from_bytes(buffer[DHCP6__OPTION__LEN : DHCP6__OPTION__LEN + 1]))
+        return cls(int.from_bytes(buffer[DHCP6__OPTION__LEN : DHCP6__OPTION__LEN + 1], "big"))

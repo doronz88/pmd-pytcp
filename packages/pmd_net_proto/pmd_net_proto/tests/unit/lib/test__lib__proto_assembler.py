@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/lib/test__lib__proto_assembler.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import itertools
 from unittest import TestCase
 
@@ -37,6 +39,8 @@ from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
 from pmd_net_proto.lib.proto_assembler import ProtoAssembler
 from pmd_net_proto.lib.tracker import Tracker
+from typing_extensions import override
+from pmd_net_proto._compat import as_buffer
 
 
 class _ConcreteAssembler(ProtoAssembler):
@@ -58,10 +62,19 @@ class _ConcreteAssembler(ProtoAssembler):
         return f"ConcreteAssembler({self._payload!r})"
 
     def __buffer__(self, _: int) -> memoryview:
-        return memoryview(self._payload)
+        return memoryview(as_buffer(self._payload))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     def assemble(self, buffers: list[Buffer], /) -> None:
-        buffers.append(self._payload)
+        buffers.append(as_buffer(self._payload))
 
 
 class _TrackerReset(TestCase):
@@ -127,6 +140,15 @@ class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):
 
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
         with self.assertRaises(TypeError):
             Partial()  # type: ignore[abstract]
@@ -143,7 +165,7 @@ class TestNetProtoLibProtoAssemblerAbstract(_TrackerReset):
         assembler = _ConcreteAssembler(b"\x01\x02")
 
         self.assertEqual(len(assembler), 2)
-        self.assertEqual(bytes(memoryview(assembler)), b"\x01\x02")
+        self.assertEqual(bytes(memoryview(as_buffer(assembler))), b"\x01\x02")
 
 
 class TestNetProtoLibProtoAssemblerTracker(_TrackerReset):
@@ -260,6 +282,15 @@ class TestNetProtoLibProtoAssemblerAbstractBody(_TrackerReset):
 
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
             def assemble(self, buffers: list[Buffer], /) -> None:
                 super().assemble(buffers)  # type: ignore[safe-super]

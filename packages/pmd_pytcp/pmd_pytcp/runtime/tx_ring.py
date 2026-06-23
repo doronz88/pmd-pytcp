@@ -30,12 +30,14 @@ pmd_pytcp/runtime/tx_ring.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import collections
 import os
 import select
 import threading
 from collections.abc import Callable
-from typing import override
+from typing_extensions import TypeAliasType, override
 
 from pmd_net_proto import (
     Ethernet8023Assembler,
@@ -54,12 +56,13 @@ from pmd_pytcp.lib.logger import log
 from pmd_pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsTx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+from typing import Union
 
 # A fully-built outbound frame ready for 'os.writev'. The TX
 # deque carries these alongside '_TxRequest' marshaled-call
 # descriptors (see the ring-handoff design): the worker writes
 # a 'TxFrame' directly and runs a '_TxRequest' callable.
-type TxFrame = EthernetAssembler | Ethernet8023Assembler | Ip6Assembler | Ip4Assembler | Ip4FragAssembler
+TxFrame = TypeAliasType("TxFrame", Union[EthernetAssembler, Ethernet8023Assembler, Ip6Assembler, Ip4Assembler, Ip4FragAssembler])
 
 # Per-protocol-class dispatch table mapping the TX-side Assembler
 # concrete class to its (Ethernet-type prefix, MTU overhead) tuple.

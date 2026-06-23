@@ -39,8 +39,10 @@ packages/pmd_pytcp/pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session_
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
-from typing import override
+from typing_extensions import override
 
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState
 from pmd_pytcp.tests.lib.tcp_testcase import TcpTestCase

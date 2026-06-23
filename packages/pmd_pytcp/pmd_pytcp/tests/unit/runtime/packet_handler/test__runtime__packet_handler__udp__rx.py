@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__udp__
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
@@ -50,6 +52,7 @@ from pmd_pytcp import stack
 from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.packet_handler.packet_handler__udp__rx import UdpRxHandler
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -194,11 +197,11 @@ class TestPacketHandlerUdpRxParse(_UdpRxTestBase):
         """
 
         frame = bytearray(
-            Ip4Assembler(
+            as_buffer(Ip4Assembler(
                 ip4__src=HOST_A__IP4,
                 ip4__dst=STACK__IP4_ADDRESS,
                 ip4__payload=UdpAssembler(udp__sport=12345, udp__dport=54321),
-            )
+            ))
         )
         # UDP cksum is at offset IP4_header_len + 6. Minimum IP header is 20.
         frame[20 + 6] = 0xDE

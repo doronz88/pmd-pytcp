@@ -34,12 +34,15 @@ pmd_pytcp/runtime/fib.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from collections.abc import Iterable
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from enum import IntEnum
 
 from pmd_net_addr import Ip4Address, Ip4Network, Ip6Address, Ip6Network
+from typing import Generic, TypeVar
 
 
 class RouteScope(IntEnum):
@@ -72,11 +75,10 @@ class RouteProtocol(IntEnum):
     DHCP = 16  # learned from a DHCP lease
 
 
+A = TypeVar("A", Ip4Address, Ip6Address)
+N = TypeVar("N", Ip4Network, Ip6Network)
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Route[
-    A: (Ip4Address, Ip6Address),
-    N: (Ip4Network, Ip6Network),
-]:
+class Route(Generic[A, N]):
     """
     A single routing-table entry.
     """
@@ -115,10 +117,7 @@ class Route[
         )
 
 
-class RouteTable[
-    A: (Ip4Address, Ip6Address),
-    N: (Ip4Network, Ip6Network),
-]:
+class RouteTable(Generic[A, N]):
     """
     A single-address-family host-mode routing table.
 

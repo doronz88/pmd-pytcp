@@ -33,7 +33,10 @@ pmd_pytcp/tests/unit/protocols/ip4/link_local/test__link_local__client__bound.py
 ver 3.0.7
 """
 
-from typing import cast, override
+from __future__ import annotations
+
+from typing import cast
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 

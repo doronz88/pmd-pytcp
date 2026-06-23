@@ -30,7 +30,9 @@ pmd_net_proto/lib/enums.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.proto import Proto
 from pmd_net_proto.lib.proto_enum import ProtoEnumByte, ProtoEnumWord
@@ -52,15 +54,14 @@ class EtherType(ProtoEnumWord):
         Get the value as a string.
         """
 
-        match self:
-            case EtherType.ARP:
-                name = "ARP"
-            case EtherType.IP4:
-                name = "IPv4"
-            case EtherType.IP6:
-                name = "IPv6"
-            case EtherType.RAW:
-                name = "Raw"
+        if self == EtherType.ARP:
+            name = "ARP"
+        elif self == EtherType.IP4:
+            name = "IPv4"
+        elif self == EtherType.IP6:
+            name = "IPv6"
+        elif self == EtherType.RAW:
+            name = "Raw"
 
         return f"0x{self.value:0>4x}" if self.is_unknown else name
 
@@ -115,33 +116,32 @@ class IpProto(ProtoEnumByte):
         Get the value as a string.
         """
 
-        match self:
-            case IpProto.IP6_HBH:
-                name = "IPv6_HBH"
-            case IpProto.ICMP4:
-                name = "ICMPv4"
-            case IpProto.IGMP:
-                name = "IGMP"
-            case IpProto.IP4:
-                name = "IPv4"
-            case IpProto.TCP:
-                name = "TCP"
-            case IpProto.UDP:
-                name = "UDP"
-            case IpProto.IP6:
-                name = "IPv6"
-            case IpProto.IP6_ROUTING:
-                name = "IPv6_Routing"
-            case IpProto.IP6_FRAG:
-                name = "IPv6_Frag"
-            case IpProto.ICMP6:
-                name = "ICMPv6"
-            case IpProto.IP6_NO_NEXT_HEADER:
-                name = "IPv6_NoNextHeader"
-            case IpProto.IP6_DEST_OPTS:
-                name = "IPv6_DestOpts"
-            case IpProto.RAW:
-                name = "Raw"
+        if self == IpProto.IP6_HBH:
+            name = "IPv6_HBH"
+        elif self == IpProto.ICMP4:
+            name = "ICMPv4"
+        elif self == IpProto.IGMP:
+            name = "IGMP"
+        elif self == IpProto.IP4:
+            name = "IPv4"
+        elif self == IpProto.TCP:
+            name = "TCP"
+        elif self == IpProto.UDP:
+            name = "UDP"
+        elif self == IpProto.IP6:
+            name = "IPv6"
+        elif self == IpProto.IP6_ROUTING:
+            name = "IPv6_Routing"
+        elif self == IpProto.IP6_FRAG:
+            name = "IPv6_Frag"
+        elif self == IpProto.ICMP6:
+            name = "ICMPv6"
+        elif self == IpProto.IP6_NO_NEXT_HEADER:
+            name = "IPv6_NoNextHeader"
+        elif self == IpProto.IP6_DEST_OPTS:
+            name = "IPv6_DestOpts"
+        elif self == IpProto.RAW:
+            name = "Raw"
 
         return f"{self.value}" if self.is_unknown else name
 

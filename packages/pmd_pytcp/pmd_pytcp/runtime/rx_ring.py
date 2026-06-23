@@ -30,11 +30,13 @@ pmd_pytcp/runtime/rx_ring.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import collections
 import os
 import select
 import selectors
-from typing import override
+from typing_extensions import override
 
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp.lib import io_backend

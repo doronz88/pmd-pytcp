@@ -32,6 +32,8 @@ pmd_pytcp/tests/unit/protocols/tcp/test__tcp__icmp_metadata.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from dataclasses import FrozenInstanceError
 from unittest import TestCase
 

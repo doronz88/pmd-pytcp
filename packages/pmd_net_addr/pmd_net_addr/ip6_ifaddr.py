@@ -30,9 +30,12 @@ pmd_net_addr/ip6_ifaddr.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import hashlib
 import secrets
-from typing import ClassVar, Self, final
+from typing import ClassVar
+from typing_extensions import Self, final
 
 from pmd_net_addr.errors import (
     Ip6AddressFormatError,

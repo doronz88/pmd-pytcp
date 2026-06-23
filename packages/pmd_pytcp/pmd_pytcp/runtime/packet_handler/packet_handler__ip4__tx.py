@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ip4__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -208,16 +210,15 @@ class Ip4TxHandler:
         if len(ip4_packet_tx) <= self._if._interface_mtu:
             self._if._packet_stats_tx.ip4__mtu_ok__send += 1
             __debug__ and log("ip4", f"{ip4_packet_tx.tracker} - {ip4_packet_tx}")
-            match self._if._interface_layer:
-                case InterfaceLayer.L2:
-                    return self._if._phtx_ethernet(
-                        ethernet__src=MacAddress(),
-                        ethernet__dst=MacAddress(),
-                        ethernet__payload=ip4_packet_tx,
-                    )
-                case InterfaceLayer.L3:
-                    self.__send_out_packet(ip4_packet_tx)
-                    return TxStatus.PASSED__IP4__TO_TX_RING
+            if self._if._interface_layer == InterfaceLayer.L2:
+                return self._if._phtx_ethernet(
+                    ethernet__src=MacAddress(),
+                    ethernet__dst=MacAddress(),
+                    ethernet__payload=ip4_packet_tx,
+                )
+            elif self._if._interface_layer == InterfaceLayer.L3:
+                self.__send_out_packet(ip4_packet_tx)
+                return TxStatus.PASSED__IP4__TO_TX_RING
 
         # RFC 791 §3.1: a datagram with DF=1 that exceeds the link
         # MTU MUST be discarded. Fragmenting it locally would emit
@@ -286,18 +287,17 @@ class Ip4TxHandler:
             __debug__ and log("ip4", f"{ip4_frag_tx.tracker} - {ip4_frag_tx}")
             self._if._packet_stats_tx.ip4__mtu_exceed__frag__send += 1
 
-            match self._if._interface_layer:
-                case InterfaceLayer.L2:
-                    outbound_tx_status.add(
-                        self._if._phtx_ethernet(
-                            ethernet__src=MacAddress(),
-                            ethernet__dst=MacAddress(),
-                            ethernet__payload=ip4_frag_tx,
-                        )
+            if self._if._interface_layer == InterfaceLayer.L2:
+                outbound_tx_status.add(
+                    self._if._phtx_ethernet(
+                        ethernet__src=MacAddress(),
+                        ethernet__dst=MacAddress(),
+                        ethernet__payload=ip4_frag_tx,
                     )
-                case InterfaceLayer.L3:
-                    self.__send_out_packet(ip4_frag_tx)
-                    outbound_tx_status.add(TxStatus.PASSED__IP4__TO_TX_RING)
+                )
+            elif self._if._interface_layer == InterfaceLayer.L3:
+                self.__send_out_packet(ip4_frag_tx)
+                outbound_tx_status.add(TxStatus.PASSED__IP4__TO_TX_RING)
 
         # Return the most severe code.
         for tx_status in [

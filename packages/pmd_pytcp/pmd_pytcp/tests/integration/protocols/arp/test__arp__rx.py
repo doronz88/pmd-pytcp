@@ -37,6 +37,8 @@ pmd_pytcp/tests/integration/protocols/arp/test__arp__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pmd_net_addr import Ip4Address, MacAddress

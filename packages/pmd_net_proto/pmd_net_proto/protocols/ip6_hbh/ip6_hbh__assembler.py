@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_hbh/ip6_hbh__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.enums import IpProto
@@ -45,6 +47,7 @@ from pmd_net_proto.protocols.ip6_hbh.options.ip6_hbh__options import (
     IP6_HBH__OPTIONS__MAX_LEN,
     Ip6HbhOptions,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip6HbhAssembler(Ip6Hbh, ProtoAssembler):
@@ -102,6 +105,6 @@ class Ip6HbhAssembler(Ip6Hbh, ProtoAssembler):
         Assemble the IPv6 HBH packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
-        buffers.append(bytearray(self._options))
-        buffers.append(self._payload)
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
+        buffers.append(as_buffer(bytearray(as_buffer(self._options))))
+        buffers.append(as_buffer(self._payload))

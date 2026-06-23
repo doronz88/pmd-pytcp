@@ -42,7 +42,9 @@ pmd_pytcp/tests/integration/protocols/ip6/test__ip6__rfc6437_flow_label.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import Ip6Address
 from pmd_net_proto import Icmp6Assembler, Icmp6MessageEchoRequest

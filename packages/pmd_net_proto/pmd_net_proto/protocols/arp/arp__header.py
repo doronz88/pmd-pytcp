@@ -30,10 +30,13 @@ pmd_net_proto/protocols/arp/arp__header.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from abc import ABC
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import dataclass
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto.lib.buffer import Buffer
@@ -151,6 +154,15 @@ class ArpHeader(ProtoStruct):
         )
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     @classmethod

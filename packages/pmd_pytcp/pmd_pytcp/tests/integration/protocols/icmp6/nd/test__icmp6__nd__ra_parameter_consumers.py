@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_parameter_con
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from typing import Any, cast
 from unittest.mock import patch

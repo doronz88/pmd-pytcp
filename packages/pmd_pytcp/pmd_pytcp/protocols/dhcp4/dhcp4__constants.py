@@ -41,6 +41,8 @@ ver 3.0.7
 # 64 seconds. Each delay is randomised by ±1 second so a fleet
 # of hosts powered on simultaneously does not all retransmit
 # at the same instant.
+from __future__ import annotations
+
 DHCP4__RETRANS_INITIAL_MS = 4000
 DHCP4__RETRANS_MAX_MS = 64000
 DHCP4__RETRANS_JITTER_MS = 1000

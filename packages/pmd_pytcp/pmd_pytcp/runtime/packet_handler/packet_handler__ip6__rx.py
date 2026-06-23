@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ip6__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time as time_module
 from typing import TYPE_CHECKING, cast
 
@@ -216,37 +218,36 @@ class Ip6RxHandler:
         non_hbh_seen: bool = False
 
         while current_next in _IP6_EXTENSION_HEADERS:
-            match current_next:
-                case IpProto.IP6_HBH:
-                    if non_hbh_seen:
-                        # RFC 8200 §4.3: HBH must be the first extension
-                        # header. Out-of-order HBH is a §4 unrecognized-
-                        # next-header equivalent — emit Param Problem
-                        # code 1 with pointer at this header byte.
-                        self._if._packet_stats_rx.ip6__hbh__not_first__drop += 1
-                        self.__phrx_ip6__emit_parameter_problem_unrecognized_next_header(
-                            packet_rx, pointer=chain_offset
-                        )
-                        return
-                    if not self._phrx_ip6_hbh(packet_rx, chain_offset=chain_offset):
-                        return
-                    chain_offset += (packet_rx.ip6_hbh.hdr_ext_len + 1) * 8
-                    current_next = packet_rx.ip6_hbh.next
-                case IpProto.IP6_ROUTING:
-                    if not self._phrx_ip6_routing(packet_rx, chain_offset=chain_offset):
-                        return
-                    non_hbh_seen = True
-                    chain_offset += (packet_rx.ip6_routing.hdr_ext_len + 1) * 8
-                    current_next = packet_rx.ip6_routing.next
-                case IpProto.IP6_FRAG:
-                    self._if._phrx_ip6_frag(packet_rx)
-                    return  # Frag handles re-entry on reassembly.
-                case IpProto.IP6_DEST_OPTS:
-                    if not self._phrx_ip6_dest_opts(packet_rx, chain_offset=chain_offset):
-                        return
-                    non_hbh_seen = True
-                    chain_offset += (packet_rx.ip6_dest_opts.hdr_ext_len + 1) * 8
-                    current_next = packet_rx.ip6_dest_opts.next
+            if current_next == IpProto.IP6_HBH:
+                if non_hbh_seen:
+                    # RFC 8200 §4.3: HBH must be the first extension
+                    # header. Out-of-order HBH is a §4 unrecognized-
+                    # next-header equivalent — emit Param Problem
+                    # code 1 with pointer at this header byte.
+                    self._if._packet_stats_rx.ip6__hbh__not_first__drop += 1
+                    self.__phrx_ip6__emit_parameter_problem_unrecognized_next_header(
+                        packet_rx, pointer=chain_offset
+                    )
+                    return
+                if not self._phrx_ip6_hbh(packet_rx, chain_offset=chain_offset):
+                    return
+                chain_offset += (packet_rx.ip6_hbh.hdr_ext_len + 1) * 8
+                current_next = packet_rx.ip6_hbh.next
+            elif current_next == IpProto.IP6_ROUTING:
+                if not self._phrx_ip6_routing(packet_rx, chain_offset=chain_offset):
+                    return
+                non_hbh_seen = True
+                chain_offset += (packet_rx.ip6_routing.hdr_ext_len + 1) * 8
+                current_next = packet_rx.ip6_routing.next
+            elif current_next == IpProto.IP6_FRAG:
+                self._if._phrx_ip6_frag(packet_rx)
+                return  # Frag handles re-entry on reassembly.
+            elif current_next == IpProto.IP6_DEST_OPTS:
+                if not self._phrx_ip6_dest_opts(packet_rx, chain_offset=chain_offset):
+                    return
+                non_hbh_seen = True
+                chain_offset += (packet_rx.ip6_dest_opts.hdr_ext_len + 1) * 8
+                current_next = packet_rx.ip6_dest_opts.next
 
             # Re-anchor 'packet_rx.ip6._payload' onto the post-
             # extension-header frame so downstream transport

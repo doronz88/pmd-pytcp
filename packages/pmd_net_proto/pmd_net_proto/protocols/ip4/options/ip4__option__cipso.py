@@ -37,9 +37,12 @@ pmd_net_proto/protocols/ip4/options/ip4__option__cipso.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint32
@@ -129,7 +132,7 @@ class Ip4OptionCipso(Ip4Option):
 
         struct.pack_into(
             IP4__OPTION__CIPSO__STRUCT,
-            buffer := bytearray(self.len),
+            buffer := bytearray(as_buffer(self.len)),
             0,
             int(self.type),
             self.len,
@@ -142,6 +145,15 @@ class Ip4OptionCipso(Ip4Option):
             offset += len(tag)
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -189,7 +201,7 @@ class Ip4OptionCipso(Ip4Option):
                     f"option boundary. Got tag at offset {offset}: tag_len={tag_len}, "
                     f"option_end={end}"
                 )
-            offset += tag_len
+            offset += as_buffer(tag_len)
 
     @override
     @classmethod
@@ -209,13 +221,13 @@ class Ip4OptionCipso(Ip4Option):
 
         cls._validate_integrity(buffer)
 
-        doi = int.from_bytes(bytes(buffer[2:6]))
+        doi = int.from_bytes(bytes(buffer[2:6]), "big")
         tags: list[bytes] = []
         offset = IP4__OPTION__CIPSO__HDR_LEN + IP4__OPTION__CIPSO__DOI_LEN
         end = buffer[1]
         while offset < end:
             tag_len = buffer[offset + 1]
             tags.append(bytes(buffer[offset : offset + tag_len]))
-            offset += tag_len
+            offset += as_buffer(tag_len)
 
         return cls(doi=doi, tags=tags)

@@ -46,6 +46,8 @@ pmd_pytcp/protocols/ip6/ip6__flow_label.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import hashlib
 
 from pmd_net_addr import Ip6Address

@@ -39,9 +39,11 @@ pmd_pytcp/tests/lib/ipc_control_testcase.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
-from typing import override
+from typing_extensions import override
 
 from pmd_pytcp import stack
 from pmd_pytcp.client import ClientStack, connect

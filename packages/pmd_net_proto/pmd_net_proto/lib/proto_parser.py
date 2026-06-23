@@ -30,10 +30,13 @@ pmd_net_proto/lib/proto_parser.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
+from pmd_net_proto._compat import as_buffer
 
 
 class ProtoParser(Proto):
@@ -73,4 +76,4 @@ class ProtoParser(Proto):
         Get the '_frame' attribute.
         """
 
-        return memoryview(self._frame)
+        return memoryview(as_buffer(self._frame))

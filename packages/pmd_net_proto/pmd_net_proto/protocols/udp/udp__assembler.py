@@ -30,7 +30,9 @@ pmd_net_proto/protocols/udp/udp__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -38,6 +40,7 @@ from pmd_net_proto.lib.proto_assembler import ProtoAssembler
 from pmd_net_proto.lib.tracker import Tracker
 from pmd_net_proto.protocols.udp.udp__base import Udp
 from pmd_net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
+from pmd_net_proto._compat import as_buffer
 
 
 class UdpAssembler(Udp, ProtoAssembler):
@@ -86,7 +89,7 @@ class UdpAssembler(Udp, ProtoAssembler):
         Assemble the UDP packet into list of buffers.
         """
 
-        header = bytearray(self._header)
+        header = bytearray(as_buffer(self._header))
         if self._udp__no_cksum:
             # RFC 6935 §5 alternative mode: emit the literal
             # value 0x0000 — sender opts the datagram out of
@@ -100,7 +103,7 @@ class UdpAssembler(Udp, ProtoAssembler):
             # 0x0000 remains unambiguously the "no checksum
             # generated" sentinel.
             cksum = inet_cksum(header, self._payload, init=self.pshdr_sum)
-            header[6:8] = (cksum or 0xFFFF).to_bytes(2)
+            header[6:8] = (cksum or 0xFFFF).to_bytes(2, "big")
 
-        buffers.append(header)
-        buffers.append(self._payload)
+        buffers.append(as_buffer(header))
+        buffers.append(as_buffer(self._payload))

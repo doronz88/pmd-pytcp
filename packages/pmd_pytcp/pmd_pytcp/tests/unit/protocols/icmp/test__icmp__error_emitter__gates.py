@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/protocols/icmp/test__icmp__error_emitter__gates.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

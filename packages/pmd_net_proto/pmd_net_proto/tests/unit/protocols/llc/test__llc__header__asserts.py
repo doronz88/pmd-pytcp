@@ -31,9 +31,12 @@ pmd_net_proto/tests/unit/protocols/llc/test__llc__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto import LLC__HEADER__LEN, LlcControl, LlcHeader, LlcSap
+from pmd_net_proto._compat import as_buffer
 
 
 class TestLlcHeaderAsserts(TestCase):
@@ -134,7 +137,7 @@ class TestLlcHeaderAsserts(TestCase):
             control=LlcControl.UI,
         )
 
-        rebuilt = LlcHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = LlcHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

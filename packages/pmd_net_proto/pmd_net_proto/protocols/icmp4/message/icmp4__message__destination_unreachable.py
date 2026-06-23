@@ -30,9 +30,12 @@ pmd_net_proto/protocols/icmp4/message/icmp4__message__destination_unreachable.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint16
@@ -104,13 +107,12 @@ class Icmp4DestinationUnreachableCode(Icmp4Code):
         Get the value as a string.
         """
 
-        match self:
-            case Icmp4DestinationUnreachableCode.NETWORK_TOS:
-                return "Network TOS"
-            case Icmp4DestinationUnreachableCode.HOST_TOS:
-                return "Host TOS"
-            case _:
-                return super().__str__()
+        if self == Icmp4DestinationUnreachableCode.NETWORK_TOS:
+            return "Network TOS"
+        elif self == Icmp4DestinationUnreachableCode.HOST_TOS:
+            return "Host TOS"
+        else:
+            return super().__str__()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -198,6 +200,15 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         buffer[ICMP4__DESTINATION_UNREACHABLE__LEN:] = self.data
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def _pack_header(
@@ -209,28 +220,27 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Get the ICMPv4 Destination Unreachable message as bytes.
         """
 
-        match self.code:
-            case Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
-                struct.pack_into(
-                    ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
-                    buffer := bytearray(buffer_len),
-                    0,
-                    int(self.type),
-                    int(self.code),
-                    0,
-                    0,
-                    self.mtu,
-                )
-            case _:
-                struct.pack_into(
-                    ICMP4__DESTINATION_UNREACHABLE__STRUCT,
-                    buffer := bytearray(buffer_len),
-                    0,
-                    int(self.type),
-                    int(self.code),
-                    0,
-                    0,
-                )
+        if self.code == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
+            struct.pack_into(
+                ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
+                buffer := bytearray(as_buffer(buffer_len)),
+                0,
+                int(self.type),
+                int(self.code),
+                0,
+                0,
+                self.mtu,
+            )
+        else:
+            struct.pack_into(
+                ICMP4__DESTINATION_UNREACHABLE__STRUCT,
+                buffer := bytearray(as_buffer(buffer_len)),
+                0,
+                int(self.type),
+                int(self.code),
+                0,
+                0,
+            )
 
         return buffer
 
@@ -272,18 +282,18 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Initialize the ICMPv4 Destination Unreachable message from buffer.
         """
 
-        match Icmp4DestinationUnreachableCode.from_int(buffer[1]):
-            case Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
-                type_, code, cksum, _, mtu = struct.unpack(
-                    ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
-                    buffer[:ICMP4__DESTINATION_UNREACHABLE__LEN],
-                )
-            case _:
-                type_, code, cksum, _ = struct.unpack(
-                    ICMP4__DESTINATION_UNREACHABLE__STRUCT,
-                    buffer[:ICMP4__DESTINATION_UNREACHABLE__LEN],
-                )
-                mtu = None
+        _match_subject = Icmp4DestinationUnreachableCode.from_int(buffer[1])
+        if _match_subject == Icmp4DestinationUnreachableCode.FRAGMENTATION_NEEDED:
+            type_, code, cksum, _, mtu = struct.unpack(
+                ICMP4__DESTINATION_UNREACHABLE__FRAGMENTATION_NEEDED__STRUCT,
+                buffer[:ICMP4__DESTINATION_UNREACHABLE__LEN],
+            )
+        else:
+            type_, code, cksum, _ = struct.unpack(
+                ICMP4__DESTINATION_UNREACHABLE__STRUCT,
+                buffer[:ICMP4__DESTINATION_UNREACHABLE__LEN],
+            )
+            mtu = None
 
         assert (received_type := Icmp4Type.from_int(type_)) == (
             valid_type := Icmp4Type.DESTINATION_UNREACHABLE
@@ -302,5 +312,5 @@ class Icmp4MessageDestinationUnreachable(Icmp4Message):
         Assemble the ICMPv4 Destination Unreachable message into the buffer list.
         """
 
-        buffers.append(self._pack_header())
-        buffers.append(self.data)
+        buffers.append(as_buffer(self._pack_header()))
+        buffers.append(as_buffer(self.data))

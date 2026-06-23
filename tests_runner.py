@@ -40,13 +40,52 @@ tests_runner.py
 ver 3.0.6
 """
 
+from __future__ import annotations
+
 import os
 import sys
 import time
 import unittest
-from typing import Any, override
+from typing import Any
 
 import click
+from typing_extensions import override
+
+# 'TestCase.enterContext' landed in Python 3.11; the suites use it in
+# 'setUp'. Provide the documented equivalent on 3.9 / 3.10 so the suites
+# run unchanged under this runner (pytest gets the same shim via conftest).
+if not hasattr(unittest.TestCase, "enterContext"):
+
+    def _enter_context(self: unittest.TestCase, cm: Any) -> Any:
+        manager = type(cm)
+        result = manager.__enter__(cm)
+        self.addCleanup(manager.__exit__, cm, None, None, None)
+        return result
+
+    unittest.TestCase.enterContext = _enter_context  # type: ignore[attr-defined]
+
+
+def _unshadow_stack_submodules() -> None:
+    """
+    Restore 'pmd_pytcp.stack' submodule attributes after every test.
+
+    Stack tests assign module-level globals (e.g. 'stack.address' /
+    'stack.neighbor') that shadow the same-named submodules. On Python
+    3.9 / 3.10 'unittest.mock.patch' resolves a dotted target getattr-first,
+    so a leaked global makes 'patch("pmd_pytcp.stack.address.log")' resolve
+    the instance (no 'log') and fail; 3.11+ resolves import-first and is
+    immune. Re-pointing the attributes at the submodules after each test
+    keeps the suite version-independent (mirrors the pytest conftest hook).
+    """
+
+    stack = sys.modules.get("pmd_pytcp.stack")
+    if stack is None:
+        return
+    prefix = "pmd_pytcp.stack."
+    for name, module in list(sys.modules.items()):
+        if name.startswith(prefix) and "." not in name[len(prefix) :]:
+            setattr(stack, name[len(prefix) :], module)
+
 
 # Map outcome -> 'click.style' kwargs for the indented method-name line.
 _OUTCOME_STYLES: dict[str, dict[str, Any]] = {
@@ -124,6 +163,17 @@ class TestslideStyleResult(unittest.TextTestResult):
         """
 
         unittest.TestResult.startTest(self, test)
+
+    @override
+    def stopTest(self, test: unittest.TestCase) -> None:
+        """
+        Restore the 'pmd_pytcp.stack' submodule attributes after each
+        test so a leaked module-global cannot break a later test's
+        'mock.patch' target resolution on Python 3.9 / 3.10.
+        """
+
+        unittest.TestResult.stopTest(self, test)
+        _unshadow_stack_submodules()
 
     @override
     def addSuccess(self, test: unittest.TestCase) -> None:

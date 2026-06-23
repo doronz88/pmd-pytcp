@@ -31,6 +31,8 @@ ver 3.0.7
 """
 
 
+from __future__ import annotations
+
 class TcpSessionError(Exception):
     """
     Critical errors.

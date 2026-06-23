@@ -39,7 +39,9 @@ pmd_pytcp/tests/lib/icmp_testcase.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 from typing import Any, cast
 from unittest.mock import _patch, patch
 

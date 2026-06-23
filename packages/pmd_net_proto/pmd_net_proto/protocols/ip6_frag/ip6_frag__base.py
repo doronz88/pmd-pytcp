@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_frag/ip6_frag__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
@@ -38,6 +40,7 @@ from pmd_net_proto.protocols.ip6_frag.ip6_frag__header import (
     Ip6FragHeader,
     Ip6FragHeaderProperties,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip6Frag(Proto, Ip6FragHeaderProperties):
@@ -83,10 +86,19 @@ class Ip6Frag(Proto, Ip6FragHeaderProperties):
         Get the IPv6 Frag packet as a memoryview.
         """
 
-        buffer = bytearray(self._header)
-        buffer += self._payload
+        buffer = bytearray(as_buffer(self._header))
+        buffer += as_buffer(self._payload)
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def header(self) -> Ip6FragHeader:

@@ -34,6 +34,8 @@ pmd_pytcp/tests/integration/protocols/ethernet/test__ethernet__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, Literal
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
@@ -777,36 +779,35 @@ class TestPacketHandlerEthernetTx(EthernetTestCase):
         # unchanged — only the control knob moved.
         default4 = Ip4Network("0.0.0.0/0")
         default6 = Ip6Network("::/0")
-        match self._gateway_state:
-            case "set":
-                # Keep the harness-installed default routes.
-                pass
-            case "unset":
-                # Remove the default routes so off-link
-                # destinations have no route — the 'no_gw__drop'
-                # branch (now "no route to host").
-                stack.ip4_fib.remove(destination=default4)
-                stack.ip6_fib.remove(destination=default6)
-            case "miss":
-                # Repoint the default routes at hosts whose MACs
-                # are unresolved in the cache mocks (HOST_B is the
-                # canonical "cache-miss" fixture).
-                stack.ip4_fib.remove(destination=default4)
-                stack.ip6_fib.remove(destination=default6)
-                stack.ip4_fib.add(
-                    route=Route(
-                        destination=default4,
-                        gateway=HOST_B__IP4_ADDRESS,
-                        protocol=RouteProtocol.BOOT,
-                    )
+        if self._gateway_state == "set":
+            # Keep the harness-installed default routes.
+            pass
+        elif self._gateway_state == "unset":
+            # Remove the default routes so off-link
+            # destinations have no route — the 'no_gw__drop'
+            # branch (now "no route to host").
+            stack.ip4_fib.remove(destination=default4)
+            stack.ip6_fib.remove(destination=default6)
+        elif self._gateway_state == "miss":
+            # Repoint the default routes at hosts whose MACs
+            # are unresolved in the cache mocks (HOST_B is the
+            # canonical "cache-miss" fixture).
+            stack.ip4_fib.remove(destination=default4)
+            stack.ip6_fib.remove(destination=default6)
+            stack.ip4_fib.add(
+                route=Route(
+                    destination=default4,
+                    gateway=HOST_B__IP4_ADDRESS,
+                    protocol=RouteProtocol.BOOT,
                 )
-                stack.ip6_fib.add(
-                    route=Route(
-                        destination=default6,
-                        gateway=HOST_B__IP6_ADDRESS,
-                        protocol=RouteProtocol.BOOT,
-                    )
+            )
+            stack.ip6_fib.add(
+                route=Route(
+                    destination=default6,
+                    gateway=HOST_B__IP6_ADDRESS,
+                    protocol=RouteProtocol.BOOT,
                 )
+            )
 
     def test__packet_handler__ethernet__tx(self) -> None:
         """

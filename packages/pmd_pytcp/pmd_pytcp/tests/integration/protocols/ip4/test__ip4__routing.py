@@ -32,6 +32,8 @@ pmd_pytcp/tests/integration/protocols/ip4/test__ip4__routing.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 from unittest.mock import MagicMock
 

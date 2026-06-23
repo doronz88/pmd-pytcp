@@ -42,6 +42,8 @@ pmd_pytcp/tests/integration/socket/test__socket__ipv6_join_group.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 import struct
 import sys

@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/icmp4/test__icmp4__message__echo_request__ass
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

@@ -30,8 +30,10 @@ pmd_net_proto/protocols/dhcp6/options/dhcp6__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC
-from typing import Self, override
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip6Address
 from pmd_net_proto.lib.buffer import Buffer
@@ -76,6 +78,7 @@ from pmd_net_proto.protocols.dhcp6.options.dhcp6__option__status_code import (
 from pmd_net_proto.protocols.dhcp6.options.dhcp6__option__unknown import (
     Dhcp6OptionUnknown,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class Dhcp6Options(ProtoOptions):
@@ -231,7 +234,7 @@ class Dhcp6Options(ProtoOptions):
                     f"The DHCPv6 option is missing its 4-byte code+len header. Got: {offset=}, {hlen=}",
                 )
 
-            offset += DHCP6__OPTION__LEN + int.from_bytes(frame[offset + 2 : offset + 4])
+            offset += DHCP6__OPTION__LEN + int.from_bytes(frame[offset + 2 : offset + 4], "big")
             if offset > hlen:
                 raise Dhcp6IntegrityError(
                     f"The DHCPv6 option length must not extend past the message length. Got: {offset=}, {hlen=}",
@@ -248,31 +251,31 @@ class Dhcp6Options(ProtoOptions):
         options: list[Dhcp6Option] = []
 
         while offset < len(buffer):
-            match Dhcp6OptionType.from_bytes(buffer[offset : offset + 2]):
-                case Dhcp6OptionType.CLIENT_ID:
-                    options.append(Dhcp6OptionClientId.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.SERVER_ID:
-                    options.append(Dhcp6OptionServerId.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.IA_NA:
-                    options.append(Dhcp6OptionIaNa.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.IA_ADDR:
-                    options.append(Dhcp6OptionIaAddr.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.ORO:
-                    options.append(Dhcp6OptionOro.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.PREFERENCE:
-                    options.append(Dhcp6OptionPreference.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.ELAPSED_TIME:
-                    options.append(Dhcp6OptionElapsedTime.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.STATUS_CODE:
-                    options.append(Dhcp6OptionStatusCode.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.RAPID_COMMIT:
-                    options.append(Dhcp6OptionRapidCommit.from_buffer(buffer[offset:]))
-                case Dhcp6OptionType.DNS_SERVERS:
-                    options.append(Dhcp6OptionDnsServers.from_buffer(buffer[offset:]))
-                case _:
-                    options.append(Dhcp6OptionUnknown.from_buffer(buffer[offset:]))
+            _match_subject = Dhcp6OptionType.from_bytes(buffer[offset : offset + 2])
+            if _match_subject == Dhcp6OptionType.CLIENT_ID:
+                options.append(Dhcp6OptionClientId.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.SERVER_ID:
+                options.append(Dhcp6OptionServerId.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.IA_NA:
+                options.append(Dhcp6OptionIaNa.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.IA_ADDR:
+                options.append(Dhcp6OptionIaAddr.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.ORO:
+                options.append(Dhcp6OptionOro.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.PREFERENCE:
+                options.append(Dhcp6OptionPreference.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.ELAPSED_TIME:
+                options.append(Dhcp6OptionElapsedTime.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.STATUS_CODE:
+                options.append(Dhcp6OptionStatusCode.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.RAPID_COMMIT:
+                options.append(Dhcp6OptionRapidCommit.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp6OptionType.DNS_SERVERS:
+                options.append(Dhcp6OptionDnsServers.from_buffer(buffer[offset:]))
+            else:
+                options.append(Dhcp6OptionUnknown.from_buffer(buffer[offset:]))
 
-            offset += options[-1].len
+            offset += as_buffer(options[-1].len)
 
         return cls(*options)
 

@@ -33,9 +33,12 @@ pmd_pytcp/protocols/tcp/tcp__loss_recovery.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto.lib.int_checks import is_uint32
 from pmd_pytcp.protocols.tcp.tcp__sack import SackScoreboard
 from pmd_pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32, sub32
+from pmd_pytcp._compat import as_buffer
 
 # RFC 6675 §3 default DupThresh (matches RFC 5681's count-based
 # fast-retransmit threshold).
@@ -84,7 +87,7 @@ def is_lost(
         # by 'le32(seq, left)' anyway.
         if le32(seq, left):
             blocks_above += 1
-            bytes_above += sub32(right, left)
+            bytes_above += as_buffer(sub32(right, left))
 
     if blocks_above >= dup_thresh:
         return True
@@ -152,6 +155,6 @@ def pipe(
         # filters these but defensive callers may not.
         if not (le32(snd_una, left) and le32(right, snd_max)):
             continue
-        sacked += sub32(right, left)
+        sacked += as_buffer(sub32(right, left))
 
     return in_flight - sacked

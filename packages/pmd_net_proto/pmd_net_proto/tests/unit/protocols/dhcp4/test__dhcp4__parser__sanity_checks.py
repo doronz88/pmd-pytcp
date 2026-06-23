@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__parser__sanity_checks.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -37,6 +39,7 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pmd_net_proto import DHCP4__HEADER__LEN, Dhcp4Parser, Dhcp4SanityError
 from pmd_net_proto.protocols.dhcp4.dhcp4__header import DHCP4__HEADER__MAGIC_COOKIE
+from pmd_net_proto._compat import as_buffer
 
 # Minimum-valid options block: DHCP Message Type = ACK +
 # Server Identifier (10.0.1.1) + IP Address Lease Time (3600s)
@@ -88,7 +91,7 @@ def _dhcp4_frame(
     file_bytes = b"\x00" * 128
 
     frame = bytes([op, htype, hlen, hops])
-    frame += xid.to_bytes(4, "big")
+    frame += as_buffer(xid.to_bytes(4, "big"))
     frame += secs.to_bytes(2, "big") + flags.to_bytes(2, "big")
     frame += ciaddr + yiaddr + siaddr + giaddr
     frame += chaddr + sname_bytes + file_bytes + DHCP4__HEADER__MAGIC_COOKIE

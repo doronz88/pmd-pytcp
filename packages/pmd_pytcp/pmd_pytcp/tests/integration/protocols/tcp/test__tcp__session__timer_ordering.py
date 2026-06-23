@@ -33,6 +33,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__timer_ordering.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 
 from pmd_net_addr import Ip4Address

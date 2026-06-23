@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip6_routing/test__ip6_routing__assembler__ope
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto.lib.buffer import Buffer

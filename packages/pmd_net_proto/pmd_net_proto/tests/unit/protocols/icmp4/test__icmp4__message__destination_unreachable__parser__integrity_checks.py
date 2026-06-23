@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/icmp4/test__icmp4__message__destination_unrea
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase

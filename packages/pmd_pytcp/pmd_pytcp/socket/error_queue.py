@@ -45,9 +45,11 @@ pmd_pytcp/socket/error_queue.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno as _errno
 import struct
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from enum import IntEnum
 
 from pmd_net_addr import Ip4Address, Ip6Address
@@ -155,39 +157,38 @@ def icmp4_to_errno(*, icmp_type: int, icmp_code: int) -> int:
     Reference: RFC 792 (ICMPv4 message types).
     """
 
-    match (icmp_type, icmp_code):
-        # Destination Unreachable (type 3).
-        case (3, 0):
-            return _errno.ENETUNREACH  # Net unreachable
-        case (3, 1):
-            return _errno.EHOSTUNREACH  # Host unreachable
-        case (3, 2):
-            return _errno.ENOPROTOOPT  # Protocol unreachable
-        case (3, 3):
-            return _errno.ECONNREFUSED  # Port unreachable
-        case (3, 4):
-            return _errno.EMSGSIZE  # Frag Needed and DF set
-        case (3, 5):
-            return _errno.EOPNOTSUPP  # Source Route Failed
-        case (3, 6 | 7):
-            return _errno.ENETUNREACH  # Dest Net/Host Unknown
-        case (3, 8):
-            return _errno.EHOSTDOWN  # Source Host Isolated
-        case (3, 9 | 11):
-            return _errno.ENETUNREACH  # Net admin / TOS prohibited
-        case (3, 10 | 12):
-            return _errno.EHOSTUNREACH  # Host admin / TOS prohibited
-        case (3, 13):
-            return _errno.EHOSTUNREACH  # Communication admin prohibited
-        # Time Exceeded (type 11).
-        case (11, _):
-            return _errno.EHOSTUNREACH
-        # Parameter Problem (type 12).
-        case (12, _):
-            return _errno.EPROTO
-        # Default — Linux falls back to EHOSTUNREACH for unknown ICMPv4 errors.
-        case _:
-            return _errno.EHOSTUNREACH
+    # Destination Unreachable (type 3).
+    if icmp_type == 3 and icmp_code == 0:
+        return _errno.ENETUNREACH  # Net unreachable
+    elif icmp_type == 3 and icmp_code == 1:
+        return _errno.EHOSTUNREACH  # Host unreachable
+    elif icmp_type == 3 and icmp_code == 2:
+        return _errno.ENOPROTOOPT  # Protocol unreachable
+    elif icmp_type == 3 and icmp_code == 3:
+        return _errno.ECONNREFUSED  # Port unreachable
+    elif icmp_type == 3 and icmp_code == 4:
+        return _errno.EMSGSIZE  # Frag Needed and DF set
+    elif icmp_type == 3 and icmp_code == 5:
+        return _errno.EOPNOTSUPP  # Source Route Failed
+    elif icmp_type == 3 and (icmp_code == 6 or icmp_code == 7):
+        return _errno.ENETUNREACH  # Dest Net/Host Unknown
+    elif icmp_type == 3 and icmp_code == 8:
+        return _errno.EHOSTDOWN  # Source Host Isolated
+    elif icmp_type == 3 and (icmp_code == 9 or icmp_code == 11):
+        return _errno.ENETUNREACH  # Net admin / TOS prohibited
+    elif icmp_type == 3 and (icmp_code == 10 or icmp_code == 12):
+        return _errno.EHOSTUNREACH  # Host admin / TOS prohibited
+    elif icmp_type == 3 and icmp_code == 13:
+        return _errno.EHOSTUNREACH  # Communication admin prohibited
+    # Time Exceeded (type 11).
+    elif icmp_type == 11:
+        return _errno.EHOSTUNREACH
+    # Parameter Problem (type 12).
+    elif icmp_type == 12:
+        return _errno.EPROTO
+    # Default — Linux falls back to EHOSTUNREACH for unknown ICMPv4 errors.
+    else:
+        return _errno.EHOSTUNREACH
 
 
 def icmp6_to_errno(*, icmp_type: int, icmp_code: int) -> int:
@@ -199,31 +200,30 @@ def icmp6_to_errno(*, icmp_type: int, icmp_code: int) -> int:
     Reference: RFC 4443 (ICMPv6 message types).
     """
 
-    match (icmp_type, icmp_code):
-        # Destination Unreachable (type 1).
-        case (1, 0):
-            return _errno.ENETUNREACH  # No route to destination
-        case (1, 1):
-            return _errno.EACCES  # Communication admin prohibited
-        case (1, 2):
-            return _errno.EHOSTUNREACH  # Beyond scope of source address
-        case (1, 3):
-            return _errno.EHOSTUNREACH  # Address unreachable
-        case (1, 4):
-            return _errno.ECONNREFUSED  # Port unreachable
-        case (1, 5 | 6):
-            return _errno.EACCES  # Source policy / reject route
-        # Packet Too Big (type 2).
-        case (2, _):
-            return _errno.EMSGSIZE
-        # Time Exceeded (type 3).
-        case (3, _):
-            return _errno.EHOSTUNREACH
-        # Parameter Problem (type 4).
-        case (4, _):
-            return _errno.EPROTO
-        case _:
-            return _errno.EHOSTUNREACH
+    # Destination Unreachable (type 1).
+    if icmp_type == 1 and icmp_code == 0:
+        return _errno.ENETUNREACH  # No route to destination
+    elif icmp_type == 1 and icmp_code == 1:
+        return _errno.EACCES  # Communication admin prohibited
+    elif icmp_type == 1 and icmp_code == 2:
+        return _errno.EHOSTUNREACH  # Beyond scope of source address
+    elif icmp_type == 1 and icmp_code == 3:
+        return _errno.EHOSTUNREACH  # Address unreachable
+    elif icmp_type == 1 and icmp_code == 4:
+        return _errno.ECONNREFUSED  # Port unreachable
+    elif icmp_type == 1 and (icmp_code == 5 or icmp_code == 6):
+        return _errno.EACCES  # Source policy / reject route
+    # Packet Too Big (type 2).
+    elif icmp_type == 2:
+        return _errno.EMSGSIZE
+    # Time Exceeded (type 3).
+    elif icmp_type == 3:
+        return _errno.EHOSTUNREACH
+    # Parameter Problem (type 4).
+    elif icmp_type == 4:
+        return _errno.EPROTO
+    else:
+        return _errno.EHOSTUNREACH
 
 
 def build_icmp_error_entry(

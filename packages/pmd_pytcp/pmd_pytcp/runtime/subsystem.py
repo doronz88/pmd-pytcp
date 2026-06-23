@@ -30,6 +30,8 @@ pmd_pytcp/runtime/subsystem.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from abc import ABC, abstractmethod
 

@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__nud_reachability.p
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.socket import AddressFamily
 from pmd_pytcp.tests.lib.network_testcase import (

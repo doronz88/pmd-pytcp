@@ -38,7 +38,8 @@ import threading
 import time
 from collections import deque
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
+from typing_extensions import override
 
 from pmd_net_addr import (
     Ip4Address,
@@ -148,13 +149,12 @@ class UdpSocket(socket):
         # adapter.
         self._plpmtud_adapter: UdpPlpmtudAdapter | None = None
 
-        match self._address_family:
-            case AddressFamily.INET6:
-                self._local_ip_address = Ip6Address()
-                self._remote_ip_address = Ip6Address()
-            case AddressFamily.INET4:
-                self._local_ip_address = Ip4Address()
-                self._remote_ip_address = Ip4Address()
+        if self._address_family == AddressFamily.INET6:
+            self._local_ip_address = Ip6Address()
+            self._remote_ip_address = Ip6Address()
+        elif self._address_family == AddressFamily.INET4:
+            self._local_ip_address = Ip4Address()
+            self._remote_ip_address = Ip4Address()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Created socket")
 
@@ -315,30 +315,29 @@ class UdpSocket(socket):
 
         local_ip_address: Ip4Address | Ip6Address
 
-        match self._address_family:
-            case AddressFamily.INET6:
-                try:
-                    if (local_ip_address := Ip6Address(address[0])) not in set(stack.local_ip6_unicast()) | {
-                        Ip6Address()
-                    }:
-                        raise OSError(
-                            errno.EADDRNOTAVAIL,
-                            "Cannot assign requested address - [Local IP address not owned by stack]",
-                        )
-                except Ip6AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
+        if self._address_family == AddressFamily.INET6:
+            try:
+                if (local_ip_address := Ip6Address(address[0])) not in set(stack.local_ip6_unicast()) | {
+                    Ip6Address()
+                }:
+                    raise OSError(
+                        errno.EADDRNOTAVAIL,
+                        "Cannot assign requested address - [Local IP address not owned by stack]",
+                    )
+            except Ip6AddressFormatError as error:
+                raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
-            case AddressFamily.INET4:
-                try:
-                    if (local_ip_address := Ip4Address(address[0])) not in set(stack.local_ip4_unicast()) | {
-                        Ip4Address()
-                    }:
-                        raise OSError(
-                            errno.EADDRNOTAVAIL,
-                            "Cannot assign requested address - [Local IP address not owned by stack]",
-                        )
-                except Ip4AddressFormatError as error:
-                    raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
+        elif self._address_family == AddressFamily.INET4:
+            try:
+                if (local_ip_address := Ip4Address(address[0])) not in set(stack.local_ip4_unicast()) | {
+                    Ip4Address()
+                }:
+                    raise OSError(
+                        errno.EADDRNOTAVAIL,
+                        "Cannot assign requested address - [Local IP address not owned by stack]",
+                    )
+            except Ip4AddressFormatError as error:
+                raise gaierror("[Errno -2] Name or service not known - [Malformed local IP address]") from error
 
         # Sanity check on local port number.
         if address[1] not in range(0, 65536):

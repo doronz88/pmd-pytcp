@@ -30,7 +30,9 @@ pmd_net_proto/protocols/tcp/tcp__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -44,6 +46,7 @@ from pmd_net_proto.protocols.tcp.options.tcp__options import (
 )
 from pmd_net_proto.protocols.tcp.tcp__base import Tcp
 from pmd_net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TcpHeader
+from pmd_net_proto._compat import as_buffer
 
 
 class TcpAssembler(Tcp, ProtoAssembler):
@@ -121,10 +124,10 @@ class TcpAssembler(Tcp, ProtoAssembler):
         Assemble the TCP packet into list of buffers.
         """
 
-        header = bytearray(self._header)
-        options = bytearray(self._options)
-        header[16:18] = inet_cksum(header, options, self._payload, init=self.pshdr_sum).to_bytes(2)
+        header = bytearray(as_buffer(self._header))
+        options = bytearray(as_buffer(self._options))
+        header[16:18] = inet_cksum(header, options, self._payload, init=self.pshdr_sum).to_bytes(2, "big")
 
-        buffers.append(header)
-        buffers.append(options)
-        buffers.append(self._payload)
+        buffers.append(as_buffer(header))
+        buffers.append(as_buffer(options))
+        buffers.append(as_buffer(self._payload))

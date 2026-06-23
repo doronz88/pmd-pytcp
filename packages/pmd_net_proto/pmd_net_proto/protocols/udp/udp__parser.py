@@ -30,7 +30,9 @@ pmd_net_proto/protocols/udp/udp__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import IpVersion
 from pmd_net_proto.lib.buffer import Buffer
@@ -101,7 +103,7 @@ class UdpParser(Udp, ProtoParser):
         # declared payload length (cross-check catches
         # encapsulation truncation that the bare plen check
         # would miss).
-        plen = int.from_bytes(self._frame[4:6])
+        plen = int.from_bytes(self._frame[4:6], "big")
         if not (UDP__HEADER__LEN <= plen == self._ip__payload_len <= len(self._frame)):
             raise UdpIntegrityError(
                 "The condition 'UDP__HEADER__LEN <= plen == self._ip__payload_len "
@@ -109,7 +111,7 @@ class UdpParser(Udp, ProtoParser):
                 f"{plen=}, {self._ip__payload_len=}, {len(self._frame)=}",
             )
 
-        raw_cksum = int.from_bytes(self._frame[6:8])
+        raw_cksum = int.from_bytes(self._frame[6:8], "big")
 
         if raw_cksum == 0:
             # RFC 8200 §8.1: IPv6 receivers MUST discard

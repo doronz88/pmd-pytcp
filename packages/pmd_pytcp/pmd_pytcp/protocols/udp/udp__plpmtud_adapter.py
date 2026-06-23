@@ -48,6 +48,8 @@ pmd_pytcp/protocols/udp/udp__plpmtud_adapter.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.lib.plpmtud import PmtuSearch, PmtuState
 

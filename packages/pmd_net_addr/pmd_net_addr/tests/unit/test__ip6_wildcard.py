@@ -30,6 +30,8 @@ pmd_net_addr/tests/unit/test__ip6_wildcard.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -53,7 +55,7 @@ from pmd_net_addr import (
             "_results": {
                 "__str__": "::",
                 "__repr__": "Ip6Wildcard('::')",
-                "__bytes__": (0).to_bytes(16),
+                "__bytes__": (0).to_bytes(16, "big"),
                 "__int__": 0,
                 "__len__": 0,
             },
@@ -64,7 +66,7 @@ from pmd_net_addr import (
             "_results": {
                 "__str__": "::ff",
                 "__repr__": "Ip6Wildcard('::ff')",
-                "__bytes__": (0xFF).to_bytes(16),
+                "__bytes__": (0xFF).to_bytes(16, "big"),
                 "__int__": 0xFF,
                 "__len__": 8,
             },
@@ -75,7 +77,7 @@ from pmd_net_addr import (
             "_results": {
                 "__str__": "::ffff",
                 "__repr__": "Ip6Wildcard('::ffff')",
-                "__bytes__": (0xFFFF).to_bytes(16),
+                "__bytes__": (0xFFFF).to_bytes(16, "big"),
                 "__int__": 0xFFFF,
                 "__len__": 16,
             },
@@ -86,7 +88,7 @@ from pmd_net_addr import (
             "_results": {
                 "__str__": "1::ff",
                 "__repr__": "Ip6Wildcard('1::ff')",
-                "__bytes__": ((1 << 112) | 0xFF).to_bytes(16),
+                "__bytes__": ((1 << 112) | 0xFF).to_bytes(16, "big"),
                 "__int__": (1 << 112) | 0xFF,
                 "__len__": 9,
             },
@@ -97,7 +99,7 @@ from pmd_net_addr import (
             "_results": {
                 "__str__": "ff00::fe",
                 "__repr__": "Ip6Wildcard('ff00::fe')",
-                "__bytes__": ((0xFF00 << 112) | 0xFE).to_bytes(16),
+                "__bytes__": ((0xFF00 << 112) | 0xFE).to_bytes(16, "big"),
                 "__int__": (0xFF00 << 112) | 0xFE,
                 "__len__": 15,
             },
@@ -119,7 +121,7 @@ from pmd_net_addr import (
             "_results": {
                 "__str__": "::",
                 "__repr__": "Ip6Wildcard('::')",
-                "__bytes__": (0).to_bytes(16),
+                "__bytes__": (0).to_bytes(16, "big"),
                 "__int__": 0,
                 "__len__": 0,
             },

@@ -31,7 +31,9 @@ pmd_net_proto/../pmd_pytcp/tests/integration/protocols/igmp/test__igmp__query_re
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto import EthernetAssembler, Ip4Assembler, IpProto, RawAssembler

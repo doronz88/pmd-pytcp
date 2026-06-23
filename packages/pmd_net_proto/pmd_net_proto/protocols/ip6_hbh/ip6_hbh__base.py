@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_hbh/ip6_hbh__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
@@ -39,6 +41,7 @@ from pmd_net_proto.protocols.ip6_hbh.ip6_hbh__header import (
     Ip6HbhHeaderProperties,
 )
 from pmd_net_proto.protocols.ip6_hbh.options.ip6_hbh__options import Ip6HbhOptions
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip6Hbh(Proto, Ip6HbhHeaderProperties):
@@ -87,11 +90,20 @@ class Ip6Hbh(Proto, Ip6HbhHeaderProperties):
         Get the IPv6 HBH packet as a memoryview.
         """
 
-        buffer = bytearray(self._header)
-        buffer += bytearray(self._options)
-        buffer += self._payload
+        buffer = bytearray(as_buffer(self._header))
+        buffer += bytearray(as_buffer(self._options))
+        buffer += as_buffer(self._payload)
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def header(self) -> Ip6HbhHeader:

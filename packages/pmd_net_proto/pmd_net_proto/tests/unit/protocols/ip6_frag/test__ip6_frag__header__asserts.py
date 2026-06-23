@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip6_frag/test__ip6_frag__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -41,6 +43,7 @@ from pmd_net_proto import (
     Ip6FragHeader,
     IpProto,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestIp6FragHeaderAsserts(TestCase):
@@ -243,7 +246,7 @@ class TestIp6FragHeaderAsserts(TestCase):
             id=0xCAFEBABE,
         )
 
-        rebuilt = Ip6FragHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = Ip6FragHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

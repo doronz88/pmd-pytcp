@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/daemon/test__daemon.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import tempfile
 from unittest import TestCase

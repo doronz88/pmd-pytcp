@@ -37,7 +37,9 @@ pmd_net_proto/protocols/icmp6/message/nd/option/icmp6__nd__option.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_net_proto._compat import dataclass
 
 from pmd_net_proto.lib.proto_option import ProtoOption, ProtoOptionType
 

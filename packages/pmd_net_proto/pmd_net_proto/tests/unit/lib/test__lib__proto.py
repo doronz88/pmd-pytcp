@@ -30,9 +30,13 @@ pmd_net_proto/tests/unit/lib/test__lib__proto.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto.lib.proto import Proto
+from typing_extensions import override
+from pmd_net_proto._compat import as_buffer
 
 
 class _SimpleProto(Proto):
@@ -53,7 +57,16 @@ class _SimpleProto(Proto):
         return f"SimpleProto({self._payload!r})"
 
     def __buffer__(self, _: int) -> memoryview:
-        return memoryview(self._payload)
+        return memoryview(as_buffer(self._payload))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
 
 class _OtherProto(Proto):
@@ -74,7 +87,16 @@ class _OtherProto(Proto):
         return f"SimpleProto({self._payload!r})"
 
     def __buffer__(self, _: int) -> memoryview:
-        return memoryview(self._payload)
+        return memoryview(as_buffer(self._payload))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
 
 class TestNetProtoLibProtoAbstract(TestCase):
@@ -131,7 +153,7 @@ class TestNetProtoLibProtoAbstract(TestCase):
 
         instance = _SimpleProto(b"\xaa\xbb\xcc")
 
-        self.assertEqual(bytes(memoryview(instance)), b"\xaa\xbb\xcc")
+        self.assertEqual(bytes(memoryview(as_buffer(instance))), b"\xaa\xbb\xcc")
 
     def test__net_proto__lib__proto__abstract_bodies_raise(self) -> None:
         """
@@ -153,6 +175,15 @@ class TestNetProtoLibProtoAbstract(TestCase):
 
             def __buffer__(self, flags: int) -> memoryview:
                 return super().__buffer__(flags)  # type: ignore[safe-super]
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
         instance = _SuperProto()
 
@@ -163,7 +194,7 @@ class TestNetProtoLibProtoAbstract(TestCase):
         with self.assertRaises(NotImplementedError):
             repr(instance)
         with self.assertRaises(NotImplementedError):
-            memoryview(instance)
+            memoryview(as_buffer(instance))
 
 
 class TestNetProtoLibProtoEquality(TestCase):

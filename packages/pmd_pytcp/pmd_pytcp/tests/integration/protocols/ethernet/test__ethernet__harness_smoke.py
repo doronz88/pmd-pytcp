@@ -37,6 +37,8 @@ pmd_pytcp/tests/integration/protocols/ethernet/test__ethernet__harness_smoke.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_net_proto import EthernetParser
 from pmd_net_proto.lib.enums import EtherType

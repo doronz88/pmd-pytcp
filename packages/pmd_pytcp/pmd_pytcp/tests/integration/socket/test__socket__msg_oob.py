@@ -50,6 +50,8 @@ pmd_pytcp/tests/integration/socket/test__socket__msg_oob.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 from unittest import TestCase
 

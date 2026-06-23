@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/icmp6/test__icmp6__mld1__message__report.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_addr import Ip6Address

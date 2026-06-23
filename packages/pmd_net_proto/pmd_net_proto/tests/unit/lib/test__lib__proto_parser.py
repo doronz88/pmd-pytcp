@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/lib/test__lib__proto_parser.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -38,6 +40,8 @@ from parameterized import parameterized_class  # type: ignore[import-untyped]
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto import Proto
 from pmd_net_proto.lib.proto_parser import ProtoParser
+from typing_extensions import override
+from pmd_net_proto._compat import as_buffer
 
 
 class _ConcreteParser(ProtoParser):
@@ -73,7 +77,16 @@ class _ConcreteParser(ProtoParser):
         return f"ConcreteParser({bytes(self._frame)!r})"
 
     def __buffer__(self, _: int) -> memoryview:
-        return memoryview(self._frame)
+        return memoryview(as_buffer(self._frame))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
 
 class TestNetProtoLibProtoParserAbstract(TestCase):
@@ -125,6 +138,15 @@ class TestNetProtoLibProtoParserAbstract(TestCase):
 
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
         with self.assertRaises(TypeError):
             Partial()  # type: ignore[abstract]
@@ -281,6 +303,15 @@ class TestNetProtoLibProtoParserAbstractBodies(TestCase):
 
             def __buffer__(self, _: int) -> memoryview:
                 return memoryview(b"")
+            @override
+            def __bytes__(self) -> bytes:
+                """
+                Get the object as bytes (Python 3.9+ fallback for the
+                PEP 688 '__buffer__' protocol, which is 3.12+).
+                """
+
+                return bytes(self.__buffer__(0))
+
 
         parser = _SuperParser()
 

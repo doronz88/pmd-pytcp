@@ -41,6 +41,8 @@ pmd_pytcp/ipc/ipc__dgram_bridge.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 import threading
 from typing import Protocol

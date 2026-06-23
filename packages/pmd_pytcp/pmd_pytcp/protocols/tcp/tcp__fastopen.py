@@ -31,6 +31,8 @@ pmd_pytcp/protocols/tcp/tcp__fastopen.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import hmac
 
 from pmd_net_addr import Ip4Address, Ip6Address

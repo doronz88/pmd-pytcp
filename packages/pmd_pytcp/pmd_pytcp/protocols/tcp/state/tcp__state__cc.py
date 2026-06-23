@@ -52,7 +52,10 @@ pmd_pytcp/protocols/tcp/state/tcp__state__cc.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass, field
+from __future__ import annotations
+
+from dataclasses import field
+from pmd_pytcp._compat import dataclass
 
 from pmd_pytcp.protocols.tcp.tcp__enums import CcMode
 from pmd_pytcp.protocols.tcp.tcp__hystart import HyStartState

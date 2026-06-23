@@ -34,6 +34,8 @@ pmd_pytcp/tests/unit/protocols/icmp/test__icmp__error_demux.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
@@ -42,6 +44,7 @@ from pmd_pytcp.protocols.icmp.icmp__error_demux import (
     EmbeddedL4,
     parse_embedded_l4,
 )
+from pmd_pytcp._compat import as_buffer
 
 # Embedded IPv4 + UDP (28 bytes total).
 #   IPv4: ver=4, IHL=5, total_len=28, ttl=64, proto=17 (UDP)
@@ -250,7 +253,7 @@ class TestParseEmbeddedL4__Rejection(TestCase):
         """
 
         # version=4, IHL=4 (16 bytes — invalid, RFC 791 mandates >= 5)
-        bogus = bytearray(_EMBEDDED__IP4_UDP)
+        bogus = bytearray(as_buffer(_EMBEDDED__IP4_UDP))
         bogus[0] = 0x44
         self.assertIsNone(
             parse_embedded_l4(bytes(bogus), IpVersion.IP4),
@@ -266,7 +269,7 @@ class TestParseEmbeddedL4__Rejection(TestCase):
         """
 
         # Replace proto byte (offset 9) with 1 (ICMP).
-        bogus = bytearray(_EMBEDDED__IP4_UDP)
+        bogus = bytearray(as_buffer(_EMBEDDED__IP4_UDP))
         bogus[9] = 1
         self.assertIsNone(
             parse_embedded_l4(bytes(bogus), IpVersion.IP4),
@@ -323,7 +326,7 @@ class TestParseEmbeddedL4__Rejection(TestCase):
         """
 
         # Replace next-header byte (offset 6) with 0 (Hop-by-Hop options).
-        bogus = bytearray(_EMBEDDED__IP6_UDP)
+        bogus = bytearray(as_buffer(_EMBEDDED__IP6_UDP))
         bogus[6] = 0
         self.assertIsNone(
             parse_embedded_l4(bytes(bogus), IpVersion.IP6),

@@ -30,9 +30,12 @@ pmd_net_proto/protocols/icmp6/message/mld2/icmp6__mld2__message__report.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_addr import IP6__ADDRESS_LEN, Ip6Address
 from pmd_net_proto.lib.buffer import Buffer
@@ -149,6 +152,15 @@ class Icmp6Mld2MessageReport(Icmp6Message):
         buffer[ICMP6__MLD2__REPORT__LEN:] = self._pack_records()
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def number_of_records(self) -> int:
@@ -170,7 +182,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
 
         struct.pack_into(
             ICMP6__MLD2__REPORT__STRUCT,
-            buffer := bytearray(buffer_len),
+            buffer := bytearray(as_buffer(buffer_len)),
             0,
             int(self.type),
             int(self.code),
@@ -189,7 +201,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
         buffer = bytearray()
 
         for record in self.records:
-            buffer += bytearray(record)
+            buffer += bytearray(as_buffer(record))
 
         return buffer
 
@@ -218,7 +230,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
             )
 
         record_offset = ICMP6__MLD2__REPORT__LEN
-        for _ in range(int.from_bytes(frame[6:8])):
+        for _ in range(int.from_bytes(frame[6:8], "big")):
             if not (record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN <= ip6__dlen):
                 raise Icmp6IntegrityError(
                     "The condition 'record_offset + ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN <= ip6__dlen' "
@@ -228,7 +240,7 @@ class Icmp6Mld2MessageReport(Icmp6Message):
             record_offset += (
                 ICMP6__MLD2__MULTICAST_ADDRESS_RECORD__LEN
                 + (frame[record_offset + 1] << 2)
-                + int.from_bytes(frame[record_offset + 2 : record_offset + 4]) * IP6__ADDRESS_LEN
+                + int.from_bytes(frame[record_offset + 2 : record_offset + 4], "big") * IP6__ADDRESS_LEN
             )
 
         if record_offset != ip6__dlen:
@@ -270,5 +282,5 @@ class Icmp6Mld2MessageReport(Icmp6Message):
         Assemble the ICMPv6 MLDv2 Report message into the buffer list.
         """
 
-        buffers.append(self._pack_header())
-        buffers.append(self._pack_records())
+        buffers.append(as_buffer(self._pack_header()))
+        buffers.append(as_buffer(self._pack_records()))

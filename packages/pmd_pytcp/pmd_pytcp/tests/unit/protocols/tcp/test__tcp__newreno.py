@@ -49,6 +49,8 @@ pmd_pytcp/tests/unit/protocols/tcp/test__tcp__newreno.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_pytcp.protocols.tcp.tcp__newreno import partial_cum_ack_deflate

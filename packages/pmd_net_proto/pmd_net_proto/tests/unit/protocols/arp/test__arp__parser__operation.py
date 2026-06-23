@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/arp/test__arp__parser__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -45,6 +47,7 @@ from pmd_net_proto import (
     EtherType,
     PacketRx,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -245,7 +248,7 @@ class TestArpParserOperation(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._parser)),
+            bytes(memoryview(as_buffer(self._parser))),
             self._frame_rx[:ARP__HEADER__LEN],
             msg="Parser buffer must reproduce the original header bytes.",
         )

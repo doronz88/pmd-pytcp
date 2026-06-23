@@ -33,6 +33,8 @@ pmd_pytcp/protocols/icmp4/icmp4__echo_gate.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.protocols.icmp4 import icmp4__constants
 
 

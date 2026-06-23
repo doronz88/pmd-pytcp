@@ -36,6 +36,8 @@ pmd_pytcp/stack/membership.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_addr import Ip4Address

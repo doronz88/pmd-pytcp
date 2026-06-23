@@ -37,9 +37,12 @@ pmd_net_proto/lib/inet_cksum.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 
 from pmd_net_proto.lib.buffer import Buffer
+from pmd_net_proto._compat import as_buffer
 
 
 def inet_cksum(*buffers: Buffer, init: int = 0) -> int:
@@ -66,13 +69,13 @@ def inet_cksum(*buffers: Buffer, init: int = 0) -> int:
 
         if (remainder := buffer_len - offset) >= 8:
             q_count = remainder >> 3
-            cksum += sum(struct.unpack_from(f"!{q_count}Q", buffer, offset))
+            cksum += as_buffer(sum(struct.unpack_from(f"!{q_count}Q", buffer, offset)))
             offset += q_count << 3
 
         if even := (buffer_len - offset) & ~1:
             h_count = even >> 1
-            cksum += sum(struct.unpack_from(f"!{h_count}H", buffer, offset))
-            offset += even
+            cksum += as_buffer(sum(struct.unpack_from(f"!{h_count}H", buffer, offset)))
+            offset += as_buffer(even)
 
         if buffer_len - offset == 1:
             carry = buffer[offset]

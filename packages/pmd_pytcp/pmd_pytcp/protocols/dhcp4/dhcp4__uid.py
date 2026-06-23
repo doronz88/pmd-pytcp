@@ -34,8 +34,11 @@ pmd_pytcp/protocols/dhcp4/dhcp4__uid.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_pytcp.protocols.dhcp4 import dhcp4__constants
+from typing_extensions import override
 
 # RFC 3315 §9.1 DUID-Type values. PyTCP defaults to DUID-LL
 # (link-layer address) for simplicity and because the host MAC is

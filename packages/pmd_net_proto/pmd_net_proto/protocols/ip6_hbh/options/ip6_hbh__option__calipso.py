@@ -37,9 +37,12 @@ pmd_net_proto/protocols/ip6_hbh/options/ip6_hbh__option__calipso.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint8, is_uint16, is_uint32
@@ -153,7 +156,7 @@ class Ip6HbhOptionCalipso(Ip6HbhOption):
 
         struct.pack_into(
             IP6_HBH__OPTION__CIPSO__STRUCT,
-            buffer := bytearray(self.len),
+            buffer := bytearray(as_buffer(self.len)),
             0,
             int(self.type),
             self.len - IP6_HBH__OPTION__LEN,
@@ -166,6 +169,15 @@ class Ip6HbhOptionCalipso(Ip6HbhOption):
         buffer[IP6_HBH__OPTION__CIPSO__FIXED_LEN:] = self.compartment_bitmap
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def _validate_integrity(buffer: Buffer, /) -> None:
@@ -225,9 +237,9 @@ class Ip6HbhOptionCalipso(Ip6HbhOption):
         cmpt_length = buffer[6]
         bitmap_len = cmpt_length * IP6_HBH__OPTION__CIPSO__BITMAP_UNIT
 
-        doi = int.from_bytes(bytes(buffer[2:6]))
+        doi = int.from_bytes(bytes(buffer[2:6]), "big")
         sens_level = buffer[7]
-        checksum = int.from_bytes(bytes(buffer[8:10]))
+        checksum = int.from_bytes(bytes(buffer[8:10]), "big")
         compartment_bitmap = bytes(
             buffer[IP6_HBH__OPTION__CIPSO__FIXED_LEN : IP6_HBH__OPTION__CIPSO__FIXED_LEN + bitmap_len]
         )

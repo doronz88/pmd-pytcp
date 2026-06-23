@@ -39,6 +39,8 @@ pmd_pytcp/ipc/ipc__fdpass.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import array
 import os
 import socket

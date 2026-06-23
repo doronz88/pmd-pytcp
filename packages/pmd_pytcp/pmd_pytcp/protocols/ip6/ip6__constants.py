@@ -51,6 +51,8 @@ ver 3.0.7
 # implementation is per-(src, dst), coarser than Linux's
 # per-socket but sufficient for §3's per-flow stability
 # clause (which explicitly allows coarser flow definitions).
+from __future__ import annotations
+
 IP6__FLOW_LABEL_GENERATION: int = 1
 
 

@@ -30,6 +30,8 @@ pmd_net_proto/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_proto.lib.enums import EtherType, IpProto
 from pmd_net_proto.lib.errors import PacketValidationError
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -636,7 +638,7 @@ from pmd_net_proto.protocols.udp.udp__errors import (
 from pmd_net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
 from pmd_net_proto.protocols.udp.udp__parser import UdpParser
 
-__version__: str = "0.0.1"
+__version__: str = "0.0.2"
 
 __all__ = [
     "ARP__HARDWARE_LEN__ETHERNET",

@@ -30,8 +30,11 @@ pmd_net_addr/address.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import ClassVar, Self, override
+from typing import ClassVar
+from typing_extensions import Self, override
 
 from pmd_net_addr.base import Base
 from pmd_net_addr.errors import IpAddressSanityError, NetAddrError
@@ -170,6 +173,14 @@ class Address(Base, ABC):
         """
 
         raise NotImplementedError
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def __eq__(self, other: object, /) -> bool:

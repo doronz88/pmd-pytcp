@@ -55,6 +55,8 @@ pmd_pytcp/protocols/tcp/session/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.protocols.tcp.session.tcp__session import TcpSession
 
 __all__ = ["TcpSession"]

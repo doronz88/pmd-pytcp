@@ -30,9 +30,12 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__option__end.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto import DHCP4__OPTION__END__LEN, Dhcp4OptionEnd, Dhcp4OptionType
+from pmd_net_proto._compat import as_buffer
 
 
 class TestDhcp4OptionEndAssembler(TestCase):
@@ -110,7 +113,7 @@ class TestDhcp4OptionEndAssembler(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._option)),
+            bytes(memoryview(as_buffer(self._option))),
             b"\xff",
             msg="End option memoryview must equal b'\\xff'.",
         )

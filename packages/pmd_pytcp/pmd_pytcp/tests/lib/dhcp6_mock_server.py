@@ -34,6 +34,8 @@ pmd_pytcp/tests/lib/dhcp6_mock_server.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from collections import deque
 from typing import Callable, cast
 from unittest.mock import MagicMock, create_autospec
@@ -55,6 +57,7 @@ from pmd_net_proto import (
     Dhcp6StatusCode,
 )
 from pmd_net_proto.protocols.dhcp6.options.dhcp6__option import Dhcp6Option
+from pmd_pytcp._compat import as_buffer
 
 _UNSET: object = object()
 
@@ -309,11 +312,11 @@ class Dhcp6MockServer:
                 if front.for_server is not None and last_tx.server_id != front.for_server:
                     raise TimeoutError
                 self._reply_queue.popleft()
-                return memoryview(front.builder())
+                return memoryview(as_buffer(front.builder()))
             self._reply_queue.popleft()
             if isinstance(front, BaseException):
                 raise front
-            return memoryview(front())
+            return memoryview(as_buffer(front()))
 
         mock_socket.sendto.side_effect = on_sendto
         mock_socket.recv__mv.side_effect = on_recv

@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/arp/test__arp__assembler__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -48,6 +50,7 @@ from pmd_net_proto import (
     Tracker,
 )
 from pmd_net_proto.lib.buffer import Buffer
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -282,7 +285,7 @@ class TestArpAssemblerPackets(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._arp__assembler)),
+            bytes(memoryview(as_buffer(self._arp__assembler))),
             self._results["__bytes__"],
             msg=f"Unexpected memoryview output for case: {self._description}",
         )
@@ -426,7 +429,7 @@ class TestArpAssemblerPackets(TestCase):
         """
 
         prefix = b"\xde\xad\xbe\xef"
-        buffers: list[Buffer] = [bytearray(prefix)]
+        buffers: list[Buffer] = [bytearray(as_buffer(prefix))]
 
         self._arp__assembler.assemble(buffers)
 

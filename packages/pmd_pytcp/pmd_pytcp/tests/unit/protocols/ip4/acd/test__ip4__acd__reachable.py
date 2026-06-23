@@ -31,7 +31,9 @@ pmd_pytcp/tests/unit/protocols/ip4/acd/test__ip4__acd__reachable.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 

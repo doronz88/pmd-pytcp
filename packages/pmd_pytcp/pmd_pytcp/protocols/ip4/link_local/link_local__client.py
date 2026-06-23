@@ -47,9 +47,12 @@ pmd_pytcp/protocols/ip4/link_local/link_local__client.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import time
 from enum import Enum
-from typing import Callable, override
+from typing import Callable
+from typing_extensions import override
 
 from pmd_net_addr import Ip4IfAddr, MacAddress
 from pmd_pytcp.lib.logger import log
@@ -160,21 +163,20 @@ class Ip4LinkLocal(Subsystem):
         """
 
         self._reconcile_with_dhcp()
-        match self._state:
-            case Ip4LinkLocalState.INIT:
-                self._do_init()
-            case Ip4LinkLocalState.CLAIMING:
-                self._do_claiming()
-            case Ip4LinkLocalState.BOUND:
-                # RFC 3927 §2.5 ongoing defense — poll the ACD engine's
-                # packet socket for a post-claim conflict and run the
-                # defend / abandon decision (no longer callback-driven
-                # from the stack's ARP RX path; the ACD socket is the
-                # Linux conflict-detection surface).
-                if (peer_mac := self._acd.poll_conflict()) is not None:
-                    self._handle_bound_conflict(peer_mac)
-            case Ip4LinkLocalState.HALTED:
-                pass
+        if self._state == Ip4LinkLocalState.INIT:
+            self._do_init()
+        elif self._state == Ip4LinkLocalState.CLAIMING:
+            self._do_claiming()
+        elif self._state == Ip4LinkLocalState.BOUND:
+            # RFC 3927 §2.5 ongoing defense — poll the ACD engine's
+            # packet socket for a post-claim conflict and run the
+            # defend / abandon decision (no longer callback-driven
+            # from the stack's ARP RX path; the ACD socket is the
+            # Linux conflict-detection surface).
+            if (peer_mac := self._acd.poll_conflict()) is not None:
+                self._handle_bound_conflict(peer_mac)
+        elif self._state == Ip4LinkLocalState.HALTED:
+            pass
 
     def _do_init(self) -> None:
         """

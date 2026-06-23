@@ -39,6 +39,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__hystart.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.session import TcpSession
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
@@ -52,6 +54,7 @@ from pmd_pytcp.tests.lib.network_testcase import (
 )
 from pmd_pytcp.tests.lib.tcp_segment_factory import build_tcp4
 from pmd_pytcp.tests.lib.tcp_testcase import TcpTestCase
+from pmd_pytcp._compat import as_buffer
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -328,7 +331,7 @@ class TestTcpSessionHyStartPP(TcpTestCase):
                 session.send(data=b"X" * PEER__MSS)
                 self._advance(ms=1)
                 self._advance(ms=stable_rtt)
-                peer_tsval += stable_rtt
+                peer_tsval += as_buffer(stable_rtt)
                 peer_ack = build_tcp4(
                     sport=PEER__PORT,
                     dport=STACK__PORT,

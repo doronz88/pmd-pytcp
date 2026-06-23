@@ -35,7 +35,9 @@ pmd_pytcp/tests/integration/multi_interface/test__multi_interface__dhcp4_egress.
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import patch
 

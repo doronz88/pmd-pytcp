@@ -80,6 +80,8 @@ pmd_pytcp/protocols/dhcp4/dhcp4__lease_cache.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import json
 import os
 import tempfile

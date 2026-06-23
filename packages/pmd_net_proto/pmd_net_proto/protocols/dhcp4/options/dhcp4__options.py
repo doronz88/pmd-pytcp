@@ -30,8 +30,10 @@ pmd_net_proto/protocols/dhcp4/options/dhcp4__options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC
-from typing import Self, override
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip4Address, Ip4Mask, Ip4Network
 from pmd_net_proto.lib.buffer import Buffer
@@ -96,6 +98,7 @@ from pmd_net_proto.protocols.dhcp4.options.dhcp4__option__unknown import (
 )
 from pmd_net_proto.protocols.ip4.ip4__header import IP4__HEADER__LEN, IP4__MIN_MTU
 from pmd_net_proto.protocols.udp.udp__header import UDP__HEADER__LEN
+from pmd_net_proto._compat import as_buffer
 
 DHCP4__OPTIONS__MAX_LEN = IP4__MIN_MTU - IP4__HEADER__LEN - UDP__HEADER__LEN - DHCP4__HEADER__LEN
 
@@ -309,7 +312,7 @@ class Dhcp4Options(ProtoOptions):
                 break
 
             if frame[offset] == int(Dhcp4OptionType.PAD):
-                offset += DHCP4__OPTION__PAD__LEN
+                offset += as_buffer(DHCP4__OPTION__PAD__LEN)
                 continue
 
             # Unlike TCP, the DHCPv4 length byte encodes the data length
@@ -351,7 +354,7 @@ class Dhcp4Options(ProtoOptions):
             if code == int(Dhcp4OptionType.END):
                 break
             if code == int(Dhcp4OptionType.PAD):
-                offset += DHCP4__OPTION__PAD__LEN
+                offset += as_buffer(DHCP4__OPTION__PAD__LEN)
                 continue
             option_data_len = buffer[offset + 1]
             if code == int(Dhcp4OptionType.CLASSLESS_STATIC_ROUTE):
@@ -377,59 +380,59 @@ class Dhcp4Options(ProtoOptions):
         classless_static_route_emitted = False
 
         while offset < len(buffer):
-            match Dhcp4OptionType.from_bytes(buffer[offset : offset + 1]):
-                case Dhcp4OptionType.END:
-                    options.append(Dhcp4OptionEnd.from_buffer(buffer[offset:]))
-                    break
-                case Dhcp4OptionType.PAD:
-                    options.append(Dhcp4OptionPad.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.CLASSLESS_STATIC_ROUTE:
-                    # Emit a single option built from the concatenated
-                    # data the first time a 121 instance is seen; later
-                    # instances only advance the cursor (their data is
-                    # already folded in). Individual instances are NOT
-                    # decoded — a split can fall mid-descriptor.
-                    if not classless_static_route_emitted:
-                        routes = Dhcp4OptionClasslessStaticRoute.decode_routes(classless_static_route_data)
-                        if not routes:
-                            raise Dhcp4IntegrityError(
-                                "The DHCPv4 Classless Static Route option must carry at least "
-                                "one route (RFC 3442 minimum length 5 octets)."
-                            )
-                        options.append(Dhcp4OptionClasslessStaticRoute(routes))
-                        classless_static_route_emitted = True
-                    offset += DHCP4__OPTION__LEN + buffer[offset + 1]
-                    continue
-                case Dhcp4OptionType.CLIENT_ID:
-                    options.append(Dhcp4OptionClientId.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.HOST_NAME:
-                    options.append(Dhcp4OptionHostName.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.LEASE_TIME:
-                    options.append(Dhcp4OptionLeaseTime.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.MAX_MSG_SIZE:
-                    options.append(Dhcp4OptionMaxMsgSize.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.MESSAGE_TYPE:
-                    options.append(Dhcp4OptionMessageType.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.OPTION_OVERLOAD:
-                    options.append(Dhcp4OptionOverload.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.PARAM_REQ_LIST:
-                    options.append(Dhcp4OptionParamReqList.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.REBINDING_TIME:
-                    options.append(Dhcp4OptionRebindingTime.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.RENEWAL_TIME:
-                    options.append(Dhcp4OptionRenewalTime.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.REQ_IP_ADDR:
-                    options.append(Dhcp4OptionReqIpAddr.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.ROUTER:
-                    options.append(Dhcp4OptionRouter.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.SERVER_ID:
-                    options.append(Dhcp4OptionServerId.from_buffer(buffer[offset:]))
-                case Dhcp4OptionType.SUBNET_MASK:
-                    options.append(Dhcp4OptionSubnetMask.from_buffer(buffer[offset:]))
-                case _:
-                    options.append(Dhcp4OptionUnknown.from_buffer(buffer[offset:]))
+            _match_subject = Dhcp4OptionType.from_bytes(buffer[offset : offset + 1])
+            if _match_subject == Dhcp4OptionType.END:
+                options.append(Dhcp4OptionEnd.from_buffer(buffer[offset:]))
+                break
+            elif _match_subject == Dhcp4OptionType.PAD:
+                options.append(Dhcp4OptionPad.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.CLASSLESS_STATIC_ROUTE:
+                # Emit a single option built from the concatenated
+                # data the first time a 121 instance is seen; later
+                # instances only advance the cursor (their data is
+                # already folded in). Individual instances are NOT
+                # decoded — a split can fall mid-descriptor.
+                if not classless_static_route_emitted:
+                    routes = Dhcp4OptionClasslessStaticRoute.decode_routes(classless_static_route_data)
+                    if not routes:
+                        raise Dhcp4IntegrityError(
+                            "The DHCPv4 Classless Static Route option must carry at least "
+                            "one route (RFC 3442 minimum length 5 octets)."
+                        )
+                    options.append(Dhcp4OptionClasslessStaticRoute(routes))
+                    classless_static_route_emitted = True
+                offset += DHCP4__OPTION__LEN + buffer[offset + 1]
+                continue
+            elif _match_subject == Dhcp4OptionType.CLIENT_ID:
+                options.append(Dhcp4OptionClientId.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.HOST_NAME:
+                options.append(Dhcp4OptionHostName.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.LEASE_TIME:
+                options.append(Dhcp4OptionLeaseTime.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.MAX_MSG_SIZE:
+                options.append(Dhcp4OptionMaxMsgSize.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.MESSAGE_TYPE:
+                options.append(Dhcp4OptionMessageType.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.OPTION_OVERLOAD:
+                options.append(Dhcp4OptionOverload.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.PARAM_REQ_LIST:
+                options.append(Dhcp4OptionParamReqList.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.REBINDING_TIME:
+                options.append(Dhcp4OptionRebindingTime.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.RENEWAL_TIME:
+                options.append(Dhcp4OptionRenewalTime.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.REQ_IP_ADDR:
+                options.append(Dhcp4OptionReqIpAddr.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.ROUTER:
+                options.append(Dhcp4OptionRouter.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.SERVER_ID:
+                options.append(Dhcp4OptionServerId.from_buffer(buffer[offset:]))
+            elif _match_subject == Dhcp4OptionType.SUBNET_MASK:
+                options.append(Dhcp4OptionSubnetMask.from_buffer(buffer[offset:]))
+            else:
+                options.append(Dhcp4OptionUnknown.from_buffer(buffer[offset:]))
 
-            offset += options[-1].len
+            offset += as_buffer(options[-1].len)
 
         return cls(*options)
 

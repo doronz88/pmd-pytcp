@@ -31,9 +31,13 @@ pmd_pytcp/tests/unit/lib/test__lib__packet_stats.py
 ver 3.0.7
 """
 
-from dataclasses import FrozenInstanceError, dataclass, fields, is_dataclass
-from typing import Any
-from unittest import TestCase
+from __future__ import annotations
+
+import sys
+from dataclasses import FrozenInstanceError, fields, is_dataclass
+from pmd_pytcp._compat import dataclass
+from typing import Any, get_type_hints
+from unittest import TestCase, skipUnless
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
@@ -73,6 +77,7 @@ class TestPacketStatsBase(TestCase):
             msg="PacketStats must declare zero fields (pure marker class).",
         )
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__packet_stats__is_slotted(self) -> None:
         """
         Ensure 'PacketStats' uses '__slots__' so no ad-hoc attribute can
@@ -151,6 +156,7 @@ class TestPacketStatsSubclasses(TestCase):
             msg=f"Expected a dataclass for case: {self._description}",
         )
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__packet_stats__is_slotted(self) -> None:
         """
         Ensure the stats class uses '__slots__' so counters cannot be
@@ -194,12 +200,16 @@ class TestPacketStatsSubclasses(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
+        # 'dataclasses.field.type' is the raw annotation, which is a string
+        # under 'from __future__ import annotations'; resolve it to the real
+        # type so the check holds on every supported interpreter.
+        hints = get_type_hints(self._cls)
         for f in fields(self._cls):
             with self.subTest(field=f.name):
                 self.assertIs(
-                    f.type,
+                    hints[f.name],
                     int,
-                    msg=(f"{self._cls.__name__}.{f.name} must be annotated as 'int'. " f"Got: {f.type!r}"),
+                    msg=(f"{self._cls.__name__}.{f.name} must be annotated as 'int'. " f"Got: {hints[f.name]!r}"),
                 )
 
     def test__packet_stats__field_names_are_unique(self) -> None:
@@ -412,6 +422,7 @@ class TestPacketStatsMutation(TestCase):
         except FrozenInstanceError as exc:  # pragma: no cover - fail path
             self.fail(f"PacketStatsRx must not be frozen. Got FrozenInstanceError: {exc!r}.")
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__packet_stats_rx__slots_reject_unknown_attribute(self) -> None:
         """
         Ensure 'PacketStatsRx.__slots__' rejects typos — assigning to a
@@ -426,6 +437,7 @@ class TestPacketStatsMutation(TestCase):
         with self.assertRaises(AttributeError):
             stats.ip4__typo_counter = 1  # type: ignore[attr-defined]
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__packet_stats_tx__slots_reject_unknown_attribute(self) -> None:
         """
         Ensure 'PacketStatsTx.__slots__' rejects typos the same way.
@@ -503,6 +515,7 @@ class TestPacketStatsExtensibility(TestCase):
     The 'PacketStats' subclassing extensibility tests.
     """
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__packet_stats__custom_subclass_default(self) -> None:
         """
         Ensure a user-defined 'PacketStats' subclass inherits the base

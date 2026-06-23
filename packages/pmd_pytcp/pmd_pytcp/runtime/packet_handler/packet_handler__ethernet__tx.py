@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__ethernet__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from pmd_net_addr import MacAddress

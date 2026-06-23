@@ -77,6 +77,8 @@ ver 3.0.7
 # C = 0.4 segments / second^3 (the cubic scaling factor that
 # determines how aggressively CUBIC probes new bandwidth).
 # Encoded as 2/5.
+from __future__ import annotations
+
 C_NUM = 2
 C_DEN = 5
 

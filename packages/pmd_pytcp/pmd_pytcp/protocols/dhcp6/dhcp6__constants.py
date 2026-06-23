@@ -36,6 +36,8 @@ pmd_pytcp/protocols/dhcp6/dhcp6__constants.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip6Address
 
 # --- Protocol invariants (RFC-pinned; not operator-tunable) ---

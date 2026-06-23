@@ -30,10 +30,12 @@ pmd_net_proto/lib/proto_option.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from dataclasses import dataclass
-from typing import Self, override
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.proto_enum import ProtoEnumByte
@@ -109,9 +111,17 @@ class ProtoOptions(ABC):
         buffer = bytearray()
 
         for option in self._options:
-            buffer += bytearray(option)
+            buffer += bytearray(as_buffer(option))
 
         return memoryview(buffer)
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     def __bool__(self) -> bool:
         """

@@ -30,9 +30,12 @@ pmd_pytcp/tests/unit/protocols/ip/test__ip__ip_frag.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
+import sys
 import time
 from dataclasses import FrozenInstanceError, fields
-from unittest import TestCase
+from unittest import TestCase, skipUnless
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_net_proto import IpProto
@@ -228,6 +231,7 @@ class TestIpFragFlowIdSemantics(TestCase):
         with self.assertRaises(FrozenInstanceError):
             self._flow_a.id = 999  # type: ignore[misc]
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__ip_frag_flow_id__has_slots(self) -> None:
         """
         Ensure 'IpFragFlowId' uses '__slots__' (no per-instance __dict__),
@@ -606,6 +610,7 @@ class TestIpFragDataFields(TestCase):
             msg="IpFragData.last must be init=False (flipped via received_last_frag).",
         )
 
+    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
     def test__ip_frag_data__has_slots(self) -> None:
         """
         Ensure 'IpFragData' uses '__slots__' — matches the in-source

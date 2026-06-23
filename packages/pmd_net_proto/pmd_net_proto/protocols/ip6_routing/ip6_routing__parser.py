@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_routing/ip6_routing__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.packet_rx import PacketRx

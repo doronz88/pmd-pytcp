@@ -58,10 +58,13 @@ pmd_pytcp/lib/dad_slot_registry.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from enum import Enum
 
 from pmd_net_addr import Ip4Address, Ip6Address, MacAddress
+from typing import Generic, TypeVar, Union
 
 
 class DadSignalResult(Enum):
@@ -80,7 +83,8 @@ class DadSignalResult(Enum):
     SIGNALED = "SIGNALED"
 
 
-class DadSlotRegistry[A: Ip4Address | Ip6Address]:
+A = TypeVar("A", bound=Union[Ip4Address, Ip6Address])
+class DadSlotRegistry(Generic[A]):
     """
     Generic per-candidate DAD slot bookkeeping shared by IPv4
     ARP DAD and IPv6 ND DAD. Generic over the address type so

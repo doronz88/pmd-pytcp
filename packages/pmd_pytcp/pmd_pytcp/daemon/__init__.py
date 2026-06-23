@@ -32,6 +32,8 @@ pmd_pytcp/daemon/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.daemon.daemon import default_socket_path, run_daemon
 
 __all__ = ["default_socket_path", "run_daemon"]

@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/protocols/ip/test__ip__ip_frag_table.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip6Address

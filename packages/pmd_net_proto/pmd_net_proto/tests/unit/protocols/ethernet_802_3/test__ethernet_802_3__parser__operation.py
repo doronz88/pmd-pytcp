@@ -34,6 +34,8 @@ pmd_net_proto/tests/unit/protocols/ethernet_802_3/test__ethernet_802_3__parser__
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -49,6 +51,7 @@ from pmd_net_proto import (
     Ethernet8023Parser,
     PacketRx,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -312,7 +315,7 @@ class TestEthernet8023ParserOperation(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._parser)),
+            bytes(memoryview(as_buffer(self._parser))),
             self._frame_rx,
             msg=f"Unexpected buffer bytes for case: {self._description}",
         )

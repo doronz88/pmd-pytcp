@@ -45,7 +45,10 @@ packages/pmd_pytcp/pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session_
 ver 3.0.7
 """
 
-from typing import cast, override
+from __future__ import annotations
+
+from typing import cast
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.session.tcp__session__ack import TcpAckProcessor

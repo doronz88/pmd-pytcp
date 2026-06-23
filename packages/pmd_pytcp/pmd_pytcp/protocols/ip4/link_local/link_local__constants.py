@@ -42,6 +42,8 @@ ver 3.0.7
 # entering the RATE_LIMIT_INTERVAL cool-down. The default of
 # 10 matches the RFC; operators of constrained embedded
 # targets may tighten / loosen this via the sysctl.
+from __future__ import annotations
+
 IP4_LINK_LOCAL__MAX_CONFLICTS: int = 10
 
 # RFC 3927 §9 RATE_LIMIT_INTERVAL — the cool-down (in seconds)

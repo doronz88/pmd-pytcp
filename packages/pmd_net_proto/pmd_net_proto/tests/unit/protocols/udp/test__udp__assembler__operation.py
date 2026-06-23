@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/udp/test__udp__assembler__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 from unittest.mock import patch

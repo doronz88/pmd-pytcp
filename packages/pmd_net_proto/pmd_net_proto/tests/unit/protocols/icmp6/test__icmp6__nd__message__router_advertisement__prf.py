@@ -35,6 +35,8 @@ pmd_net_proto/tests/unit/protocols/icmp6/test__icmp6__nd__message__router_advert
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, cast
 from unittest import TestCase
 
@@ -50,6 +52,7 @@ from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.protocols.icmp6.message.nd.icmp6__nd__message__router_advertisement import (
     Icmp6NdMessageRouterAdvertisement as Msg,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 @parameterized_class(
@@ -166,7 +169,7 @@ class TestIcmp6NdRouterAdvertisementPrfRoundTrip(TestCase):
         )
         roundtripped = cast(
             Any,
-            Msg.from_buffer(bytes(memoryview(original))),
+            Msg.from_buffer(bytes(memoryview(as_buffer(original)))),
         )
 
         self.assertEqual(

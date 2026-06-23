@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/udp/test__udp__parser__sanity_checks.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from unittest import TestCase
 

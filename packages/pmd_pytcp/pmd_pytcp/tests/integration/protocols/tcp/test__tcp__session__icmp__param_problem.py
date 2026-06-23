@@ -36,6 +36,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__icmp__param_proble
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_net_proto import (
     Icmp4Assembler,

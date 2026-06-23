@@ -33,7 +33,10 @@ pmd_pytcp/tests/unit/socket/test__socket__packet__socket_table.py
 ver 3.0.7
 """
 
-from typing import cast, override
+from __future__ import annotations
+
+from typing import cast
+from typing_extensions import override
 from unittest import TestCase
 
 from pmd_net_proto.lib.enums import EtherType

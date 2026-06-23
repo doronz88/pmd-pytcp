@@ -30,6 +30,8 @@ pmd_pytcp/runtime/packet_handler/packet_handler__tcp__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 
 from pmd_net_addr import IpVersion

@@ -30,11 +30,15 @@ pmd_pytcp/runtime/timer.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import heapq
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, override
+from dataclasses import field
+from pmd_pytcp._compat import as_buffer, dataclass
+from typing import Any, Callable
+from typing_extensions import override
 
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.runtime.subsystem import Subsystem
@@ -251,7 +255,7 @@ class Timer(Subsystem):
 
                 for handle in due:
                     if handle.period_ms is not None and not handle.cancelled:
-                        handle.deadline_ms += handle.period_ms
+                        handle.deadline_ms += as_buffer(handle.period_ms)
                         handle.seq = self._next_seq()
                         heapq.heappush(
                             self._heap,

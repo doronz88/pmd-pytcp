@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ethernet_802_3/ethernet_802_3__parser.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -81,7 +83,7 @@ class Ethernet8023Parser(Ethernet8023[Buffer], ProtoParser):
                 f"Got: {len(self._frame)} bytes."
             )
 
-        dlen = int.from_bytes(self._frame[12:14])
+        dlen = int.from_bytes(self._frame[12:14], "big")
         payload_len = len(self._frame) - ETHERNET_802_3__HEADER__LEN
 
         # IEEE 802.3 — the 16-bit Length field MUST equal the actual MAC

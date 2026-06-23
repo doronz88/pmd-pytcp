@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/socket/test__socket__so_broadcast_gate.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 
 from pmd_net_addr import Ip4Address

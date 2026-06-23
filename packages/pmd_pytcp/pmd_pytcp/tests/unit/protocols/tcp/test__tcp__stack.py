@@ -31,12 +31,15 @@ pmd_pytcp/tests/unit/protocols/tcp/test__tcp__stack.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import TracebackType
-from typing import Self, override
+from typing_extensions import Self, override
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.protocols.tcp.tcp__stack import TcpStack
+from typing import Union
 
 _PEER_A = Ip4Address("203.0.113.1")
 
@@ -78,7 +81,7 @@ class _TrackingLock:
         self.depth -= 1
 
 
-class _LockAssertingDict(dict[Ip4Address | Ip6Address, bytes]):
+class _LockAssertingDict(dict[Union[Ip4Address, Ip6Address], bytes]):
     """
     A dict that records whether a tracking lock was held at the
     moment of each mutating operation, so a test can prove the
@@ -114,7 +117,7 @@ class _LockAssertingDict(dict[Ip4Address | Ip6Address, bytes]):
         super().__delitem__(key)
 
 
-class _LockAssertingSet(set[Ip4Address | Ip6Address]):
+class _LockAssertingSet(set[Union[Ip4Address, Ip6Address]]):
     """
     A set that records whether a tracking lock was held at the
     moment of each 'add', so a test can prove the negative-cache

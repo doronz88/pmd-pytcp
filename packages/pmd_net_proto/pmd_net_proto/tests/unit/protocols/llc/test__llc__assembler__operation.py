@@ -31,6 +31,8 @@ pmd_net_proto/tests/unit/protocols/llc/test__llc__assembler__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

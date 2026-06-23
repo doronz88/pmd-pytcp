@@ -34,6 +34,8 @@ pmd_pytcp/tests/integration/protocols/ip6/test__ip6__reassembly.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pmd_net_proto.lib.packet_rx import PacketRx

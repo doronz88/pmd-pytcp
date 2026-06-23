@@ -30,8 +30,10 @@ pmd_net_addr/base.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import override
+from typing_extensions import override
 
 
 class Base(ABC):

@@ -30,12 +30,15 @@ pmd_net_proto/protocols/raw/raw__base.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.enums import EtherType, IpProto
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.proto import Proto
+from pmd_net_proto._compat import as_buffer
 
 
 class Raw(Proto):
@@ -80,7 +83,7 @@ class Raw(Proto):
         Get the Raw packet as a memoryview.
         """
 
-        buffer = bytearray(self._payload)
+        buffer = bytearray(as_buffer(self._payload))
 
         # ICMPv6 raw sockets: the kernel ALWAYS computes and inserts
         # the ICMPv6 checksum, overwriting whatever the application
@@ -93,7 +96,7 @@ class Raw(Proto):
         # untouched (a malformed ICMPv6 message has no checksum slot).
         if self._ip_proto == IpProto.ICMP6 and len(buffer) >= 4:
             buffer[2:4] = b"\x00\x00"
-            buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2)
+            buffer[2:4] = inet_cksum(buffer, init=self.pshdr_sum).to_bytes(2, "big")
 
         # ICMPv4 (and every other) raw payload is emitted verbatim:
         # Linux SOCK_RAW / IPPROTO_ICMP does NOT compute the IPv4
@@ -102,6 +105,15 @@ class Raw(Proto):
         # ICMPv4 checksum accordingly.)
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @property
     def payload(self) -> Buffer:

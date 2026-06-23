@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/socket/test__socket__bind_helpers.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch

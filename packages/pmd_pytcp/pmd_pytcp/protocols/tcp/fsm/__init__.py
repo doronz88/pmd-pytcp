@@ -66,6 +66,8 @@ pmd_pytcp/protocols/tcp/fsm/__init__.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm import (
     dispatch_icmp,
     dispatch_packet,

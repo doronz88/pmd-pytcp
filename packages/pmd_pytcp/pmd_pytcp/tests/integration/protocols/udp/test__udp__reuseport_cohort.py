@@ -39,6 +39,8 @@ pmd_pytcp/tests/integration/protocols/udp/test__udp__reuseport_cohort.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_net_proto import EthernetAssembler, Ip4Assembler, UdpAssembler
 from pmd_pytcp import stack

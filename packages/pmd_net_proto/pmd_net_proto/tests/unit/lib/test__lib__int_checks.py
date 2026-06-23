@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/lib/test__lib__int_checks.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any, Callable
 from unittest import TestCase
 

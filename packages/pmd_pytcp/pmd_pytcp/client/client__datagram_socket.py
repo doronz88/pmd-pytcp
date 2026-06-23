@@ -41,6 +41,8 @@ pmd_pytcp/client/client__datagram_socket.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 
 from pmd_net_proto.lib.enums import IpProto

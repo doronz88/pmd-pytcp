@@ -30,9 +30,12 @@ pmd_net_proto/protocols/icmp4/message/icmp4__message__parameter_problem.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
-from dataclasses import dataclass, field
-from typing import Self, override
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.int_checks import is_uint8, is_uint16
@@ -78,15 +81,14 @@ class Icmp4ParameterProblemCode(Icmp4Code):
         Get the value as a string.
         """
 
-        match self:
-            case Icmp4ParameterProblemCode.POINTER_INDICATES_ERROR:
-                return "Pointer Indicates Error"
-            case Icmp4ParameterProblemCode.REQUIRED_OPTION_MISSING:
-                return "Required Option Missing"
-            case Icmp4ParameterProblemCode.BAD_LENGTH:
-                return "Bad Length"
-            case _:
-                return super().__str__()
+        if self == Icmp4ParameterProblemCode.POINTER_INDICATES_ERROR:
+            return "Pointer Indicates Error"
+        elif self == Icmp4ParameterProblemCode.REQUIRED_OPTION_MISSING:
+            return "Required Option Missing"
+        elif self == Icmp4ParameterProblemCode.BAD_LENGTH:
+            return "Bad Length"
+        else:
+            return super().__str__()
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -166,6 +168,15 @@ class Icmp4MessageParameterProblem(Icmp4Message):
         buffer[ICMP4__PARAMETER_PROBLEM__LEN:] = self.data
 
         return memoryview(buffer)
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def _pack_header(
@@ -179,7 +190,7 @@ class Icmp4MessageParameterProblem(Icmp4Message):
 
         struct.pack_into(
             ICMP4__PARAMETER_PROBLEM__STRUCT,
-            buffer := bytearray(buffer_len),
+            buffer := bytearray(as_buffer(buffer_len)),
             0,
             int(self.type),
             int(self.code),
@@ -250,5 +261,5 @@ class Icmp4MessageParameterProblem(Icmp4Message):
         Assemble the ICMPv4 Parameter Problem message into the buffer list.
         """
 
-        buffers.append(self._pack_header())
-        buffers.append(self.data)
+        buffers.append(as_buffer(self._pack_header()))
+        buffers.append(as_buffer(self.data))

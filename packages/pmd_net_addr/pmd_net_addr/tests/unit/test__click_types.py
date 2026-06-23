@@ -30,7 +30,11 @@ pmd_net_addr/tests/unit/test__click_types.py
 ver 3.0.7
 """
 
-from typing import assert_type
+from __future__ import annotations
+
+from typing import Union
+
+from typing_extensions import assert_type
 from unittest import TestCase
 
 from click import BadParameter
@@ -536,13 +540,13 @@ class TestClickTypeParameterisation(TestCase):
         assert_type(ClickTypeIp6IfAddr().convert("2001:db8::1/64", None, None), Ip6IfAddr)
         assert_type(
             ClickTypeIpAddress().convert("2001:db8::1", None, None),
-            Ip6Address | Ip4Address,
+            Union[Ip6Address, Ip4Address],
         )
         assert_type(
             ClickTypeIpNetwork().convert("2001:db8::/64", None, None),
-            Ip6Network | Ip4Network,
+            Union[Ip6Network, Ip4Network],
         )
         assert_type(
             ClickTypeIfAddr().convert("2001:db8::1/64", None, None),
-            Ip6IfAddr | Ip4IfAddr,
+            Union[Ip6IfAddr, Ip4IfAddr],
         )

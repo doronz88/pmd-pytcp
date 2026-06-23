@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/tcp/test__tcp__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -42,6 +44,7 @@ from pmd_net_proto import (
     UINT_32__MIN,
     TcpHeader,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestTcpHeaderAsserts(TestCase):
@@ -616,7 +619,7 @@ class TestTcpHeaderAsserts(TestCase):
             urg=0x9999,
         )
 
-        rebuilt = TcpHeader.from_buffer(bytes(memoryview(original)))
+        rebuilt = TcpHeader.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

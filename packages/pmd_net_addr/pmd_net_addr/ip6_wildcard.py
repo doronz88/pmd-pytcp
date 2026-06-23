@@ -30,13 +30,16 @@ pmd_net_addr/ip6_wildcard.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
-from typing import Self, final, override
 
 from pmd_net_addr.errors import Ip6WildcardFormatError
 from pmd_net_addr.ip6_address import IP6__ADDRESS_LEN, IP6__MASK
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.ip_wildcard import IpWildcard
+from pmd_net_addr._compat import as_buffer
+from typing_extensions import Self, final, override
 
 
 @final
@@ -76,7 +79,7 @@ class Ip6Wildcard(IpWildcard):
 
         if isinstance(wildcard, (memoryview, bytes, bytearray)):
             if len(wildcard) == IP6__ADDRESS_LEN:
-                self._wildcard = int.from_bytes(wildcard)
+                self._wildcard = int.from_bytes(wildcard, "big")
                 return
 
         if isinstance(wildcard, str):
@@ -87,7 +90,7 @@ class Ip6Wildcard(IpWildcard):
             # pre-filter regex.
             text = wildcard.strip()
             try:
-                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET6, text))
+                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET6, text), "big")
                 return
             except OSError:
                 pass
@@ -108,4 +111,13 @@ class Ip6Wildcard(IpWildcard):
         Get the IPv6 wildcard as a memoryview.
         """
 
-        return memoryview(bytearray(self._wildcard.to_bytes(IP6__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._wildcard.to_bytes(IP6__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+

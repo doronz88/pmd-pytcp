@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/packet_handler/test__runtime__packet_handler__arp__
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 from unittest import TestCase
@@ -42,6 +44,7 @@ from pmd_pytcp import stack
 from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.protocols.arp.arp__cache import ArpCache
 from pmd_pytcp.runtime.packet_handler.packet_handler__arp__rx import ArpRxHandler
+from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2
@@ -425,17 +428,17 @@ class TestPacketHandlerArpRxRequest(_ArpRxTestBase):
         """
 
         valid = bytearray(
-            _arp_frame(
+            as_buffer(_arp_frame(
                 oper=ArpOperation.REQUEST,
                 sha=HOST_A__MAC,
                 spa=HOST_A__IP4,
                 tha=MAC__UNSPEC,
                 tpa=STACK__IP4_ADDRESS,
-            )
+            ))
         )
         # Rewrite the 'oper' field (bytes 6-7) to a value neither
         # REQUEST (1) nor REPLY (2).
-        valid[6:8] = (0x00FF).to_bytes(2)
+        valid[6:8] = (0x00FF).to_bytes(2, "big")
 
         packet_rx = _make_packet_rx(bytes(valid), ethernet_dst=STACK__MAC_UNICAST)
 

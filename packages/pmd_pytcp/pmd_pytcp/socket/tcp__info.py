@@ -52,6 +52,8 @@ pmd_pytcp/socket/tcp__info.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 from enum import IntEnum, IntFlag
 

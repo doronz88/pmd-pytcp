@@ -32,6 +32,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__ra_default_route
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip6Address, Ip6Network, MacAddress
 from pmd_pytcp import stack
 from pmd_pytcp.runtime.fib import Route, RouteProtocol

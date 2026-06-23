@@ -30,14 +30,17 @@ pmd_net_addr/ip4_mask.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import re
 import socket
-from typing import Self, final, override
 
 from pmd_net_addr.errors import Ip4MaskFormatError
 from pmd_net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
 from pmd_net_addr.ip_mask import IpMask
 from pmd_net_addr.ip_version import IpVersion
+from pmd_net_addr._compat import as_buffer
+from typing_extensions import Self, final, override
 
 
 @final
@@ -74,7 +77,7 @@ class Ip4Mask(IpMask):
 
         if isinstance(mask, (memoryview, bytes, bytearray)):
             if len(mask) == IP4__ADDRESS_LEN:
-                candidate = int.from_bytes(mask)
+                candidate = int.from_bytes(mask, "big")
                 if self._is_contiguous_mask(candidate, IP4__ADDRESS_LEN * 8):
                     self._mask = candidate
                     return
@@ -95,7 +98,7 @@ class Ip4Mask(IpMask):
             # octets and leading zeros and silently reinterpret the
             # dotted netmask.
             try:
-                candidate = int.from_bytes(socket.inet_pton(socket.AF_INET, text))
+                candidate = int.from_bytes(socket.inet_pton(socket.AF_INET, text), "big")
             except OSError:
                 pass
             else:
@@ -111,4 +114,13 @@ class Ip4Mask(IpMask):
         Get the IPv4 mask as a memoryview.
         """
 
-        return memoryview(bytearray(self._mask.to_bytes(IP4__ADDRESS_LEN)))
+        return memoryview(bytearray(as_buffer(self._mask.to_bytes(IP4__ADDRESS_LEN, "big"))))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+

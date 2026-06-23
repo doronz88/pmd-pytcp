@@ -34,6 +34,8 @@ pmd_pytcp/tests/integration/protocols/ethernet_802_3/test__ethernet_802_3__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from parameterized import parameterized_class  # type: ignore[import-untyped]
 
 from pmd_net_proto.lib.packet_rx import PacketRx

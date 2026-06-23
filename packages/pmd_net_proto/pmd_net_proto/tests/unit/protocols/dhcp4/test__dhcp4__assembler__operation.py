@@ -35,6 +35,8 @@ pmd_net_proto/tests/unit/protocols/dhcp4/test__dhcp4__assembler__operation.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -60,6 +62,7 @@ from pmd_net_proto import (
 )
 from pmd_net_proto.protocols.dhcp4.dhcp4__assembler import Dhcp4Assembler
 from pmd_net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4Operation
+from pmd_net_proto._compat import as_buffer
 
 
 def _bootp_header(
@@ -88,7 +91,7 @@ def _bootp_header(
     file_bytes = file.encode("ascii") + b"\x00" * (128 - len(file))
 
     blob = bytes([op, 0x01, 0x06, hops])
-    blob += xid.to_bytes(4, "big")
+    blob += as_buffer(xid.to_bytes(4, "big"))
     blob += secs.to_bytes(2, "big") + flags.to_bytes(2, "big")
     blob += ciaddr + yiaddr + siaddr + giaddr
     blob += chaddr + sname_bytes + file_bytes
@@ -340,7 +343,7 @@ class TestDhcp4AssemblerOperation(TestCase):
         """
 
         self.assertEqual(
-            bytes(memoryview(self._dhcp4__assembler)),
+            bytes(memoryview(as_buffer(self._dhcp4__assembler))),
             bytes(self._dhcp4__assembler),
             msg=f"memoryview must match bytes() for case: {self._description}",
         )

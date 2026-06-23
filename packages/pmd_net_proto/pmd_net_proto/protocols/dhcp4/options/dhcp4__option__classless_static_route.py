@@ -31,8 +31,11 @@ pmd_net_proto/protocols/dhcp4/options/dhcp4__option__classless_static_route.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass, field
-from typing import Self, override
+from __future__ import annotations
+
+from dataclasses import field
+from pmd_net_proto._compat import as_buffer, dataclass
+from typing_extensions import Self, override
 
 from pmd_net_addr import Ip4Address, Ip4Mask, Ip4Network
 from pmd_net_proto.lib.buffer import Buffer
@@ -173,6 +176,15 @@ class Dhcp4OptionClasslessStaticRoute(Dhcp4Option):
             offset += 1 + n_sig + DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__ROUTER_LEN
 
         return memoryview(bytes((int(self.type), self.len - DHCP4__OPTION__LEN)) + bytes(buffer))
+    @override
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @staticmethod
     def decode_routes(data: Buffer, /) -> list[tuple[Ip4Network, Ip4Address]]:
@@ -209,9 +221,9 @@ class Dhcp4OptionClasslessStaticRoute(Dhcp4Option):
             # RFC 3442 ("the subnet number ... is the logical AND of
             # the subnet number and subnet mask").
             address_bytes = bytes(data[offset : offset + n_sig]) + bytes(4 - n_sig)
-            offset += n_sig
+            offset += as_buffer(n_sig)
             router = Ip4Address(bytes(data[offset : offset + DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__ROUTER_LEN]))
-            offset += DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__ROUTER_LEN
+            offset += as_buffer(DHCP4__OPTION__CLASSLESS_STATIC_ROUTE__ROUTER_LEN)
 
             network = Ip4Network((Ip4Address(address_bytes), Ip4Mask(f"/{prefixlen}")))
             routes.append((network, router))

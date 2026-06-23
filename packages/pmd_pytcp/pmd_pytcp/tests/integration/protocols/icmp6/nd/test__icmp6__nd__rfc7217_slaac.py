@@ -41,6 +41,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rfc7217_slaac.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip6IfAddr, Ip6Network
 from pmd_pytcp.stack import sysctl as sysctl_module
 from pmd_pytcp.tests.lib.nd_testcase import NdTestCase

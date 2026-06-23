@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/ip4/test__ip4__header__asserts.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 
@@ -50,6 +52,7 @@ from pmd_net_proto import (
     Ip4Header,
     IpProto,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 class TestIp4HeaderAsserts(TestCase):
@@ -575,7 +578,7 @@ class TestIp4HeaderAsserts(TestCase):
             dst=Ip4Address("192.168.1.1"),
         )
 
-        rebuilt = Ip4Header.from_buffer(bytes(memoryview(original)))
+        rebuilt = Ip4Header.from_buffer(bytes(memoryview(as_buffer(original))))
 
         self.assertEqual(
             rebuilt,

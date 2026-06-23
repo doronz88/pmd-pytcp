@@ -71,6 +71,8 @@ ver 3.0.7
 #     exceed 10 segments at start.
 # 14600 was chosen by RFC 6928 as 10 * 1460 (the canonical
 # Ethernet-MTU-derived MSS).
+from __future__ import annotations
+
 INITIAL_WINDOW_FACTOR = 10
 INITIAL_WINDOW_BYTES = 14600
 

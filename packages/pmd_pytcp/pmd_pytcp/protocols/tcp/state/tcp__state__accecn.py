@@ -44,7 +44,9 @@ pmd_pytcp/protocols/tcp/state/tcp__state__accecn.py
 ver 3.0.7
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from pmd_pytcp._compat import dataclass
 
 # RFC 9768 §3.2.1 initial counter values. r.e0b / r.e1b / s.e0b /
 # s.e1b initialise to 1 (not 0) so a freshly negotiated session

@@ -42,6 +42,8 @@ pmd_pytcp/ipc/ipc__control.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from pmd_pytcp.ipc.ipc__enums import IpcMessageKind
@@ -93,21 +95,20 @@ def _resolve_api(name: str, /) -> Any:
 
     from pmd_pytcp import stack
 
-    match name:
-        case "sysctl":
-            from pmd_pytcp.stack import sysctl as sysctl_module
+    if name == "sysctl":
+        from pmd_pytcp.stack import sysctl as sysctl_module
 
-            return sysctl_module
-        case "route":
-            return stack.route
-        case "link":
-            return stack.link
-        case "address":
-            return stack.address
-        case "neighbor":
-            return stack.neighbor
-        case "membership":
-            return stack.membership
+        return sysctl_module
+    elif name == "route":
+        return stack.route
+    elif name == "link":
+        return stack.link
+    elif name == "address":
+        return stack.address
+    elif name == "neighbor":
+        return stack.neighbor
+    elif name == "membership":
+        return stack.membership
 
     raise KeyError(f"Unknown control API {name!r}.")
 

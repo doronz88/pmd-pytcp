@@ -30,8 +30,10 @@ pmd_pytcp/lib/name_enum.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import IntEnum
-from typing import override
+from typing_extensions import override
 
 
 class NameEnum(IntEnum):

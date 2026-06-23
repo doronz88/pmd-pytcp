@@ -49,7 +49,9 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__plpmtud_cold_start
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_addr import Ip4Address
 from pmd_pytcp import stack

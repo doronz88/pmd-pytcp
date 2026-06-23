@@ -34,6 +34,8 @@ pmd_pytcp/tests/integration/protocols/igmp/test__igmp__source_filter_model.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 
 from pmd_net_addr import Ip4Address

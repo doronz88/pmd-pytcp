@@ -39,10 +39,13 @@ pmd_pytcp/socket/packet__socket.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import errno
 import os
 import threading
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, cast
+from typing_extensions import override
 
 from pmd_net_proto.lib.enums import EtherType
 from pmd_pytcp import stack

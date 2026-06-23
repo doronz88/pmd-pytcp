@@ -36,6 +36,8 @@ pmd_pytcp/tests/integration/ipc/test__ipc__socket_session.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 
 from pmd_pytcp.ipc.ipc__client import IpcClient

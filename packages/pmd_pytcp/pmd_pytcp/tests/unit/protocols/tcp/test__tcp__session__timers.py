@@ -31,9 +31,11 @@ pmd_pytcp/tests/unit/protocols/tcp/test__tcp__session__timers.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 from types import SimpleNamespace
-from typing import override
+from typing_extensions import override
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 

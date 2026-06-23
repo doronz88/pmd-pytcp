@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/lib/test__lib__name_enum.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from enum import IntEnum, auto
 from typing import Any
 from unittest import TestCase

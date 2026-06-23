@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_frag/ip6_frag__assembler.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.enums import IpProto
@@ -38,6 +40,7 @@ from pmd_net_proto.lib.proto_assembler import ProtoAssembler
 from pmd_net_proto.lib.tracker import Tracker
 from pmd_net_proto.protocols.ip6_frag.ip6_frag__base import Ip6Frag
 from pmd_net_proto.protocols.ip6_frag.ip6_frag__header import Ip6FragHeader
+from pmd_net_proto._compat import as_buffer
 
 
 class Ip6FragAssembler(Ip6Frag, ProtoAssembler):
@@ -77,5 +80,5 @@ class Ip6FragAssembler(Ip6Frag, ProtoAssembler):
         Assemble the IPv6 Frag packet into list of buffers.
         """
 
-        buffers.append(bytearray(self._header))
-        buffers.append(self._payload)
+        buffers.append(as_buffer(bytearray(as_buffer(self._header))))
+        buffers.append(as_buffer(self._payload))

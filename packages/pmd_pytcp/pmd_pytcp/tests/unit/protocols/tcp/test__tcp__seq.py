@@ -32,6 +32,8 @@ pmd_pytcp/tests/unit/protocols/tcp/test__tcp__seq.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

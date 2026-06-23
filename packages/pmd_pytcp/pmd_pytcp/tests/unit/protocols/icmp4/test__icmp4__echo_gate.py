@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/protocols/icmp4/test__icmp4__echo_gate.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

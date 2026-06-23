@@ -32,6 +32,8 @@ pmd_pytcp/tests/unit/protocols/ip4/link_local/test__link_local__rng.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, MacAddress

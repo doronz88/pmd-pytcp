@@ -37,6 +37,8 @@ ver 3.0.7
 # initial Report plus RV-1 retransmits) so the membership change
 # survives the loss of up to RV-1 packets. Linux exposes no per-host
 # RV knob (it is fixed at 2); PyTCP makes it tunable.
+from __future__ import annotations
+
 IGMP__ROBUSTNESS_VARIABLE = 2
 
 # RFC 3376 §8.11 Unsolicited Report Interval, in milliseconds (the RFC

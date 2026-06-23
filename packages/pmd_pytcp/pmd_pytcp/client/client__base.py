@@ -36,7 +36,10 @@ pmd_pytcp/client/client__base.py
 ver 3.0.7
 """
 
-from typing import Any, Self
+from __future__ import annotations
+
+from typing import Any
+from typing_extensions import Self
 
 from pmd_pytcp.ipc.ipc__client import IpcClient
 from pmd_pytcp.ipc.ipc__rpc import control_call

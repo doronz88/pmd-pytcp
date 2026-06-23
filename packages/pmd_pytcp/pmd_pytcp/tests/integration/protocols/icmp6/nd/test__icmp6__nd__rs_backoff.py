@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__rs_backoff.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest.mock import patch
 
 from pmd_net_proto import EthernetParser, EtherType, Icmp6NdMessageRouterSolicitation, Icmp6Parser, Ip6Parser, PacketRx

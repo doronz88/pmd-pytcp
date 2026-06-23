@@ -46,6 +46,8 @@ pmd_pytcp/tests/integration/protocols/tcp/test__tcp__session__data_transfer__win
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pmd_pytcp.tests.lib.network_testcase import (

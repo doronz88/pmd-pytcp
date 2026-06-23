@@ -36,13 +36,16 @@ pmd_pytcp/client/client__address.py
 ver 3.0.7
 """
 
-from typing import cast
+from __future__ import annotations
+
+from typing import Union, cast
 
 from pmd_net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
 from pmd_pytcp.client.client__base import _DeviceScopedProxy
 from pmd_pytcp.socket import AddressFamily
+from typing_extensions import TypeAliasType
 
-type _AnyIfAddr = Ip4IfAddr | Ip6IfAddr
+_AnyIfAddr = TypeAliasType("_AnyIfAddr", Union[Ip4IfAddr, Ip6IfAddr])
 
 
 class ClientAddress(_DeviceScopedProxy):

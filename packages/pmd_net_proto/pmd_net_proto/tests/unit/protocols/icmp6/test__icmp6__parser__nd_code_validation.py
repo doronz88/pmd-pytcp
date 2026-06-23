@@ -36,6 +36,8 @@ pmd_net_proto/tests/unit/protocols/icmp6/test__icmp6__parser__nd_code_validation
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest import TestCase
@@ -58,6 +60,7 @@ from pmd_net_proto import (
     PacketRx,
     inet_cksum,
 )
+from pmd_net_proto._compat import as_buffer
 
 
 def _build_icmp6_frame(*, message: Any, ip6__src: Ip6Address, ip6__dst: Ip6Address) -> bytes:
@@ -95,7 +98,7 @@ def _build_packet_rx_with_bad_code(
     minimal IPv6 stub.
     """
 
-    mutated = bytearray(icmp6_frame)
+    mutated = bytearray(as_buffer(icmp6_frame))
     mutated[1] = bad_code
     # Zero the existing checksum so we can recompute from scratch.
     mutated[2] = 0

@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/ipc/test__ipc__dgram_frame.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_pytcp.ipc.ipc__dgram_frame import decode_dgram, encode_dgram

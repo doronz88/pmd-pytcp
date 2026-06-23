@@ -31,6 +31,8 @@ pmd_pytcp/tests/unit/protocols/tcp/test__tcp__session__lifecycle.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch

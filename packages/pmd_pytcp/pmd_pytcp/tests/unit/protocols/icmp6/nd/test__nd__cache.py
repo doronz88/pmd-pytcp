@@ -38,6 +38,8 @@ pmd_pytcp/tests/unit/protocols/icmp6/nd/test__nd__cache.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 

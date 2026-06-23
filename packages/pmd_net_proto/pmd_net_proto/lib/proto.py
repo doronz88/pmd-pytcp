@@ -30,8 +30,10 @@ pmd_net_proto/lib/proto.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import override
+from typing_extensions import override
 
 
 class Proto(ABC):
@@ -72,6 +74,14 @@ class Proto(ABC):
         """
 
         raise NotImplementedError
+    def __bytes__(self) -> bytes:
+        """
+        Get the object as bytes (Python 3.9+ fallback for the
+        PEP 688 '__buffer__' protocol, which is 3.12+).
+        """
+
+        return bytes(self.__buffer__(0))
+
 
     @override
     def __eq__(self, other: object) -> bool:

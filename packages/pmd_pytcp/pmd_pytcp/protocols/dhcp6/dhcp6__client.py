@@ -35,13 +35,17 @@ pmd_pytcp/protocols/dhcp6/dhcp6__client.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import math
 import random
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, override
+from dataclasses import field
+from pmd_pytcp._compat import as_buffer, dataclass
+from typing import TYPE_CHECKING
+from typing_extensions import override
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from pmd_net_proto import (
@@ -1152,8 +1156,8 @@ class Dhcp6Client(Subsystem):
 
         try:
             Dhcp6Options.validate_integrity(frame=ia_na.options, hlen=len(ia_na.options), offset=0)
-            ia_options = Dhcp6Options.from_buffer(memoryview(ia_na.options))
-        except Dhcp6IntegrityError, Dhcp6SanityError:
+            ia_options = Dhcp6Options.from_buffer(memoryview(as_buffer(ia_na.options)))
+        except (Dhcp6IntegrityError, Dhcp6SanityError):
             __debug__ and log("dhcp6", "<WARN>REPLY IA_NA sub-options malformed; no lease obtained")
             return None
 
@@ -1286,7 +1290,7 @@ class Dhcp6Client(Subsystem):
                 packet = Dhcp6Parser(client_socket.recv__mv(timeout=remaining))
             except TimeoutError:
                 return None
-            except Dhcp6IntegrityError, Dhcp6SanityError:
+            except (Dhcp6IntegrityError, Dhcp6SanityError):
                 __debug__ and log("dhcp6", "<WARN>Dropping malformed inbound DHCPv6 frame; continuing wait window</>")
                 continue
 

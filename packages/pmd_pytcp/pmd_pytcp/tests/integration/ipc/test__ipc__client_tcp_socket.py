@@ -35,6 +35,8 @@ pmd_pytcp/tests/integration/ipc/test__ipc__client_tcp_socket.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 
 from pmd_pytcp.client import ClientTcpSocket

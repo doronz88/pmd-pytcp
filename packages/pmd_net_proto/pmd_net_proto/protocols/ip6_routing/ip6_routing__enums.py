@@ -30,7 +30,9 @@ pmd_net_proto/protocols/ip6_routing/ip6_routing__enums.py
 ver 3.0.7
 """
 
-from typing import override
+from __future__ import annotations
+
+from typing_extensions import override
 
 from pmd_net_proto.lib.proto_enum import ProtoEnumByte
 
@@ -51,14 +53,13 @@ class Ip6RoutingType(ProtoEnumByte):
         Get the value as a string.
         """
 
-        match self:
-            case Ip6RoutingType.RH0:
-                name = "RH0"
-            case Ip6RoutingType.RH2:
-                name = "RH2"
-            case Ip6RoutingType.RH3:
-                name = "RH3"
-            case Ip6RoutingType.RH4:
-                name = "RH4"
+        if self == Ip6RoutingType.RH0:
+            name = "RH0"
+        elif self == Ip6RoutingType.RH2:
+            name = "RH2"
+        elif self == Ip6RoutingType.RH3:
+            name = "RH3"
+        elif self == Ip6RoutingType.RH4:
+            name = "RH4"
 
         return f"{self.value}" if self.is_unknown else name

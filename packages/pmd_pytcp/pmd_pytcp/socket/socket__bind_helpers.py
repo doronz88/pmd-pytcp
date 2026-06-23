@@ -30,9 +30,11 @@ pmd_pytcp/socket/socket__bind_helpers.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import hashlib
 import secrets
-from typing import cast
+from typing import TypeVar, cast
 
 from pmd_net_addr import (
     Ip4Address,
@@ -44,25 +46,25 @@ from pmd_pytcp import stack
 from pmd_pytcp.socket import AddressFamily, SocketType
 
 
-def pick_local_ip_address[T: IpAddress](*, remote_ip_address: T) -> T:
+T = TypeVar("T", bound=IpAddress)
+def pick_local_ip_address(*, remote_ip_address: T) -> T:
     """
     Pick an appropriate source IP address based on the provided destination IP address.
     """
 
-    match remote_ip_address.version:
-        case IpVersion.IP6:
-            assert isinstance(remote_ip_address, Ip6Address)
-            return cast(
-                T,
-                pick_local_ip6_address(remote_ip6_address=remote_ip_address),
-            )
+    if remote_ip_address.version == IpVersion.IP6:
+        assert isinstance(remote_ip_address, Ip6Address)
+        return cast(
+            T,
+            pick_local_ip6_address(remote_ip6_address=remote_ip_address),
+        )
 
-        case IpVersion.IP4:
-            assert isinstance(remote_ip_address, Ip4Address)
-            return cast(
-                T,
-                pick_local_ip4_address(remote_ip4_address=remote_ip_address),
-            )
+    elif remote_ip_address.version == IpVersion.IP4:
+        assert isinstance(remote_ip_address, Ip4Address)
+        return cast(
+            T,
+            pick_local_ip4_address(remote_ip4_address=remote_ip_address),
+        )
 
 
 def pick_local_ip6_address(

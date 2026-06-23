@@ -30,6 +30,8 @@ pmd_pytcp/tests/unit/runtime/test__runtime__rx_ring.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import os
 import queue
 from typing import Any

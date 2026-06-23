@@ -40,6 +40,8 @@ pmd_net_proto/tests/unit/protocols/ethernet_802_3/test__ethernet_802_3__parser__
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 from unittest import TestCase
 

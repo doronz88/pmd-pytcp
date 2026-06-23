@@ -12,6 +12,8 @@ On macOS/Windows the wakeup ``eventfd`` is emulated (non-blocking pipe, or socke
 :func:`register_interface_fd` is routed through the socket's ``recv`` / ``sendall``.
 """
 
+from __future__ import annotations
+
 import os
 import socket
 from contextlib import suppress

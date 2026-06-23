@@ -45,6 +45,8 @@ pmd_pytcp/tests/integration/protocols/udp/test__udp__socket_api.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from pmd_net_addr import MacAddress
 from pmd_net_proto import (
     EthernetAssembler,

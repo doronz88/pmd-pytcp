@@ -42,6 +42,8 @@ pmd_pytcp/tests/integration/socket/test__socket__tcp_user_options.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import struct
 
 from pmd_net_addr import Ip4Address
@@ -51,6 +53,7 @@ from pmd_pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pmd_pytcp.tests.lib.tcp_testcase import TcpTestCase
+from pmd_pytcp._compat import as_buffer
 
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 STACK__PORT: int = 12345
@@ -96,7 +99,7 @@ def _mss_from_syn_frame(frame: bytes, /) -> int:
         if kind == _TCP_OPTION__KIND_MSS:
             (mss,) = struct.unpack("!H", options[idx + 2 : idx + 4])
             return int(mss)
-        idx += opt_len
+        idx += as_buffer(opt_len)
     raise AssertionError("MSS option not found in SYN")
 
 

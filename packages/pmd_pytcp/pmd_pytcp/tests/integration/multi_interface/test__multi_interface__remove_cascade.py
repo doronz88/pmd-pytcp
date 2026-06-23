@@ -39,6 +39,8 @@ pmd_pytcp/tests/integration/multi_interface/test__multi_interface__remove_cascad
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import cast
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec

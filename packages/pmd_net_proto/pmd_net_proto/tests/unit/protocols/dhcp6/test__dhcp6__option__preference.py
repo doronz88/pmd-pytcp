@@ -30,6 +30,8 @@ pmd_net_proto/tests/unit/protocols/dhcp6/test__dhcp6__option__preference.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from unittest import TestCase
 
 from pmd_net_proto import (

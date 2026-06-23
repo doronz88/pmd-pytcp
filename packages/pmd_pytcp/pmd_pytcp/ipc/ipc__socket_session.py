@@ -49,6 +49,8 @@ pmd_pytcp/ipc/ipc__socket_session.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import socket
 import threading
 from typing import Any
@@ -281,41 +283,40 @@ class SocketSession:
 
         sock = daemon_socket.socket
 
-        match request.method:
-            case "bind":
-                sock.bind(request.args["address"])
-                return None, None
-            case "connect":
-                sock.connect(request.args["address"])
-                daemon_socket.start_bridge()
-                return None, None
-            case "listen":
-                if not isinstance(sock, TcpSocket):
-                    raise OSError("listen() is supported only on a stream socket.")
-                sock.listen(backlog=request.args["backlog"])
-                return None, None
-            case "accept":
-                if not isinstance(sock, TcpSocket):
-                    raise OSError("accept() is supported only on a stream socket.")
-                return self._accept(sock)
-            case "setsockopt":
-                sock.setsockopt(request.args["level"], request.args["optname"], request.args["value"])
-                return None, None
-            case "getsockopt":
-                return sock.getsockopt(request.args["level"], request.args["optname"]), None
-            case "shutdown":
-                if not isinstance(sock, TcpSocket):
-                    raise OSError("shutdown() is not supported on a datagram socket.")
-                sock.shutdown(request.args["how"])
-                return None, None
-            case "getsockname":
-                return sock.getsockname(), None
-            case "getpeername":
-                return sock.getpeername(), None
-            case "close":
-                self._sockets.pop(request.handle)  # type: ignore[arg-type]
-                daemon_socket.close(abort=False)
-                return None, None
+        if request.method == "bind":
+            sock.bind(request.args["address"])
+            return None, None
+        elif request.method == "connect":
+            sock.connect(request.args["address"])
+            daemon_socket.start_bridge()
+            return None, None
+        elif request.method == "listen":
+            if not isinstance(sock, TcpSocket):
+                raise OSError("listen() is supported only on a stream socket.")
+            sock.listen(backlog=request.args["backlog"])
+            return None, None
+        elif request.method == "accept":
+            if not isinstance(sock, TcpSocket):
+                raise OSError("accept() is supported only on a stream socket.")
+            return self._accept(sock)
+        elif request.method == "setsockopt":
+            sock.setsockopt(request.args["level"], request.args["optname"], request.args["value"])
+            return None, None
+        elif request.method == "getsockopt":
+            return sock.getsockopt(request.args["level"], request.args["optname"]), None
+        elif request.method == "shutdown":
+            if not isinstance(sock, TcpSocket):
+                raise OSError("shutdown() is not supported on a datagram socket.")
+            sock.shutdown(request.args["how"])
+            return None, None
+        elif request.method == "getsockname":
+            return sock.getsockname(), None
+        elif request.method == "getpeername":
+            return sock.getpeername(), None
+        elif request.method == "close":
+            self._sockets.pop(request.handle)  # type: ignore[arg-type]
+            daemon_socket.close(abort=False)
+            return None, None
 
         raise KeyError(f"Method {request.method!r} is not a permitted socket call.")
 
@@ -331,14 +332,13 @@ class SocketSession:
         methods; sendto / recvfrom ride the packet bridge.
         """
 
-        match request.method:
-            case "bind":
-                daemon_socket.socket.bind(request.args["address"])
-                return None, None
-            case "close":
-                self._sockets.pop(request.handle)  # type: ignore[arg-type]
-                daemon_socket.close(abort=False)
-                return None, None
+        if request.method == "bind":
+            daemon_socket.socket.bind(request.args["address"])
+            return None, None
+        elif request.method == "close":
+            self._sockets.pop(request.handle)  # type: ignore[arg-type]
+            daemon_socket.close(abort=False)
+            return None, None
 
         raise KeyError(f"Method {request.method!r} is not permitted on an AF_PACKET socket.")
 
@@ -381,19 +381,18 @@ class SocketSession:
         client end to pass.
         """
 
-        match socket_type:
-            case SocketType.STREAM:
-                return self._open_stream(family=family)
-            case SocketType.DGRAM:
-                return self._open_dgram(family=family)
-            case SocketType.RAW:
-                if family is AddressFamily.PACKET:
-                    if isinstance(protocol, IpProto):
-                        raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
-                    return self._open_packet(protocol=protocol)
-                if not isinstance(protocol, IpProto):
-                    raise ValueError("A raw IP socket requires an IpProto next-header protocol.")
-                return self._open_raw(family=family, protocol=protocol)
+        if socket_type == SocketType.STREAM:
+            return self._open_stream(family=family)
+        elif socket_type == SocketType.DGRAM:
+            return self._open_dgram(family=family)
+        elif socket_type == SocketType.RAW:
+            if family is AddressFamily.PACKET:
+                if isinstance(protocol, IpProto):
+                    raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
+                return self._open_packet(protocol=protocol)
+            if not isinstance(protocol, IpProto):
+                raise ValueError("A raw IP socket requires an IpProto next-header protocol.")
+            return self._open_raw(family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {socket_type!r}.")
 

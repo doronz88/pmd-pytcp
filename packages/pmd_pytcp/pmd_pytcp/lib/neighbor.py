@@ -55,12 +55,16 @@ pmd_pytcp/lib/neighbor.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import field
+from pmd_pytcp._compat import dataclass
 from enum import auto
-from typing import Callable, override
+from typing import Callable, Generic, Union
+from typing_extensions import TypeAliasType, TypeVar, override
 
 from pmd_net_addr import Ip4Address, Ip6Address, MacAddress
 from pmd_pytcp.lib import neighbor__constants as nbr_const
@@ -85,8 +89,10 @@ class NudState(NameEnum):
     PERMANENT = auto()
 
 
+A = TypeVar("A", bound=Union[Ip4Address, Ip6Address])
+P = TypeVar("P", default=object)
 @dataclass(frozen=True, kw_only=True, slots=True)
-class NeighborEntry[A: Ip4Address | Ip6Address, P = object]:
+class NeighborEntry(Generic[A, P]):
     """
     Per-neighbour FSM state. Frozen by codebase convention
     (pmd_net_proto.md §2); state transitions use
@@ -114,17 +120,17 @@ class NeighborEntry[A: Ip4Address | Ip6Address, P = object]:
 # 'cached_mac' is None for INCOMPLETE-state solicits
 # (multicast NS / broadcast Request) and set to the cached
 # MAC for PROBE-state solicits (unicast).
-type SolicitCallback[A: Ip4Address | Ip6Address] = Callable[[A, MacAddress | None], None]
+SolicitCallback = TypeAliasType("SolicitCallback", Callable[[A, Union[MacAddress, None]], None], type_params=(A,))
 
 # Flush callback signature: (queued_packet, resolved_mac).
 # Called from 'add_entry' once an INCOMPLETE entry resolves
 # and a packet was queued via 'enqueue_pending'. Generic over
 # packet type 'P' so adapters get a strongly-typed callback
 # signature without runtime 'isinstance' narrowing.
-type FlushCallback[P] = Callable[[P, MacAddress], None]
+FlushCallback = TypeAliasType("FlushCallback", Callable[[P, MacAddress], None], type_params=(P,))
 
 
-class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
+class NeighborCache(Subsystem, Generic[A, P]):
     """
     Generic neighbour cache implementing the RFC 4861 §7.3.2
     NUD state machine, parameterised over address type 'A' and
@@ -216,7 +222,7 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
             entry = self._entries.get(address)
             now = time.monotonic()
             if entry is None:
-                self._entries[address] = NeighborEntry[A, P](
+                self._entries[address] = NeighborEntry(
                     address=address,
                     state=NudState.INCOMPLETE,
                     state_changed_at=now,
@@ -264,7 +270,7 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
                 return
 
             if entry is None:
-                entry = NeighborEntry[A, P](
+                entry = NeighborEntry(
                     address=address,
                     mac_address=mac_address,
                     state=NudState.REACHABLE,
@@ -301,7 +307,7 @@ class NeighborCache[A: Ip4Address | Ip6Address, P = object](Subsystem):
 
         with self._lock:
             now = time.monotonic()
-            self._entries[address] = NeighborEntry[A, P](
+            self._entries[address] = NeighborEntry(
                 address=address,
                 mac_address=mac_address,
                 state=NudState.PERMANENT,

@@ -30,8 +30,10 @@ pmd_pytcp/runtime/packet_handler/packet_handler__igmp__rx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 import random
-from dataclasses import dataclass
+from pmd_pytcp._compat import dataclass
 from typing import TYPE_CHECKING
 
 from pmd_net_addr import Ip4Address
@@ -121,11 +123,10 @@ class IgmpRxHandler:
 
         __debug__ and log("igmp", f"{packet_rx.tracker} - {packet_rx.igmp}")
 
-        match packet_rx.igmp.message.type:
-            case IgmpType.MEMBERSHIP_QUERY:
-                self.__phrx_igmp__membership_query(packet_rx)
-            case _:
-                self.__phrx_igmp__report(packet_rx)
+        if packet_rx.igmp.message.type == IgmpType.MEMBERSHIP_QUERY:
+            self.__phrx_igmp__membership_query(packet_rx)
+        else:
+            self.__phrx_igmp__report(packet_rx)
 
     def __phrx_igmp__report(self, packet_rx: PacketRx) -> None:
         """

@@ -34,6 +34,8 @@ pmd_pytcp/tests/integration/protocols/udp/test__udp__tx.py
 ver 3.0.7
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
