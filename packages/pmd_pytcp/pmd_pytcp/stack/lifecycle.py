@@ -756,6 +756,37 @@ def start() -> None:
             handler._dhcp6_client.start()
 
 
+def _abort_open_sockets() -> None:
+    """
+    Abort every registered connection-oriented socket (TCP) so any
+    application thread parked in a blocking 'recv()' / 'connect()'
+    unblocks with a connection error instead of staying parked
+    forever — after teardown nothing ever sets those sessions'
+    events again, so a thread still waiting on one would survive
+    'stop()' for the process lifetime. Called from 'stop()' while
+    the TX path is still live so the RFC 9293 §3.9.1 RSTs emitted
+    for synchronized states actually reach the peers. Datagram /
+    raw sockets have no 'abort' (nothing blocks beyond per-call
+    timeouts the caller opted into) and are skipped; a raising
+    'abort' is logged and skipped so one bad session cannot stall
+    stack teardown.
+    """
+
+    import pmd_pytcp.stack as _stack
+
+    for sock in _stack.sockets.values():
+        abort = getattr(sock, "abort", None)
+        if abort is None:
+            continue
+        try:
+            abort()
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            __debug__ and log(
+                "stack",
+                f"<WARN>Aborting {sock} during stop() raised {type(error).__name__}: {error}</>",
+            )
+
+
 def stop() -> None:
     """
     Stop stack components.
@@ -772,6 +803,12 @@ def stop() -> None:
     # (RFC 3376 §5.1; Linux 'ip_mc_down').
     for iface in _stack.interfaces.values():
         iface._send_igmp_leave_all()
+
+    # Abort open TCP sessions while TX is still live: peers get their
+    # RSTs, and application threads parked in blocking recv()/connect()
+    # unblock with a connection error instead of surviving teardown
+    # parked forever.
+    _abort_open_sockets()
 
     _stack.stack_running = False
 

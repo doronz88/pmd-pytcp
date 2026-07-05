@@ -36,6 +36,7 @@ import collections
 import os
 import select
 import selectors
+import time
 from typing_extensions import override
 
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -163,6 +164,34 @@ class RxRing(Subsystem):
 
         return len(self._rx_deque)
 
+    def _select_readable(self, *, timeout: float) -> bool:
+        """
+        Poll the selector for readability, tolerating the interface
+        fd being closed under us mid-teardown: a host embedding the
+        stack may close the fd to unblock this thread before 'stop()'
+        is observed, and a closed descriptor makes 'select' RAISE
+        (WinError 10038 on Windows, EBADF elsewhere; 'ValueError'
+        once the selector itself is closed) instead of returning.
+        Count the error like a read-side 'OSError', pace the loop at
+        the subsystem cadence so it idles (rather than hot-spins)
+        until the stop event is seen, and report 'not readable' —
+        instead of killing the RX thread with an unhandled exception.
+        """
+
+        try:
+            return bool(self._selector.select(timeout=timeout))
+        except (OSError, ValueError) as error:
+            if self._packet_stats is not None:
+                self._packet_stats.rx_ring__os_error__drop += 1
+            else:
+                self._os_error_drop_count += 1
+            __debug__ and log(
+                "rx-ring",
+                f"<CRIT>RX select failed, {type(error).__name__}: {error}</>",
+            )
+            time.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
+            return False
+
     @override
     def _subsystem_loop(self) -> None:
         """
@@ -177,7 +206,7 @@ class RxRing(Subsystem):
         handler's blocking 'dequeue()' wakes immediately.
         """
 
-        if not self._selector.select(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
+        if not self._select_readable(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
             return
 
         while True:
@@ -237,7 +266,7 @@ class RxRing(Subsystem):
             # Peek for more readable data without blocking. Empty
             # list => kernel buffer drained; exit and let the
             # outer Subsystem driver re-enter on the next wake-up.
-            if not self._selector.select(timeout=0):
+            if not self._select_readable(timeout=0):
                 break
 
     @override
