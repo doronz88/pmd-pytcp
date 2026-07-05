@@ -1100,3 +1100,199 @@ class TestTxRingRawFrame(_TxRingFixture):
             frame,
             msg="A raw frame must be written verbatim, with no framing prefix added.",
         )
+
+
+class TestTxRingTeardownRobustness(_TxRingFixture):
+    """
+    The 'TxRing' teardown-race tests. 'dispatch' must never park a
+    producer forever on a request the worker exited without
+    servicing — the producer may hold its TCP session's FSM lock,
+    and a producer wedged on 'request.wait()' then wedges every
+    later 'tcp_fsm()' entry (including 'close()' from an application
+    thread). '_stop' must likewise service any marshaled requests
+    the worker left behind on the deque.
+    """
+
+    def test__tx_ring__dispatch_falls_back_inline_when_worker_exits_unserviced(self) -> None:
+        """
+        Ensure a 'dispatch' that marshaled its request to a live
+        worker falls back to inline execution when that worker exits
+        without servicing it (the 'stack.stop()' teardown race:
+        alive at the 'is_alive()' check, gone before the drain).
+        The request must also be reclaimed from the deque so a
+        worker restart cannot execute it a second time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        release = threading.Event()
+        fake_worker = threading.Thread(target=release.wait)
+        fake_worker.start()
+        self.addCleanup(fake_worker.join)
+        self.addCleanup(release.set)
+        # A "worker" that is alive at dispatch's entry check but
+        # exits (via 'release') without ever draining the deque.
+        self._ring._thread = fake_worker
+        threading.Timer(0.05, release.set).start()
+
+        ran_on: list[threading.Thread] = []
+
+        def run() -> TxStatus:
+            ran_on.append(threading.current_thread())
+            return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+        result = self._ring.dispatch(run)
+
+        self.assertEqual(
+            result,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="dispatch must return the callable's TxStatus after the inline fallback.",
+        )
+        self.assertEqual(
+            ran_on,
+            [threading.current_thread()],
+            msg="The unserviced request must run inline on the calling thread.",
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="The unserviced request must be reclaimed from the deque (no double execution).",
+        )
+
+    def test__tx_ring__stop_services_leftover_marshaled_requests(self) -> None:
+        """
+        Ensure '_stop' executes any marshaled '_TxRequest' the worker
+        left on the deque (enqueued between the worker's last drain
+        and its exit), setting the blocking request's event so no
+        producer stays parked across stack teardown.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        executed: list[int] = []
+
+        def run() -> TxStatus:
+            executed.append(1)
+            return TxStatus.PASSED__IP6__TO_TX_RING
+
+        request = tx_ring_module._TxRequest(run)
+        self._ring._tx_deque.append(request)
+
+        self._ring._stop()
+
+        self.assertEqual(
+            executed,
+            [1],
+            msg="_stop must execute a leftover marshaled request exactly once.",
+        )
+        self.assertTrue(
+            request.wait(timeout=0),
+            msg="_stop must set the leftover request's event so its producer unblocks.",
+        )
+        self.assertEqual(
+            request.result(),
+            TxStatus.PASSED__IP6__TO_TX_RING,
+            msg="The leftover request's result must be handed back to the producer.",
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="_stop must leave the deque drained.",
+        )
+
+    def test__tx_ring__dispatch_reclaims_request_on_closed_eventfd(self) -> None:
+        """
+        Ensure the closed-eventfd fallback ('eventfd_write' raising
+        'OSError' mid-stop) removes the already-appended request from
+        the deque before running inline, so a worker restart cannot
+        execute it a second time.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        release = threading.Event()
+        fake_worker = threading.Thread(target=release.wait)
+        fake_worker.start()
+        self.addCleanup(fake_worker.join)
+        self.addCleanup(release.set)
+        self._ring._thread = fake_worker
+
+        with patch(
+            "pmd_pytcp.runtime.tx_ring.io_backend.eventfd_write",
+            side_effect=OSError("eventfd closed"),
+        ):
+            result = self._ring.dispatch(lambda: TxStatus.PASSED__ETHERNET__TO_TX_RING)
+
+        self.assertEqual(
+            result,
+            TxStatus.PASSED__ETHERNET__TO_TX_RING,
+            msg="dispatch must run inline and return the TxStatus when the eventfd is closed.",
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="The request must be reclaimed from the deque on the closed-eventfd fallback.",
+        )
+
+    def test__tx_ring__dispatch_async_reclaims_request_on_closed_eventfd(self) -> None:
+        """
+        Ensure the fire-and-forget path's closed-eventfd fallback
+        also reclaims the request from the deque before running it
+        inline, mirroring the blocking path (no double execution on
+        a worker restart).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        release = threading.Event()
+        fake_worker = threading.Thread(target=release.wait)
+        fake_worker.start()
+        self.addCleanup(fake_worker.join)
+        self.addCleanup(release.set)
+        self._ring._thread = fake_worker
+
+        executed: list[int] = []
+
+        def run() -> TxStatus:
+            executed.append(1)
+            return TxStatus.PASSED__ETHERNET__TO_TX_RING
+
+        with patch(
+            "pmd_pytcp.runtime.tx_ring.io_backend.eventfd_write",
+            side_effect=OSError("eventfd closed"),
+        ):
+            self._ring.dispatch_async(run)
+
+        self.assertEqual(
+            executed,
+            [1],
+            msg="dispatch_async must run the request inline exactly once on the closed-eventfd fallback.",
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="The request must be reclaimed from the deque on the closed-eventfd fallback.",
+        )
+
+    def test__tx_ring__loop_survives_select_oserror(self) -> None:
+        """
+        Ensure the TX loop's 'select' on the eventfd raising
+        'OSError' (the eventfd closed under a still-running worker —
+        a '_stop'/loop race; WinError 10038 on Windows) returns
+        cleanly instead of killing the worker thread with an
+        unhandled exception.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            patch(
+                "pmd_pytcp.runtime.tx_ring.select.select",
+                side_effect=OSError(10038, "An operation was attempted on something that is not a socket"),
+            ),
+            patch("pmd_pytcp.runtime.tx_ring.time.sleep") as mock_sleep,
+        ):
+            # Must not propagate the OSError.
+            self._ring._subsystem_loop()
+
+        mock_sleep.assert_called_once()

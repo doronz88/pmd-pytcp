@@ -36,6 +36,7 @@ import collections
 import os
 import select
 import threading
+import time
 from collections.abc import Callable
 from typing_extensions import TypeAliasType, override
 
@@ -130,14 +131,18 @@ class _TxRequest:
             if self._event is not None:
                 self._event.set()
 
-    def wait(self) -> None:
+    def wait(self, timeout: float | None = None) -> bool:
         """
-        Block the producer until the worker has executed the call.
-        Only valid on a blocking request (one carrying an event).
+        Block the producer until the worker has executed the call, or
+        'timeout' seconds elapse; return True when the call has been
+        executed. Only valid on a blocking request (one carrying an
+        event). The timeout exists so 'TxRing.dispatch' can re-check
+        worker liveness while waiting instead of parking forever on a
+        request the worker exited without servicing.
         """
 
         assert self._event is not None, "wait() called on a fire-and-forget TX request."
-        self._event.wait()
+        return self._event.wait(timeout)
 
     def result(self) -> TxStatus:
         """
@@ -255,10 +260,26 @@ class TxRing(Subsystem):
     @override
     def _stop(self) -> None:
         """
-        Close the eventfd backing the producer/consumer wakeup
-        channel so 'stack.stop()' returns the descriptor to the
-        kernel.
+        Drain the deque of any marshaled requests the worker left
+        behind, then close the eventfd backing the producer/consumer
+        wakeup channel so 'stack.stop()' returns the descriptor to
+        the kernel.
         """
+
+        # A producer can enqueue between the worker's last drain and
+        # its exit; executing the leftovers here sets each blocking
+        # request's event so no producer stays parked (possibly
+        # holding a session FSM lock) across stack teardown. Plain
+        # frames are dropped — nothing is going to write them. The
+        # deque ops arbitrate ownership against 'dispatch's own
+        # liveness fallback, so a request runs exactly once.
+        while self._tx_deque:
+            try:
+                item = self._tx_deque.popleft()
+            except IndexError:
+                break
+            if isinstance(item, _TxRequest):
+                item.execute()
 
         try:
             io_backend.eventfd_close(self._tx_event_fd)
@@ -277,7 +298,16 @@ class TxRing(Subsystem):
         rather than blocking on a stale empty signal.
         """
 
-        ready, _, _ = select.select([self._tx_event_fd], [], [], SUBSYSTEM_SLEEP_TIME__SEC)
+        try:
+            ready, _, _ = select.select([self._tx_event_fd], [], [], SUBSYSTEM_SLEEP_TIME__SEC)
+        except (OSError, ValueError):
+            # The eventfd was closed under us (teardown race — a
+            # '_stop' running while a wedged worker is still inside
+            # this loop). Pace and return so the outer driver
+            # observes the stop event instead of dying on an
+            # unhandled exception (WinError 10038 on Windows).
+            time.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
+            return
         if not ready:
             return
 
@@ -345,9 +375,35 @@ class TxRing(Subsystem):
             io_backend.eventfd_write(self._tx_event_fd, 1)
         except OSError:
             # Eventfd closed (stop in progress); the request will not
-            # be serviced. Surfacing a drop is better than hanging.
+            # be serviced. Reclaim it from the deque (so a later
+            # worker restart cannot execute it a second time) and run
+            # inline. Surfacing a drop is better than hanging.
+            try:
+                self._tx_deque.remove(request)
+            except ValueError:
+                pass
             return run()
-        request.wait()
+        # Liveness-aware wait: the worker can exit ('stack.stop()'
+        # teardown race) between the 'is_alive()' check above and
+        # servicing this request, which would park the producer here
+        # FOREVER — and the producer may hold its session's FSM lock,
+        # wedging every later 'tcp_fsm()' entry (including 'close()'
+        # from an application thread). Poll the event at the
+        # subsystem cadence and fall back to inline execution the
+        # moment the worker is gone. The deque 'remove' arbitrates
+        # ownership: exactly one of {worker drain, '_stop' drain,
+        # this fallback} obtains the request, so the call runs once.
+        while not request.wait(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
+            if worker.is_alive():
+                continue
+            try:
+                self._tx_deque.remove(request)
+            except ValueError:
+                # Someone else (the worker before it exited, or the
+                # '_stop' drain) owns the request; its event is set
+                # on execution, so keep waiting.
+                continue
+            return run()
         return request.result()
 
     def dispatch_async(self, run: Callable[[], TxStatus], /) -> None:
@@ -373,8 +429,14 @@ class TxRing(Subsystem):
         try:
             io_backend.eventfd_write(self._tx_event_fd, 1)
         except OSError:
-            # Eventfd closed (stop in progress); run inline so the
-            # call is not silently lost on the dead deque.
+            # Eventfd closed (stop in progress); reclaim the request
+            # from the deque (so a later worker restart cannot run it
+            # a second time) and run inline so the call is not
+            # silently lost on the dead deque.
+            try:
+                self._tx_deque.remove(request)
+            except ValueError:
+                return
             request.execute()
 
     def _send_one(

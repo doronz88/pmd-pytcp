@@ -704,3 +704,105 @@ class TestRxRingQueueFullSpelling(TestCase):
             queue.Full,
             msg="Sanity: stdlib queue.Full must still be accessible.",
         )
+
+
+class TestRxRingSelectorTeardownRace(_RxRingFixture):
+    """
+    The RX loop's behavior when the interface fd / selector is torn
+    down under a running loop. A host embedding the stack may close
+    the interface fd to unblock the RX thread before 'stop()' is
+    observed; 'select' then RAISES (WinError 10038 on Windows, EBADF
+    elsewhere, 'ValueError' once the selector object itself is
+    closed) instead of returning — which used to kill the RX thread
+    with an unhandled exception mid-teardown.
+    """
+
+    def test__rx_ring__loop_survives_selector_oserror(self) -> None:
+        """
+        Ensure the outer 'selector.select' raising 'OSError' (the
+        fd was closed under the loop — on Windows a closed socket
+        raises WinError 10038) does not propagate and kill the RX
+        thread; the error is counted like a read-side 'OSError' and
+        the loop is paced so it idles until the stop event is seen.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            patch.object(
+                self._ring._selector,
+                "select",
+                side_effect=OSError(10038, "An operation was attempted on something that is not a socket"),
+            ),
+            patch("pmd_pytcp.runtime.rx_ring.time.sleep") as mock_sleep,
+        ):
+            # Must not propagate the OSError.
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            1,
+            msg="A selector OSError must bump 'os_error_drop_count' by exactly one.",
+        )
+        mock_sleep.assert_called_once()
+
+    def test__rx_ring__loop_survives_closed_selector_valueerror(self) -> None:
+        """
+        Ensure a 'ValueError' from a selector already closed by
+        '_stop' (a stop/loop race) is tolerated the same way as the
+        closed-fd 'OSError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            patch.object(
+                self._ring._selector,
+                "select",
+                side_effect=ValueError("I/O operation on closed epoll object"),
+            ),
+            patch("pmd_pytcp.runtime.rx_ring.time.sleep"),
+        ):
+            # Must not propagate the ValueError.
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            1,
+            msg="A closed-selector ValueError must bump 'os_error_drop_count' by exactly one.",
+        )
+
+    def test__rx_ring__inner_peek_survives_selector_oserror(self) -> None:
+        """
+        Ensure the inner burst-drain 'select(timeout=0)' peek raising
+        'OSError' breaks the drain cleanly (keeping the frame already
+        read) instead of killing the RX thread.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            patch.object(
+                self._ring._selector,
+                "select",
+                side_effect=[[MagicMock()], OSError(10038, "not a socket")],
+            ),
+            patch(
+                "pmd_pytcp.runtime.rx_ring.os.read",
+                return_value=b"\x00" * 64,
+            ),
+            patch("pmd_pytcp.runtime.rx_ring.time.sleep"),
+        ):
+            # Must not propagate the OSError.
+            self._ring._subsystem_loop()
+
+        self.assertEqual(
+            len(self._ring._rx_deque),
+            1,
+            msg="The frame read before the failing peek must stay enqueued.",
+        )
+        self.assertEqual(
+            self._ring.os_error_drop_count,
+            1,
+            msg="The failing peek must bump 'os_error_drop_count' by exactly one.",
+        )
