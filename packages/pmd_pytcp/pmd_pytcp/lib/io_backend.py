@@ -14,6 +14,7 @@ On macOS/Windows the wakeup ``eventfd`` is emulated (non-blocking pipe, or socke
 
 from __future__ import annotations
 
+import errno
 import os
 import socket
 from contextlib import suppress
@@ -58,7 +59,18 @@ def writev(fd: int, buffers) -> int:
         data = b"".join(buffers)
         sock.sendall(data)
         return len(data)
-    return os.writev(fd, buffers)
+    # Call-time lookup (not an import-time snapshot) so tests patching os.writev
+    # keep working. os.writev is POSIX-only; landing here without it means fd is
+    # gone from _interface_fds — i.e. unregister_interface_fd() already ran
+    # (interface teardown) while a producer was still transmitting, e.g. the RSTs
+    # stop()'s socket-abort walk emits. Raise the same closed-fd OSError the
+    # os.writev path produces after teardown on POSIX, so callers' OSError
+    # drop-handling applies, instead of an AttributeError that kills the TX Ring
+    # worker (doronz88/pymobiledevice3#1756).
+    os_writev = getattr(os, "writev", None)
+    if os_writev is None:
+        raise OSError(errno.EBADF, f"fd {fd} is not registered for socket I/O and os.writev is unavailable")
+    return os_writev(fd, buffers)
 
 
 # --- eventfd wakeup -----------------------------------------------------------------------
