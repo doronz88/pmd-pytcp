@@ -48,7 +48,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from dataclasses import field
 from pmd_pytcp._compat import dataclass
 
@@ -62,15 +61,14 @@ class TcpStack:
     'pmd_pytcp.stack.tcp_stack' as a process-wide singleton. Tests
     replace the instance per test case to isolate TFO state.
 
-    The Fast-Open fields below are written from the RX threads
+    The Fast-Open fields below are written from the RX path
     (SYN / SYN+ACK handling, pending-count increment) and read /
-    written from the TX threads (active-open SYN generation,
-    pending-count decrement). Under free-threaded (no-GIL)
-    CPython the bare dict / set / scalar accesses would tear or
-    lose updates, so every read and write goes through the
-    lock-guarded accessor methods on this class — callers MUST
-    NOT touch the fields directly outside test fixtures that
-    seed state single-threaded in 'setUp'.
+    written from the TX path (active-open SYN generation,
+    pending-count decrement) — all on the one stack event loop.
+    Every read and write goes through the accessor methods on
+    this class so the mutation sites stay auditable — callers
+    MUST NOT touch the fields directly outside test fixtures
+    that seed state in 'setUp'.
     """
 
     # RFC 7413 §3.1 / §4.1.3 Fast Open client-side cookie cache.
@@ -100,18 +98,12 @@ class TcpStack:
     # TFO connections drain to ESTABLISHED or CLOSED.
     fastopen_pending_count: int = 0
 
-    # Guards every Fast-Open field above. Excluded from the
-    # generated '__eq__' / '__repr__' so two TcpStack instances
-    # still compare by their state, not by lock identity.
-    _lock: threading.Lock = field(default_factory=threading.Lock, compare=False, repr=False)
-
     def fastopen_cookie(self, peer: Ip4Address | Ip6Address, /) -> bytes | None:
         """
         Get the cached Fast-Open cookie for the peer, or None.
         """
 
-        with self._lock:
-            return self.fastopen_cookies.get(peer)
+        return self.fastopen_cookies.get(peer)
 
     def cache_fastopen_cookie(
         self,
@@ -124,51 +116,45 @@ class TcpStack:
         Insert or refresh the peer cookie, FIFO-evicting at max_size.
         """
 
-        with self._lock:
-            # Refresh insertion order: pop existing entry (if any)
-            # so the re-insert lands at the tail.
-            self.fastopen_cookies.pop(peer, None)
-            self.fastopen_cookies[peer] = cookie
-            # FIFO evict from the head until the cap is satisfied.
-            while len(self.fastopen_cookies) > max_size:
-                del self.fastopen_cookies[next(iter(self.fastopen_cookies))]
+        # Refresh insertion order: pop existing entry (if any)
+        # so the re-insert lands at the tail.
+        self.fastopen_cookies.pop(peer, None)
+        self.fastopen_cookies[peer] = cookie
+        # FIFO evict from the head until the cap is satisfied.
+        while len(self.fastopen_cookies) > max_size:
+            del self.fastopen_cookies[next(iter(self.fastopen_cookies))]
 
     def is_fastopen_negative(self, peer: Ip4Address | Ip6Address, /) -> bool:
         """
         Get whether the peer is in the Fast-Open negative cache.
         """
 
-        with self._lock:
-            return peer in self.fastopen_negative
+        return peer in self.fastopen_negative
 
     def mark_fastopen_negative(self, peer: Ip4Address | Ip6Address, /) -> None:
         """
         Record the peer in the Fast-Open negative cache.
         """
 
-        with self._lock:
-            self.fastopen_negative.add(peer)
+        self.fastopen_negative.add(peer)
 
     def fastopen_pending(self) -> int:
         """
         Get the current PendingFastOpenRequests count.
         """
 
-        with self._lock:
-            return self.fastopen_pending_count
+        return self.fastopen_pending_count
 
     def incr_fastopen_pending(self) -> None:
         """
         Increment the PendingFastOpenRequests count by one.
         """
 
-        with self._lock:
-            self.fastopen_pending_count += 1
+        self.fastopen_pending_count += 1
 
     def decr_fastopen_pending(self) -> None:
         """
         Decrement the PendingFastOpenRequests count, clamped at zero.
         """
 
-        with self._lock:
-            self.fastopen_pending_count = max(0, self.fastopen_pending_count - 1)
+        self.fastopen_pending_count = max(0, self.fastopen_pending_count - 1)

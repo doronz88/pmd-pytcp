@@ -33,7 +33,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from pmd_pytcp._compat import dataclass
 from enum import IntEnum
 from typing_extensions import override
@@ -121,7 +120,6 @@ class IcmpErrorRateLimiter:
     _burst: int
     _tokens: float
     _last_refill: float | None
-    _lock: threading.Lock
 
     def __init__(
         self,
@@ -150,12 +148,6 @@ class IcmpErrorRateLimiter:
         self._burst = burst
         self._tokens = float(burst)
         self._last_refill = None
-        # The limiters are stack-wide singletons; in multi-interface
-        # mode every interface's rx-ring thread consumes from the same
-        # bucket, so the token-bucket read-modify-write below must be
-        # atomic — under free-threaded CPython a bare RMW over/under-
-        # counts tokens.
-        self._lock = threading.Lock()
 
     @property
     def rate_pps(self) -> int:
@@ -178,19 +170,22 @@ class IcmpErrorRateLimiter:
         Consume one token; return True if granted, False if rate-limited.
         """
 
-        with self._lock:
-            if self._last_refill is None:
-                self._last_refill = now
-
-            elapsed = max(0.0, now - self._last_refill)
-            self._tokens = min(float(self._burst), self._tokens + elapsed * self._rate_pps)
+        # The limiters are stack-wide singletons; every interface's
+        # rx path consumes from the same bucket on the one stack
+        # loop, so the token-bucket read-modify-write is atomic by
+        # construction.
+        if self._last_refill is None:
             self._last_refill = now
 
-            if self._tokens >= 1.0:
-                self._tokens -= 1.0
-                return True
+        elapsed = max(0.0, now - self._last_refill)
+        self._tokens = min(float(self._burst), self._tokens + elapsed * self._rate_pps)
+        self._last_refill = now
 
-            return False
+        if self._tokens >= 1.0:
+            self._tokens -= 1.0
+            return True
+
+        return False
 
 
 def try_emit_icmp_error(

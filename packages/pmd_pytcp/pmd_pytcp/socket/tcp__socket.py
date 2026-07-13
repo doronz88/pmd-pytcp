@@ -32,13 +32,11 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
-import threading
-import time
 from collections import deque
 from collections.abc import Iterable
-from threading import Semaphore
 from typing import cast
 from typing_extensions import override
 
@@ -76,6 +74,7 @@ from pmd_pytcp.socket import (
     TCP_USER_TIMEOUT,
     AddressFamily,
     SocketType,
+    _sem_acquire,
     gaierror,
     socket,
     tcp__info,
@@ -145,7 +144,7 @@ class TcpSocket(socket):
         super().__init__()
 
         self._address_family = family
-        self._event__tcp_session_established: Semaphore = threading.Semaphore(0)
+        self._event__tcp_session_established: asyncio.Semaphore = asyncio.Semaphore(0)
         self._tcp_accept: list[socket] = []
         # Per-socket ICMP error queue (RFC 1122 §4.2.3.9 surface
         # via Linux IP_RECVERR / IPV6_RECVERR). FIFO-drop on
@@ -154,7 +153,7 @@ class TcpSocket(socket):
         # consume 'build_icmp_error_entry' from
         # 'pmd_pytcp.socket.error_queue'.
         self._error_queue: deque[ErrorQueueEntry] = deque(maxlen=ERROR_QUEUE__MAX_LEN)
-        self._error_queue_ready = threading.Semaphore(0)
+        self._error_queue_ready = asyncio.Semaphore(0)
         # Cap on '_tcp_accept' length, set by 'listen(backlog=...)'.
         # Initialised to the default so listening sockets created
         # outside the 'listen()' call path (e.g. the integration-
@@ -616,7 +615,7 @@ class TcpSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Bound socket")
 
     @override
-    def connect(self, address: tuple[str, int], *, data: bytes = b"") -> None:
+    async def connect(self, address: tuple[str, int], *, data: bytes = b"") -> None:
         """
         Connect local socket to remote socket.
 
@@ -723,7 +722,7 @@ class TcpSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 
         try:
-            self._tcp_session.connect()
+            await self._tcp_session.connect()
         except TcpSessionError as error:
             if str(error) == "Connection refused":
                 raise ConnectionRefusedError(
@@ -803,7 +802,7 @@ class TcpSocket(socket):
         self._tcp_session.listen()
 
     @override
-    def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
+    async def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
         """
         Wait for the established inbound connection, once available return
         it's socket.
@@ -815,9 +814,9 @@ class TcpSocket(socket):
         # otherwise non-blocking mode equates to a non-blocking
         # acquire that surfaces as 'BlockingIOError(EAGAIN)'.
         if timeout is None and not self._blocking:
-            acquired = self._event__tcp_session_established.acquire(blocking=False)
+            acquired = await _sem_acquire(self._event__tcp_session_established, blocking=False)
         else:
-            acquired = self._event__tcp_session_established.acquire(timeout=timeout)
+            acquired = await _sem_acquire(self._event__tcp_session_established, timeout=timeout)
 
         if not acquired:
             if timeout is None and not self._blocking:
@@ -829,13 +828,6 @@ class TcpSocket(socket):
         # accepted child; mirror that so apps that flip the listener
         # to non-blocking get non-blocking children.
         socket._blocking = self._blocking
-        if not self._tcp_accept:
-            self._drain_readable()
-            # Producer race: the FSM may have appended another
-            # child between the empty-check and drain — re-check
-            # under the GIL and re-signal so the selector wakes.
-            if self._tcp_accept:
-                self._signal_readable()
 
         __debug__ and log(
             "socket",
@@ -846,7 +838,7 @@ class TcpSocket(socket):
         return socket, (str(socket.remote_ip_address), socket.remote_port)
 
     @override
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send the data to connected remote host.
         """
@@ -873,7 +865,7 @@ class TcpSocket(socket):
         return bytes_sent
 
     @override
-    def sendmsg(
+    async def sendmsg(
         self,
         buffers: Iterable[bytes | bytearray | memoryview],
         ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
@@ -900,10 +892,10 @@ class TcpSocket(socket):
 
         self._validate_sendmsg_ancdata(ancdata)
 
-        return self.send(b"".join(bytes(buffer) for buffer in buffers))
+        return await self.send(b"".join(bytes(buffer) for buffer in buffers))
 
     @override
-    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
+    async def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Receive data from socket.
         """
@@ -925,7 +917,7 @@ class TcpSocket(socket):
             effective_timeout = None
 
         try:
-            if data_rx := self._tcp_session.receive(byte_count=bufsize, timeout=effective_timeout):
+            if data_rx := await self._tcp_session.receive(byte_count=bufsize, timeout=effective_timeout):
                 __debug__ and log(
                     "socket",
                     f"<g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -965,22 +957,19 @@ class TcpSocket(socket):
         # Graceful close: initiate the FIN exchange.
         self._tcp_session.close()
 
-        # SO_LINGER {l_onoff=1, l_linger>0}: block until the session
-        # reaches CLOSED or 'l_linger' seconds elapse, whichever comes
-        # first. In a running stack the RX / timer threads advance the
-        # FSM (and set '_event__closed') while this call waits; the
-        # deadline is computed at close() entry per Linux's lingering
-        # close semantics (tcp(7) / socket(7) SO_LINGER).
-        if linger is not None and linger[0] != 0:
-            deadline = time.monotonic() + linger[1]
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                self._tcp_session._event__closed.wait(timeout=remaining)
+        # SO_LINGER {l_onoff=1, l_linger>0}: the historical lingering
+        # wait (block until the session reaches CLOSED or 'l_linger'
+        # seconds elapse) is gone with the threaded runtime — 'close()'
+        # stays sync per the pure-asyncio design, and the FIN exchange
+        # it just initiated is driven by this very event loop, so a
+        # synchronous wait here could never observe progress. The
+        # graceful FIN path above is unchanged; an application that
+        # needs to observe the teardown completing can await the
+        # session's '_event__closed' asyncio event.
 
         # '_mark_closed' sets '_closed' for consistency; TCP delivery
-        # ('process_tcp_packet') is drained by 'TcpSession._lock__fsm'
-        # (close() routes through the same FSM lock), not by the
-        # socket-level '_lock__io'.
+        # ('process_tcp_packet') runs on the same loop as close(), so
+        # no drain is needed.
         self._mark_closed()
 
         __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
@@ -1193,7 +1182,7 @@ class TcpSocket(socket):
         )
 
     @override
-    def recvmsg(
+    async def recvmsg(
         self,
         bufsize: int | None = None,
         ancbufsize: int = 0,
@@ -1217,14 +1206,14 @@ class TcpSocket(socket):
         """
 
         if flags & MSG_ERRQUEUE:
-            return self._recvmsg_errqueue(ancbufsize=ancbufsize, timeout=timeout)
+            return await self._recvmsg_errqueue(ancbufsize=ancbufsize, timeout=timeout)
 
         raise OSError(
             errno.EOPNOTSUPP,
             "recvmsg() on TCP socket without MSG_ERRQUEUE is not yet supported.",
         )
 
-    def _recvmsg_errqueue(
+    async def _recvmsg_errqueue(
         self,
         *,
         ancbufsize: int,
@@ -1252,9 +1241,9 @@ class TcpSocket(socket):
 
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._error_queue_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._error_queue_ready, blocking=False)
         else:
-            acquired = self._error_queue_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._error_queue_ready, timeout=effective_timeout)
 
         if not acquired:
             if effective_timeout is None and not self._blocking:

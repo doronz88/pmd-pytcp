@@ -32,12 +32,12 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import random
-import threading
 import time
-from pmd_pytcp._compat import dataclass
+from pmd_pytcp._compat import dataclass, wait_event
 from enum import Enum
-from typing import Callable, TYPE_CHECKING
+from typing import Awaitable, Callable, TYPE_CHECKING
 from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip4IfAddr, Ip4Network, MacAddress
@@ -196,13 +196,13 @@ class Dhcp4Client(Subsystem):
 
     Two invocation modes:
 
-      - Sync: 'Dhcp4Client(...).fetch()' runs one INIT → BOUND
-        cycle inline in the caller's thread, returns the lease,
-        tears down. The 'Subsystem' machinery is not engaged —
-        no thread spawned, no '_state' mutation. Used by tests
-        and operator CLI tools.
+      - One-shot: 'await Dhcp4Client(...).fetch()' runs one
+        INIT → BOUND cycle inline in the caller's coroutine,
+        returns the lease, tears down. The 'Subsystem' machinery
+        is not engaged — no task spawned, no '_state' mutation.
+        Used by tests and operator CLI tools.
       - Daemon: 'Dhcp4Client(...).start()' spawns the Subsystem
-        thread which drives '_subsystem_loop' through the full
+        task which drives '_subsystem_loop' through the full
         FSM (INIT → SELECTING → REQUESTING → BOUND → RENEWING
         → REBINDING → ...). Used by 'stack.start()' in
         production.
@@ -273,9 +273,14 @@ class Dhcp4Client(Subsystem):
         # returns it directly without writing to this attribute.
         self._lease: Dhcp4Lease | None = None
         # Signalled by the daemon-mode INIT handler on BOUND
-        # transition. 'start_and_wait_for_bind' blocks on this
+        # transition. 'start_and_wait_for_bind' awaits this
         # event up to the boot-wait timeout.
-        self._event__bound: threading.Event = threading.Event()
+        self._event__bound: asyncio.Event = asyncio.Event()
+        # Best-effort DHCPRELEASE task spawned by the '_stop' hook
+        # when the FSM was BOUND at stop time; awaited alongside the
+        # worker task by 'wait_stopped' (the sync '_stop' hook cannot
+        # await the wire exchange itself).
+        self._task__release_on_stop: "asyncio.Task[None] | None" = None
 
         # Phase 5 — RFC 2131 §4.4.2 INIT-REBOOT cached-lease
         # fast-path. If a cached lease is on disk and still
@@ -321,21 +326,21 @@ class Dhcp4Client(Subsystem):
 
         return build_client_id(self._mac_address)
 
-    def fetch(self) -> Dhcp4Lease | None:
+    async def fetch(self) -> Dhcp4Lease | None:
         """
-        Synchronous DHCPv4 acquisition — runs one INIT → BOUND
+        One-shot DHCPv4 acquisition — runs one INIT → BOUND
         cycle inline and returns the resulting lease (or None on
-        failure). Does not spawn the Subsystem thread; does not
+        failure). Does not spawn the Subsystem task; does not
         mutate the FSM state; does not call into the address API.
 
         Equivalent to Linux's 'dhcpcd -1' / 'dhclient -1' one-shot
         flag. Production code uses 'start()' / 'stop()' instead.
         """
 
-        return self._do_init_to_bound()
+        return await self._do_init_to_bound()
 
     @override
-    def _subsystem_loop(self) -> None:
+    async def _subsystem_loop(self) -> None:
         """
         Daemon-mode FSM driver. Dispatches on '_state'; one
         iteration per call. The 'Subsystem' base class loop wraps
@@ -350,39 +355,39 @@ class Dhcp4Client(Subsystem):
         the T1/T2/expiry lease-lifecycle transitions.
         """
 
-        # Daemon-loop guard: the base 'Subsystem' worker thread dies if
+        # Daemon-loop guard: the base 'Subsystem' worker task dies if
         # '_subsystem_loop' raises (e.g. a wire send returning
         # EHOSTUNREACH out of '_do_init_to_bound'), silently taking the
         # DHCPv4 client down. Catch any unexpected exception, log it, and
         # signal stop so the client halts cleanly instead of crashing the
-        # thread. ('Exception' — not 'BaseException' — so KeyboardInterrupt
-        # / SystemExit still propagate; Phase 4's retry policy will turn the
-        # halt into a backoff-and-retry.)
+        # task. ('Exception' — not 'BaseException' — so CancelledError /
+        # KeyboardInterrupt / SystemExit still propagate; Phase 4's retry
+        # policy will turn the halt into a backoff-and-retry.)
         try:
             if self._state == Dhcp4State.INIT:
-                lease = self._do_init_to_bound()
+                lease = await self._do_init_to_bound()
                 if lease is not None:
-                    self._on_bound(lease)
+                    await self._on_bound(lease)
                 else:
                     # Phase 4 follow-up: retry policy. For now,
                     # signal stop to avoid a tight retry loop.
                     self._event__stop_subsystem.set()
             elif self._state == Dhcp4State.INIT_REBOOT:
-                self._do_init_reboot()
+                await self._do_init_reboot()
             elif self._state == Dhcp4State.BOUND:
-                self._do_bound()
+                await self._do_bound()
             elif self._state == Dhcp4State.RENEWING:
-                self._do_renewing()
+                await self._do_renewing()
             elif self._state == Dhcp4State.REBINDING:
-                self._do_rebinding()
+                await self._do_rebinding()
             else:
                 # SELECTING / REQUESTING / REBOOTING — collapsed
-                # into the synchronous wire exchanges inside
+                # into the inline wire exchanges inside
                 # '_do_init_to_bound' / '_do_init_reboot' so the
                 # FSM never observes them as separate states.
                 # Idle on stop event so 'stop()' is responsive.
-                self._event__stop_subsystem.wait(timeout=1.0)
-        except Exception as error:  # noqa: BLE001 — daemon-loop guard must not let the worker thread die
+                await wait_event(self._event__stop_subsystem, 1.0)
+        except Exception as error:  # noqa: BLE001 — daemon-loop guard must not let the worker task die
             __debug__ and log(
                 "dhcp4",
                 f"<WARN>DHCPv4 client loop raised {type(error).__name__}: {error}; "
@@ -390,7 +395,7 @@ class Dhcp4Client(Subsystem):
             )
             self._event__stop_subsystem.set()
 
-    def _on_bound(self, lease: Dhcp4Lease, /) -> None:
+    async def _on_bound(self, lease: Dhcp4Lease, /) -> None:
         """
         Transition to BOUND: install the lease's Ip4IfAddr via the
         address API, begin RFC 5227 §2.4 ongoing conflict defense of
@@ -420,7 +425,7 @@ class Dhcp4Client(Subsystem):
         # 'lease.gateway' no longer rides on 'ip4_host'.
         self._install_lease_routes(lease)
         if self._acd is not None:
-            self._acd.start_defense(address=lease.ip4_host.address)
+            await self._acd.start_defense(address=lease.ip4_host.address)
         write_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH, lease)
         self._state = Dhcp4State.BOUND
         self._event__bound.set()
@@ -478,9 +483,9 @@ class Dhcp4Client(Subsystem):
                 continue
             self._route_api.remove_route(destination=destination, gateway=router)
 
-    def start_and_wait_for_bind(self, *, timeout_s: float) -> bool:
+    async def start_and_wait_for_bind(self, *, timeout_s: float) -> bool:
         """
-        Spawn the Subsystem thread and block up to 'timeout_s'
+        Spawn the Subsystem task and await up to 'timeout_s'
         seconds for the FSM to reach BOUND. Returns True if BOUND
         was reached, False on timeout (the FSM keeps running in
         the background regardless).
@@ -491,7 +496,7 @@ class Dhcp4Client(Subsystem):
         """
 
         self.start()
-        return self._event__bound.wait(timeout=timeout_s)
+        return await wait_event(self._event__bound, timeout_s)
 
     # ------------------------------------------------------------
     # RFC 2131 §4.4.5 — lease-lifecycle (T1, T2, expiry)
@@ -589,14 +594,14 @@ class Dhcp4Client(Subsystem):
         assert self._lease is not None
         return self._lease.acquired_at_monotonic + self._lease.lease_time__sec
 
-    def _do_bound(self) -> None:
+    async def _do_bound(self) -> None:
         """
         BOUND-state handler. First drains the RFC 5227 §2.4 ACD
         conflict signal: a peer using our leased address makes the
         client abandon the lease (DHCPDECLINE + re-acquire). Then
         checks T1; if elapsed, transitions to RENEWING. Otherwise
-        blocks on the stop event up to 'remaining_until_T1' so
-        'stop()' is responsive while the thread sleeps through the
+        awaits the stop event up to 'remaining_until_T1' so
+        'stop()' is responsive while the task sleeps through the
         lease's BOUND interval.
 
         Reference: RFC 5227 §2.4 (defend / abandon a claimed address on conflict).
@@ -604,8 +609,8 @@ class Dhcp4Client(Subsystem):
         """
 
         assert self._lease is not None
-        if self._acd is not None and (peer_mac := self._acd.poll_conflict()) is not None:
-            self._handle_bound_conflict(peer_mac)
+        if self._acd is not None and (peer_mac := await self._acd.poll_conflict()) is not None:
+            await self._handle_bound_conflict(peer_mac)
             return
         now = time.monotonic()
         t1 = self._t1_deadline()
@@ -617,9 +622,9 @@ class Dhcp4Client(Subsystem):
             self._state = Dhcp4State.RENEWING
             return
         # Wait up to (t1 - now) for stop or for T1.
-        self._event__stop_subsystem.wait(timeout=t1 - now)
+        await wait_event(self._event__stop_subsystem, t1 - now)
 
-    def _do_renewing(self) -> None:
+    async def _do_renewing(self) -> None:
         """
         RENEWING-state handler. Sends a unicast REQUEST to the
         leasing server (ciaddr = current IP, no server-id /
@@ -639,10 +644,10 @@ class Dhcp4Client(Subsystem):
             self._state = Dhcp4State.REBINDING
             return
 
-        outcome = self._do_renew_or_rebind_exchange(lease=self._lease, broadcast=False)
-        self._consume_renew_or_rebind_outcome(outcome)
+        outcome = await self._do_renew_or_rebind_exchange(lease=self._lease, broadcast=False)
+        await self._consume_renew_or_rebind_outcome(outcome)
 
-    def _do_rebinding(self) -> None:
+    async def _do_rebinding(self) -> None:
         """
         REBINDING-state handler. Sends a broadcast REQUEST
         (ciaddr = current IP, no server-id / requested-ip per
@@ -666,10 +671,10 @@ class Dhcp4Client(Subsystem):
             self._halt_ipv4_and_reset_to_init()
             return
 
-        outcome = self._do_renew_or_rebind_exchange(lease=self._lease, broadcast=True)
-        self._consume_renew_or_rebind_outcome(outcome)
+        outcome = await self._do_renew_or_rebind_exchange(lease=self._lease, broadcast=True)
+        await self._consume_renew_or_rebind_outcome(outcome)
 
-    def _do_renew_or_rebind_exchange(
+    async def _do_renew_or_rebind_exchange(
         self,
         *,
         lease: Dhcp4Lease,
@@ -696,18 +701,18 @@ class Dhcp4Client(Subsystem):
         try:
             client_socket.bind(("0.0.0.0", 68))
             target = "255.255.255.255" if broadcast else str(lease.server_id)
-            client_socket.connect((target, 67))
+            await client_socket.connect((target, 67))
 
-            def _send() -> None:
-                self._send_request_renew(
+            async def _send() -> None:
+                await self._send_request_renew(
                     client_socket,
                     xid=xid,
                     ciaddr=lease.ip4_host.address,
                     broadcast=broadcast,
                 )
 
-            _send()
-            result = self._recv_with_backoff(
+            await _send()
+            result = await self._recv_with_backoff(
                 client_socket,
                 expected_type=Dhcp4MessageType.ACK,
                 xid=xid,
@@ -743,7 +748,7 @@ class Dhcp4Client(Subsystem):
             t2_override=t2_override,
         )
 
-    def _consume_renew_or_rebind_outcome(
+    async def _consume_renew_or_rebind_outcome(
         self,
         outcome: "Dhcp4Lease | _NakRestart | None",
         /,
@@ -811,7 +816,7 @@ class Dhcp4Client(Subsystem):
             # defending the swapped-in address (announce + hold).
             if self._acd is not None:
                 self._acd.release()
-                self._acd.start_defense(address=outcome.ip4_host.address)
+                await self._acd.start_defense(address=outcome.ip4_host.address)
             self._lease = outcome
             self._state = Dhcp4State.BOUND
 
@@ -867,7 +872,7 @@ class Dhcp4Client(Subsystem):
 
         self._reset_to_init(remove_lease_host=True)
 
-    def _handle_bound_conflict(self, peer_mac: MacAddress, /) -> None:
+    async def _handle_bound_conflict(self, peer_mac: MacAddress, /) -> None:
         """
         RFC 5227 §2.4 / RFC 2131 §3.1 ongoing-conflict handler for a
         BOUND DHCP address: a peer ('peer_mac') is using our leased
@@ -888,13 +893,13 @@ class Dhcp4Client(Subsystem):
             f"{self._lease.ip4_host.address} from {peer_mac}; "
             f"declining and re-acquiring</>",
         )
-        self._decline_leased_address(
+        await self._decline_leased_address(
             address=self._lease.ip4_host.address,
             server_id=self._lease.server_id,
         )
         self._reset_to_init(remove_lease_host=True)
 
-    def _decline_leased_address(self, *, address: Ip4Address, server_id: Ip4Address) -> None:
+    async def _decline_leased_address(self, *, address: Ip4Address, server_id: Ip4Address) -> None:
         """
         Open a one-shot UDP socket and emit a single DHCPDECLINE for a
         previously-BOUND address whose ACD detected an ongoing
@@ -907,8 +912,8 @@ class Dhcp4Client(Subsystem):
         client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect((str(server_id), 67))
-            self._send_decline(
+            await client_socket.connect((str(server_id), 67))
+            await self._send_decline(
                 client_socket,
                 xid=random.randint(0, 0xFFFFFFFF),
                 srv_id=server_id,
@@ -926,7 +931,7 @@ class Dhcp4Client(Subsystem):
     # RFC 2131 §4.4.2 INIT-REBOOT (Phase 5)
     # ------------------------------------------------------------
 
-    def _do_init_reboot(self) -> None:
+    async def _do_init_reboot(self) -> None:
         """
         INIT-REBOOT-state handler. Opens a one-shot UDP socket,
         broadcasts a REQUEST asking the leasing server to
@@ -953,14 +958,14 @@ class Dhcp4Client(Subsystem):
         # adopted as-is, skipping the DHCP wire exchange
         # entirely. On miss / disabled, fall through to the
         # standard RFC 2131 §4.4.2 INIT-REBOOT REQUEST.
-        if self._dnav4_probe(cached):
+        if await self._dnav4_probe(cached):
             __debug__ and log(
                 "dhcp4",
                 f"<lg>DNAv4 succeeded</>: cached gateway "
                 f"{cached.gateway} answered; adopting "
                 f"{cached.ip4_host} without DHCP traffic",
             )
-            self._on_bound(cached)
+            await self._on_bound(cached)
             return
 
         xid = random.randint(0, 0xFFFFFFFF)
@@ -973,16 +978,16 @@ class Dhcp4Client(Subsystem):
         client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect(("255.255.255.255", 67))
+            await client_socket.connect(("255.255.255.255", 67))
 
-            def _send() -> None:
-                self._send_request_init_reboot(
+            async def _send() -> None:
+                await self._send_request_init_reboot(
                     client_socket,
                     xid=xid,
                     requested_ip=cached.ip4_host.address,
                 )
 
-            _send()
+            await _send()
             # Phase 5: clamp the recv attempts to
             # 'dhcp.reboot_max_attempts' (default 4) so the
             # INIT-REBOOT window stays close to the RFC's 60-
@@ -995,7 +1000,7 @@ class Dhcp4Client(Subsystem):
                 "dhcp.retrans_max_attempts",
                 min(attempts_prior, dhcp4__constants.DHCP4__REBOOT_MAX_ATTEMPTS),
             ):
-                result = self._recv_with_backoff(
+                result = await self._recv_with_backoff(
                     client_socket,
                     expected_type=Dhcp4MessageType.ACK,
                     xid=xid,
@@ -1025,7 +1030,7 @@ class Dhcp4Client(Subsystem):
                 f"<lg>INIT-REBOOT silent server; adopting cached lease "
                 f"{cached.ip4_host} as-is (RFC 2131 §4.4.2 MAY)</>",
             )
-            self._on_bound(cached)
+            await self._on_bound(cached)
             return
 
         assert isinstance(result, Dhcp4Parser)
@@ -1055,9 +1060,9 @@ class Dhcp4Client(Subsystem):
             f"(lease_time={refreshed.lease_time__sec}s, "
             f"server={refreshed.server_id})",
         )
-        self._on_bound(refreshed)
+        await self._on_bound(refreshed)
 
-    def _send_request_init_reboot(
+    async def _send_request_init_reboot(
         self,
         client_socket: socket,
         *,
@@ -1095,9 +1100,9 @@ class Dhcp4Client(Subsystem):
             ),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
-        client_socket.send(bytes(dhcp4_packet_tx))
+        await client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _dnav4_probe(self, lease: Dhcp4Lease, /) -> bool:
+    async def _dnav4_probe(self, lease: Dhcp4Lease, /) -> bool:
         """
         RFC 4436 DNAv4 unicast ARP probe. Returns True if the
         cached gateway answers a unicast ARP Request within the
@@ -1143,7 +1148,7 @@ class Dhcp4Client(Subsystem):
             # ACD Probe, not a DNAv4 reachability probe. The reply is read
             # off the ACD socket, so the stack's ARP cache / ARP-TX path
             # is uninvolved.
-            reachable = self._acd.probe_reachable(
+            reachable = await self._acd.probe_reachable(
                 target=lease.gateway,
                 target_mac=lease.gateway_mac,
                 sender=lease.ip4_host.address,
@@ -1165,7 +1170,7 @@ class Dhcp4Client(Subsystem):
             )
         return reachable
 
-    def _send_request_renew(
+    async def _send_request_renew(
         self,
         client_socket: socket,
         *,
@@ -1204,9 +1209,9 @@ class Dhcp4Client(Subsystem):
             ),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
-        client_socket.send(bytes(dhcp4_packet_tx))
+        await client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _send_release(
+    async def _send_release(
         self,
         client_socket: socket,
         *,
@@ -1234,27 +1239,27 @@ class Dhcp4Client(Subsystem):
             ),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
-        client_socket.send(bytes(dhcp4_packet_tx))
+        await client_socket.send(bytes(dhcp4_packet_tx))
 
     # ------------------------------------------------------------
-    # Phase 4 commit D — public sync 'release' / 'renew' / 'rebind'
+    # Phase 4 commit D — public one-shot 'release' / 'renew' / 'rebind'
     # ------------------------------------------------------------
 
-    def release(self, lease: Dhcp4Lease, /) -> None:
+    async def release(self, lease: Dhcp4Lease, /) -> None:
         """
-        Synchronous one-shot DHCPRELEASE — emits a single
-        RELEASE message to the server that issued 'lease' and
-        tears down the socket. No reply is expected
-        (RFC 2131 §4.4.6). The FSM state is not mutated; this
-        is a fire-and-forget convenience for operator CLI tools
-        and tests (Linux 'dhclient -r' / 'dhcpcd -k' equivalent).
+        One-shot DHCPRELEASE — emits a single RELEASE message to
+        the server that issued 'lease' and tears down the socket.
+        No reply is expected (RFC 2131 §4.4.6). The FSM state is
+        not mutated; this is a fire-and-forget convenience for
+        operator CLI tools and tests (Linux 'dhclient -r' /
+        'dhcpcd -k' equivalent).
         """
 
         client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect((str(lease.server_id), 67))
-            self._send_release(
+            await client_socket.connect((str(lease.server_id), 67))
+            await self._send_release(
                 client_socket,
                 lease=lease,
                 xid=random.randint(0, 0xFFFFFFFF),
@@ -1262,27 +1267,26 @@ class Dhcp4Client(Subsystem):
         finally:
             client_socket.close()
 
-    def renew(self, lease: Dhcp4Lease, /) -> Dhcp4Lease | None:
+    async def renew(self, lease: Dhcp4Lease, /) -> Dhcp4Lease | None:
         """
-        Synchronous one-shot DHCPRENEW — unicast REQUEST to the
-        leasing server, wait for ACK, return the refreshed
-        'Dhcp4Lease'. Returns None on NAK, timeout, or other
-        failure. The FSM state is not mutated. Linux 'dhcpcd -n'
-        equivalent.
+        One-shot DHCPRENEW — unicast REQUEST to the leasing
+        server, wait for ACK, return the refreshed 'Dhcp4Lease'.
+        Returns None on NAK, timeout, or other failure. The FSM
+        state is not mutated. Linux 'dhcpcd -n' equivalent.
         """
 
-        outcome = self._do_renew_or_rebind_exchange(lease=lease, broadcast=False)
+        outcome = await self._do_renew_or_rebind_exchange(lease=lease, broadcast=False)
         return outcome if isinstance(outcome, Dhcp4Lease) else None
 
-    def rebind(self, lease: Dhcp4Lease, /) -> Dhcp4Lease | None:
+    async def rebind(self, lease: Dhcp4Lease, /) -> Dhcp4Lease | None:
         """
-        Synchronous one-shot DHCPREBIND — broadcast REQUEST,
-        wait for ACK from any DHCP server, return the refreshed
-        'Dhcp4Lease'. Returns None on NAK, timeout, or other
-        failure. The FSM state is not mutated.
+        One-shot DHCPREBIND — broadcast REQUEST, wait for ACK
+        from any DHCP server, return the refreshed 'Dhcp4Lease'.
+        Returns None on NAK, timeout, or other failure. The FSM
+        state is not mutated.
         """
 
-        outcome = self._do_renew_or_rebind_exchange(lease=lease, broadcast=True)
+        outcome = await self._do_renew_or_rebind_exchange(lease=lease, broadcast=True)
         return outcome if isinstance(outcome, Dhcp4Lease) else None
 
     # ------------------------------------------------------------
@@ -1292,25 +1296,24 @@ class Dhcp4Client(Subsystem):
     @override
     def _stop(self) -> None:
         """
-        Subsystem post-stop hook. Runs after the FSM thread has
-        joined. If the FSM was BOUND at stop time, emit a
-        DHCPRELEASE for the held lease (RFC 2131 §4.4.6 SHOULD)
-        and remove the address via the address API (the
-        'dhcp.abort_sessions_on_lease_change' sysctl gates the
-        active TCP-session abort).
+        Subsystem post-stop hook. Runs after the FSM worker task
+        has been signalled + cancelled. If the FSM was BOUND at
+        stop time, emit a DHCPRELEASE for the held lease
+        (RFC 2131 §4.4.6 SHOULD) and remove the address via the
+        address API (the 'dhcp.abort_sessions_on_lease_change'
+        sysctl gates the active TCP-session abort).
+
+        The hook itself is sync (called from 'stop()'), but the
+        wire RELEASE is a coroutine — it is spawned as a task and
+        awaited by 'wait_stopped()' so a caller awaiting the
+        client's shutdown observes the RELEASE attempt completed.
         """
 
         if self._state == Dhcp4State.BOUND and self._lease is not None:
-            try:
-                self.release(self._lease)
-            except OSError as error:
-                # Don't let a socket error in the
-                # release-on-shutdown path block the rest of
-                # the stack-stop sequence. Log and continue.
-                __debug__ and log(
-                    "dhcp4",
-                    f"<WARN>DHCPRELEASE on shutdown raised {type(error).__name__}: {error}</>",
-                )
+            self._task__release_on_stop = asyncio.get_running_loop().create_task(
+                self._release_on_stop(self._lease),
+                name=f"{self._subsystem_name} release-on-stop",
+            )
             if self._address_api is not None:
                 self._address_api.remove(
                     address=self._lease.ip4_host.address,
@@ -1328,7 +1331,42 @@ class Dhcp4Client(Subsystem):
             if self._acd is not None:
                 self._acd.release()
 
-    def _do_init_to_bound(self) -> Dhcp4Lease | None:
+    async def _release_on_stop(self, lease: Dhcp4Lease, /) -> None:
+        """
+        Best-effort DHCPRELEASE emitted on graceful shutdown —
+        the async half of the '_stop' hook, run as a task so the
+        sync hook does not have to await the wire exchange.
+        """
+
+        try:
+            await self.release(lease)
+        except OSError as error:
+            # Don't let a socket error in the
+            # release-on-shutdown path block the rest of
+            # the stack-stop sequence. Log and continue.
+            __debug__ and log(
+                "dhcp4",
+                f"<WARN>DHCPRELEASE on shutdown raised {type(error).__name__}: {error}</>",
+            )
+
+    @override
+    async def wait_stopped(self) -> None:
+        """
+        Await the FSM worker task's exit, then the best-effort
+        release-on-stop task spawned by the '_stop' hook (if any)
+        so shutdown is complete — not merely signalled — when
+        this returns.
+        """
+
+        await super().wait_stopped()
+        if self._task__release_on_stop is not None:
+            try:
+                await self._task__release_on_stop
+            except asyncio.CancelledError:
+                pass
+            self._task__release_on_stop = None
+
+    async def _do_init_to_bound(self) -> Dhcp4Lease | None:
         """
         Run one INIT → SELECTING → REQUESTING → BOUND cycle.
         Shared by sync 'fetch()' and daemon-mode
@@ -1348,7 +1386,7 @@ class Dhcp4Client(Subsystem):
         sysctl-tunable).
         """
 
-        self._initial_delay()
+        await self._initial_delay()
         self._fetch_started_at_monotonic = time.monotonic()
         __debug__ and log(
             "dhcp4",
@@ -1358,10 +1396,10 @@ class Dhcp4Client(Subsystem):
         client_socket = self._open_client_socket()
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect(("255.255.255.255", 67))
+            await client_socket.connect(("255.255.255.255", 67))
 
             for _ in range(dhcp4__constants.DHCP4__NAK_MAX_RESTARTS + 1):
-                outcome = self._discover_request_once(client_socket)
+                outcome = await self._discover_request_once(client_socket)
                 if not isinstance(outcome, _NakRestart):
                     if isinstance(outcome, Dhcp4Lease):
                         __debug__ and log(
@@ -1384,7 +1422,7 @@ class Dhcp4Client(Subsystem):
         finally:
             client_socket.close()
 
-    def _discover_request_once(self, client_socket: socket) -> Dhcp4Lease | _NakRestart | None:
+    async def _discover_request_once(self, client_socket: socket) -> Dhcp4Lease | _NakRestart | None:
         """
         Run a single DISCOVER/OFFER/REQUEST/ACK round-trip with
         retransmission backoff on each recv leg.
@@ -1397,12 +1435,15 @@ class Dhcp4Client(Subsystem):
 
         xid = random.randint(0, 0xFFFFFFFF)
 
-        self._send_discover(client_socket, xid=xid)
-        offer = self._recv_with_backoff(
+        async def _resend_discover() -> None:
+            await self._send_discover(client_socket, xid=xid)
+
+        await self._send_discover(client_socket, xid=xid)
+        offer = await self._recv_with_backoff(
             client_socket,
             expected_type=Dhcp4MessageType.OFFER,
             xid=xid,
-            resend=lambda: self._send_discover(client_socket, xid=xid),
+            resend=_resend_discover,
         )
         if offer is None:
             return None
@@ -1418,7 +1459,7 @@ class Dhcp4Client(Subsystem):
         # Setting 'dhcp.offer_collection_ms' to 0 disables the
         # window — the RFC's "e.g. the first DHCPOFFER message"
         # path is strictly compliant in that mode.
-        self._collect_additional_offers(client_socket, xid=xid, first_offer=offer)
+        await self._collect_additional_offers(client_socket, xid=xid, first_offer=offer)
 
         srv_id = offer.server_id
         if srv_id is None:
@@ -1429,12 +1470,15 @@ class Dhcp4Client(Subsystem):
             return None
         yiaddr = offer.yiaddr
 
-        self._send_request(client_socket, xid=xid, srv_id=srv_id, yiaddr=yiaddr)
-        ack = self._recv_with_backoff(
+        async def _resend_request() -> None:
+            await self._send_request(client_socket, xid=xid, srv_id=srv_id, yiaddr=yiaddr)
+
+        await self._send_request(client_socket, xid=xid, srv_id=srv_id, yiaddr=yiaddr)
+        ack = await self._recv_with_backoff(
             client_socket,
             expected_type=Dhcp4MessageType.ACK,
             xid=xid,
-            resend=lambda: self._send_request(client_socket, xid=xid, srv_id=srv_id, yiaddr=yiaddr),
+            resend=_resend_request,
             allow_nak=True,
         )
         if isinstance(ack, _NakRestart):
@@ -1469,12 +1513,12 @@ class Dhcp4Client(Subsystem):
         # over the userspace RFC 5227 ACD engine ('acd.probe'); the
         # daemon-mode BOUND transition later begins ongoing defense
         # of the committed address via 'acd.start_defense'.
-        if self._acd is not None and not self._acd.probe(address=ip4_host.address).success:
+        if self._acd is not None and not (await self._acd.probe(address=ip4_host.address)).success:
             __debug__ and log(
                 "dhcp4",
                 f"<WARN>ARP DAD reported conflict on {ip4_host.address}; sending DHCPDECLINE</>",
             )
-            self._send_decline(
+            await self._send_decline(
                 client_socket,
                 xid=xid,
                 srv_id=srv_id,
@@ -1482,7 +1526,7 @@ class Dhcp4Client(Subsystem):
             )
             backoff_s = dhcp4__constants.DHCP4__DECLINE_BACKOFF_MS / 1000.0
             if backoff_s > 0:
-                time.sleep(backoff_s)
+                await asyncio.sleep(backoff_s)
             return _NAK_RESTART
 
         t1_override, t2_override = self._extract_t1_t2_overrides(ack, ack.lease_time)
@@ -1497,19 +1541,19 @@ class Dhcp4Client(Subsystem):
             t2_override=t2_override,
         )
 
-    def _recv_with_backoff(
+    async def _recv_with_backoff(
         self,
         client_socket: socket,
         *,
         expected_type: Dhcp4MessageType,
         xid: int,
-        resend: "Callable[[], None]",  # noqa: F821 — typing alias defined below
+        resend: "Callable[[], Awaitable[None]]",  # noqa: F821 — typing alias defined below
         allow_nak: bool = False,
     ) -> "Dhcp4Parser | _NakRestart | None":
         """
         Wait for an inbound DHCP message of 'expected_type' using the
         RFC 2131 §4.1 retransmission backoff. On each per-attempt
-        timeout the caller-provided 'resend' callback retransmits the
+        timeout the caller-provided 'resend' coroutine retransmits the
         prior TX and the delay doubles (capped at
         'dhcp.retrans_max_ms'). Returns the parsed message on
         success, '_NAK_RESTART' if a NAK arrives and 'allow_nak' is
@@ -1529,7 +1573,7 @@ class Dhcp4Client(Subsystem):
         for attempt in range(max_attempts):
             jitter_s = random.uniform(-jitter_ms / 1000.0, jitter_ms / 1000.0)
             timeout_s = max(0.001, delay_ms / 1000.0 + jitter_s)
-            result = self._recv_within_window(
+            result = await self._recv_within_window(
                 client_socket,
                 expected_type=expected_type,
                 xid=xid,
@@ -1544,11 +1588,11 @@ class Dhcp4Client(Subsystem):
                     f"recv window expired ({timeout_s:.2f}s); retransmitting "
                     f"(attempt {attempt + 2} of {max_attempts})",
                 )
-                resend()
+                await resend()
                 delay_ms = min(delay_ms * 2, max_ms)
         return None
 
-    def _recv_within_window(
+    async def _recv_within_window(
         self,
         client_socket: socket,
         *,
@@ -1582,7 +1626,7 @@ class Dhcp4Client(Subsystem):
                     return None
             first_iter = False
             try:
-                packet = Dhcp4Parser(client_socket.recv__mv(timeout=remaining))
+                packet = Dhcp4Parser(await client_socket.recv__mv(timeout=remaining))
             except TimeoutError:
                 return None
             except (Dhcp4IntegrityError, Dhcp4SanityError):
@@ -1625,7 +1669,7 @@ class Dhcp4Client(Subsystem):
 
             return packet
 
-    def _collect_additional_offers(
+    async def _collect_additional_offers(
         self,
         client_socket: socket,
         *,
@@ -1663,7 +1707,7 @@ class Dhcp4Client(Subsystem):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
-            result = self._recv_within_window(
+            result = await self._recv_within_window(
                 client_socket,
                 expected_type=Dhcp4MessageType.OFFER,
                 xid=xid,
@@ -1701,7 +1745,7 @@ class Dhcp4Client(Subsystem):
         client_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         return client_socket
 
-    def _send_discover(self, client_socket: socket, *, xid: int) -> None:
+    async def _send_discover(self, client_socket: socket, *, xid: int) -> None:
         """
         Build and send the DHCP DISCOVER packet.
         """
@@ -1737,9 +1781,9 @@ class Dhcp4Client(Subsystem):
             dhcp4__options=Dhcp4Options(*opts),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
-        client_socket.send(bytes(dhcp4_packet_tx))
+        await client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _send_request(
+    async def _send_request(
         self,
         client_socket: socket,
         *,
@@ -1775,9 +1819,9 @@ class Dhcp4Client(Subsystem):
             ),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
-        client_socket.send(bytes(dhcp4_packet_tx))
+        await client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _send_decline(
+    async def _send_decline(
         self,
         client_socket: socket,
         *,
@@ -1809,9 +1853,9 @@ class Dhcp4Client(Subsystem):
             ),
         )
         __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
-        client_socket.send(bytes(dhcp4_packet_tx))
+        await client_socket.send(bytes(dhcp4_packet_tx))
 
-    def _initial_delay(self) -> None:
+    async def _initial_delay(self) -> None:
         """
         Sleep for an RFC 2131 §4.4.1 startup desynchronisation
         delay drawn uniformly from
@@ -1826,7 +1870,7 @@ class Dhcp4Client(Subsystem):
         min_ms = dhcp4__constants.DHCP4__INIT_DELAY_MIN_MS
         delay_s = random.uniform(min_ms / 1000.0, max_ms / 1000.0)
         __debug__ and log("dhcp4", f"Initial desync delay: {delay_s:.2f}s")
-        time.sleep(delay_s)
+        await asyncio.sleep(delay_s)
 
     def _elapsed_secs(self) -> int:
         """

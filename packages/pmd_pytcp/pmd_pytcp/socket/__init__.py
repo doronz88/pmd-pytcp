@@ -32,12 +32,12 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
 import socket as _stdlib_socket
 import struct
 import sys
-import threading
 from abc import ABC
 from collections.abc import Iterable
 from enum import IntEnum
@@ -53,7 +53,7 @@ from pmd_net_proto.protocols.ip4.options.ip4__options import (
     IP4__OPTIONS__MAX_LEN,
     Ip4Options,
 )
-from pmd_pytcp.lib import io_backend
+from pmd_pytcp._compat import acquire_semaphore
 from pmd_pytcp.lib.ip4_multicast_filter import (
     Ip4MulticastFilter,
     Ip4MulticastFilterMode,
@@ -358,6 +358,38 @@ def _resolve_membership_ifindex(interface_address: Ip4Address, /) -> int | None:
     return None
 
 
+async def _sem_acquire(
+    semaphore: asyncio.Semaphore,
+    *,
+    blocking: bool = True,
+    timeout: float | None = None,
+) -> bool:
+    """
+    Await 'semaphore' with the 'threading.Semaphore.acquire(blocking,
+    timeout)' contract the socket wait-points were written against:
+
+    - 'blocking=False' (the non-blocking socket mode): consume a unit
+      iff one is available right now, without suspending.
+    - 'timeout <= 0': the same immediate poll ('threading' treats a
+      zero / negative timeout as a single non-blocking check, while
+      'asyncio.wait_for(..., 0)' would time a ready semaphore out
+      because the acquire task never gets a loop slice).
+    - otherwise delegate to the stack-wide 'acquire_semaphore' compat
+      helper: True when acquired, False on timeout.
+
+    A ready 'asyncio.Semaphore' acquires without suspending, so on the
+    single stack loop no other task can interleave between the
+    'locked()' check and the immediate acquire.
+    """
+
+    if not blocking or (timeout is not None and timeout <= 0):
+        if semaphore.locked():
+            return False
+        await semaphore.acquire()
+        return True
+    return await acquire_semaphore(semaphore, timeout)
+
+
 class ShutdownHow(IntEnum):
     """
     BSD-socket 'shutdown(how)' values per POSIX (Linux-
@@ -493,7 +525,6 @@ class socket(ABC):
     _remote_ip_address: Ip4Address | Ip6Address
     _local_port: int
     _remote_port: int
-    _read_event_fd: int
     _blocking: bool
     _so_reuseaddr: bool
     _so_reuseport: bool
@@ -522,14 +553,12 @@ class socket(ABC):
     # source join)" with this; full source-filter parity is a
     # follow-up.
     _ip6_memberships: set[tuple[int, Ip6Address]]
-    _lock__ip6_memberships: threading.Lock
     # The source filter (RFC 3376 §3.1) this socket holds per joined
     # (ifindex, group). 'IP_ADD_MEMBERSHIP' records an EXCLUDE{}
     # any-source filter; the source options build INCLUDE / EXCLUDE
     # source lists. Presence of a key is the socket's membership; the
     # value is pushed to the interface merge via the membership API.
     _ip4_source_filters: dict[tuple[int, Ip4Address], Ip4MulticastFilter]
-    _lock__ip4_source_filters: threading.Lock
 
     def __init__(
         self,
@@ -539,28 +568,23 @@ class socket(ABC):
         **__: Any,
     ) -> None:
         """
-        Allocate the OS-level eventfd backing 'fileno()'. The
-        descriptor signals readability for select / poll / epoll /
-        selectors when data lands in the socket's RX queue. Counter
-        starts at 0 (not readable); EFD_NONBLOCK + EFD_CLOEXEC match
-        the default Linux socket FD flags. The 'family' / 'type' /
-        'protocol' parameters mirror the '__new__' factory triple so
-        calls like 'socket(family=..., type=..., protocol=...)' bind
-        cleanly; the base class itself does not act on them — concrete
-        Tcp/Udp/Raw subclasses consume them in their own '__init__'.
-        Blocking mode defaults to True per POSIX 'socket(2)'.
+        Initialize the state common to every socket flavour. The
+        'family' / 'type' / 'protocol' parameters mirror the
+        '__new__' factory triple so calls like 'socket(family=...,
+        type=..., protocol=...)' bind cleanly; the base class itself
+        does not act on them — concrete Tcp/Udp/Raw subclasses
+        consume them in their own '__init__'. Blocking mode defaults
+        to True per POSIX 'socket(2)'.
         """
 
         del family, type, protocol  # consumed by concrete-class __init__.
-        self._read_event_fd = io_backend.eventfd(0, io_backend.EFD_NONBLOCK | io_backend.EFD_CLOEXEC)
-        # Close-during-delivery drain (Phase 5): '_closed' is set under
-        # '_lock__io' by 'close()' (via '_mark_closed'); the RX-side
-        # delivery methods ('process_*_packet') take the same lock and
-        # drop the datagram when '_closed' so a packet is never queued
-        # onto a socket the application has already torn down. TCP
-        # delivery is instead serialized by 'TcpSession._lock__fsm'.
+        # Close-during-delivery drain (Phase 5): '_closed' is set by
+        # 'close()' (via '_mark_closed'); the RX-side delivery methods
+        # ('process_*_packet') drop the datagram when '_closed' so a
+        # packet is never queued onto a socket the application has
+        # already torn down. Delivery and close both run on the one
+        # stack event loop, so no lock is needed between them.
         self._closed = False
-        self._lock__io = threading.Lock()
         self._blocking = True
         self._so_reuseaddr = False
         self._so_reuseport = False
@@ -608,17 +632,12 @@ class socket(ABC):
         # socket; populated by 'setsockopt(IPV6_JOIN_GROUP)' and
         # drained by 'setsockopt(IPV6_LEAVE_GROUP)'.
         self._ip6_memberships = set()
-        self._lock__ip6_memberships = threading.Lock()
         # Per-socket IPv4 multicast holds (ifindex, group) for the
-        # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3).
+        # reference-counted IP_ADD/DROP_MEMBERSHIP path (R3). Mutated
+        # by the source-membership setsockopt RMW and close-time
+        # release, read by the RX-side data-plane source-admit gate —
+        # all on the one stack event loop, so no guarding lock.
         self._ip4_source_filters = {}
-        # Guards '_ip4_source_filters'. The app thread mutates it via the
-        # source-membership setsockopt RMW and close-time release; the RX
-        # threads read it in the data-plane source-admit gate. Under
-        # free-threaded CPython those would race (lost update / torn dict)
-        # without this lock. Ordering: only ever acquired before the
-        # interface multicast lock the membership API takes, never after.
-        self._lock__ip4_source_filters = threading.Lock()
         # SO_BINDTODEVICE: when set, pins this socket's egress to one
         # interface by name (the resolved ifindex is the egress the
         # send path uses, bypassing FIB route selection). Empty / unset
@@ -854,18 +873,17 @@ class socket(ABC):
         api = _stack.membership.interface(ifindex)
         key = (ifindex, group)
         try:
-            with self._lock__ip4_source_filters:
-                if optname == IP_ADD_MEMBERSHIP:
-                    if key in self._ip4_source_filters:
-                        raise OSError(errno.EADDRINUSE, f"Socket already a member of {group} on interface {ifindex}")
-                    source_filter = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
-                    api.set_socket_filter(group=group, token=id(self), source_filter=source_filter)
-                    self._ip4_source_filters[key] = source_filter
-                else:
-                    if key not in self._ip4_source_filters:
-                        raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
-                    api.clear_socket_filter(group=group, token=id(self))
-                    del self._ip4_source_filters[key]
+            if optname == IP_ADD_MEMBERSHIP:
+                if key in self._ip4_source_filters:
+                    raise OSError(errno.EADDRINUSE, f"Socket already a member of {group} on interface {ifindex}")
+                source_filter = Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+                api.set_socket_filter(group=group, token=id(self), source_filter=source_filter)
+                self._ip4_source_filters[key] = source_filter
+            else:
+                if key not in self._ip4_source_filters:
+                    raise OSError(errno.EADDRNOTAVAIL, f"Socket is not a member of {group} on interface {ifindex}")
+                api.clear_socket_filter(group=group, token=id(self))
+                del self._ip4_source_filters[key]
         except MembershipLimitError as error:
             raise OSError(errno.ENOBUFS, str(error)) from error
         except ValueError as error:
@@ -906,17 +924,16 @@ class socket(ABC):
         key = (ifindex, group)
         api = _stack.membership.interface(ifindex)
         try:
-            with self._lock__ip4_source_filters:
-                # Compute the new socket filter (or None to leave the
-                # group) inside the lock so the get/compute/store is one
-                # atomic RMW and a mode-conflict OSError aborts cleanly.
-                new_filter = self._apply_source_op(optname, self._ip4_source_filters.get(key), source)
-                if new_filter is None:
-                    api.clear_socket_filter(group=group, token=id(self))
-                    self._ip4_source_filters.pop(key, None)
-                else:
-                    api.set_socket_filter(group=group, token=id(self), source_filter=new_filter)
-                    self._ip4_source_filters[key] = new_filter
+            # Compute the new socket filter (or None to leave the
+            # group); a mode-conflict OSError aborts cleanly before
+            # any state is touched.
+            new_filter = self._apply_source_op(optname, self._ip4_source_filters.get(key), source)
+            if new_filter is None:
+                api.clear_socket_filter(group=group, token=id(self))
+                self._ip4_source_filters.pop(key, None)
+            else:
+                api.set_socket_filter(group=group, token=id(self), source_filter=new_filter)
+                self._ip4_source_filters[key] = new_filter
         except MembershipLimitError as error:
             raise OSError(errno.ENOBUFS, str(error)) from error
         except ValueError as error:
@@ -1068,40 +1085,39 @@ class socket(ABC):
 
         handler = _stack.interfaces[mreq_ifindex]
         key = (mreq_ifindex, group)
-        with self._lock__ip6_memberships:
-            if optname == IPV6_JOIN_GROUP:
-                if key in self._ip6_memberships:
-                    raise OSError(
-                        errno.EADDRINUSE,
-                        f"Socket already a member of {group} on interface {mreq_ifindex}",
-                    )
-                # The handler's '_assign_ip6_multicast' is idempotent
-                # at the interface level — multiple sockets joining
-                # the same group keep one membership on the wire.
-                # PyTCP doesn't refcount per-interface IPv6
-                # membership today (parity with the IPv6 SLAAC
-                # solicited-node assignment path) — a leave by ONE
-                # socket would remove the group even if another
-                # socket still held it. The IPv4 IGMP track addresses
-                # this via the interface-membership API; mirroring
-                # that for IPv6 is a follow-up. The socket-side
-                # 'EADDRINUSE' check above keeps per-socket
-                # bookkeeping clean.
-                if group not in handler._ip6_multicast:
-                    handler._assign_ip6_multicast(group)
-                self._ip6_memberships.add(key)
-            else:
-                if key not in self._ip6_memberships:
-                    raise OSError(
-                        errno.EADDRNOTAVAIL,
-                        f"Socket is not a member of {group} on interface {mreq_ifindex}",
-                    )
-                self._ip6_memberships.discard(key)
-                # Only remove from the interface if no other
-                # socket on this stack holds the group. Today the
-                # check is best-effort — see the leave-side comment
-                # above.
-                handler._remove_ip6_multicast(group)
+        if optname == IPV6_JOIN_GROUP:
+            if key in self._ip6_memberships:
+                raise OSError(
+                    errno.EADDRINUSE,
+                    f"Socket already a member of {group} on interface {mreq_ifindex}",
+                )
+            # The handler's '_assign_ip6_multicast' is idempotent
+            # at the interface level — multiple sockets joining
+            # the same group keep one membership on the wire.
+            # PyTCP doesn't refcount per-interface IPv6
+            # membership today (parity with the IPv6 SLAAC
+            # solicited-node assignment path) — a leave by ONE
+            # socket would remove the group even if another
+            # socket still held it. The IPv4 IGMP track addresses
+            # this via the interface-membership API; mirroring
+            # that for IPv6 is a follow-up. The socket-side
+            # 'EADDRINUSE' check above keeps per-socket
+            # bookkeeping clean.
+            if group not in handler._ip6_multicast:
+                handler._assign_ip6_multicast(group)
+            self._ip6_memberships.add(key)
+        else:
+            if key not in self._ip6_memberships:
+                raise OSError(
+                    errno.EADDRNOTAVAIL,
+                    f"Socket is not a member of {group} on interface {mreq_ifindex}",
+                )
+            self._ip6_memberships.discard(key)
+            # Only remove from the interface if no other
+            # socket on this stack holds the group. Today the
+            # check is best-effort — see the leave-side comment
+            # above.
+            handler._remove_ip6_multicast(group)
 
     def _ipproto_ipv6_getsockopt(self, optname: int, /) -> int | None:
         """
@@ -1429,16 +1445,6 @@ class socket(ABC):
 
         return self._ip_proto
 
-    def fileno(self) -> int:
-        """
-        Get the OS file descriptor backing this socket. Returns the
-        underlying eventfd that signals readability when the RX
-        queue is non-empty, suitable for 'select.select' /
-        'select.poll' / 'select.epoll' / 'selectors.DefaultSelector'.
-        """
-
-        return self._read_event_fd
-
     def setblocking(self, flag: bool, /) -> None:
         """
         Set the socket's blocking mode per POSIX 'socket(2)' /
@@ -1461,80 +1467,29 @@ class socket(ABC):
 
         return self._blocking
 
-    def _signal_readable(self) -> None:
-        """
-        Mark the socket's eventfd as select-readable. The producer
-        (stack-thread RX path) calls this whenever a new datagram /
-        segment / accept-queue child lands. Best-effort: a closed fd
-        is silently tolerated so the producer never crashes on a
-        race with application-side close().
-        """
-
-        if (fd := self._read_event_fd) < 0:
-            return
-        try:
-            io_backend.eventfd_write(fd, 1)
-        except OSError:
-            pass
-
-    def _drain_readable(self) -> None:
-        """
-        Return the socket's eventfd to the not-readable state. The
-        consumer (application-thread recv / accept) calls this once
-        the RX queue / accept queue has been drained empty so the
-        next selector tick stops firing. Best-effort: a closed fd
-        or already-zero counter (EAGAIN) is silently tolerated.
-        """
-
-        if (fd := self._read_event_fd) < 0:
-            return
-        try:
-            io_backend.eventfd_read(fd)
-        except OSError:
-            pass
-
-    def _close_io_runtime(self) -> None:
-        """
-        Close the OS-level eventfd backing 'fileno()'. Idempotent
-        so concrete 'close()' overrides can call it unconditionally
-        without tracking whether the fd is still open.
-        """
-
-        if (fd := self._read_event_fd) < 0:
-            return
-        self._read_event_fd = -1
-        try:
-            io_backend.eventfd_close(fd)
-        except OSError:
-            pass
-
     def _mark_closed(self) -> None:
         """
-        Atomically mark the socket closed and release its OS-level
-        runtime, under '_lock__io'. Concrete 'close()' overrides call
-        this (after removing the socket from 'stack.sockets') so an
-        in-flight RX delivery either completes before the socket is
-        marked closed or observes '_closed' and drops the datagram —
-        'close()' thus drains in-flight deliveries.
+        Mark the socket closed. Concrete 'close()' overrides call
+        this (after removing the socket from 'stack.sockets') so a
+        later RX delivery observes '_closed' and drops the datagram.
+        Delivery and close both run on the one stack event loop, so
+        no in-flight delivery can straddle the flag flip.
         """
 
-        with self._lock__io:
-            self._closed = True
-            self._close_io_runtime()
+        self._closed = True
 
         self._release_ip4_memberships()
 
     def __del__(self) -> None:
         """
         Finalizer safety net: a socket dropped without an explicit
-        close() still releases its OS-level runtime (the backing eventfd)
-        and its IPv4 multicast memberships when garbage-collected, so a
-        leaked joined socket cannot keep its group joined on the
-        interface forever. This mirrors Linux 'ip_mc_drop_socket', which
-        runs silently from the fd release — no ResourceWarning is emitted
-        (the stdlib socket's warning would be noise across the stack's
-        many internal socket consumers, and the cleanup, not the
-        diagnostic, is the point).
+        close() still releases its IPv4 multicast memberships when
+        garbage-collected, so a leaked joined socket cannot keep its
+        group joined on the interface forever. This mirrors Linux
+        'ip_mc_drop_socket', which runs silently from the fd release
+        — no ResourceWarning is emitted (the stdlib socket's warning
+        would be noise across the stack's many internal socket
+        consumers, and the cleanup, not the diagnostic, is the point).
 
         It runs the resource-only '_mark_closed', NOT the per-flavour
         close(), so it never attempts protocol-graceful teardown from a
@@ -1560,25 +1515,22 @@ class socket(ABC):
         The interface leaves a group (and emits the state-change Leave)
         only when this socket was its last contributor (RFC 3376 §3.2).
         Idempotent: a socket that joined no group clears an empty map.
-        Released outside '_lock__io' so the membership/timer path does
-        not run under the socket IO lock.
         """
 
         import pmd_pytcp.stack as _stack
 
-        with self._lock__ip4_source_filters:
-            if not self._ip4_source_filters:
-                return
+        if not self._ip4_source_filters:
+            return
 
-            for ifindex, group in list(self._ip4_source_filters):
-                try:
-                    _stack.membership.interface(ifindex).clear_socket_filter(group=group, token=id(self))
-                except KeyError:
-                    # Best-effort cleanup: the interface may already be
-                    # torn down (KeyError) during stack shutdown. Mirrors
-                    # the best-effort nature of the Linux close-time drop.
-                    pass
-            self._ip4_source_filters.clear()
+        for ifindex, group in list(self._ip4_source_filters):
+            try:
+                _stack.membership.interface(ifindex).clear_socket_filter(group=group, token=id(self))
+            except KeyError:
+                # Best-effort cleanup: the interface may already be
+                # torn down (KeyError) during stack shutdown. Mirrors
+                # the best-effort nature of the Linux close-time drop.
+                pass
+        self._ip4_source_filters.clear()
 
     def _ip4_multicast_source_admits(self, *, ifindex: int, group: Ip4Address, source: Ip4Address) -> bool:
         """
@@ -1589,10 +1541,7 @@ class socket(ABC):
         delivery. Shared by the UDP and RAW delivery paths.
         """
 
-        with self._lock__ip4_source_filters:
-            source_filter = self._ip4_source_filters.get((ifindex, group))
-        # 'Ip4MulticastFilter' is immutable, so 'allows' is evaluated
-        # outside the lock against the snapshotted reference.
+        source_filter = self._ip4_source_filters.get((ifindex, group))
         return source_filter is None or source_filter.allows(source)
 
     def getsockname(self) -> tuple[str, int]:
@@ -1628,7 +1577,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def connect(
+    async def connect(
         self,
         address: tuple[str, int],
     ) -> None:
@@ -1638,7 +1587,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def send(
+    async def send(
         self,
         data: bytes,
     ) -> int:
@@ -1648,7 +1597,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def recv(
+    async def recv(
         self,
         bufsize: int | None = None,
         timeout: float | None = None,
@@ -1659,7 +1608,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def recv__mv(
+    async def recv__mv(
         self,
         bufsize: int | None = None,
         timeout: float | None = None,
@@ -1701,14 +1650,14 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
+    async def accept(self, *, timeout: float | None = None) -> tuple[socket, tuple[str, int]]:
         """
         The 'accept()' socket API placeholder.
         """
 
         raise NotImplementedError
 
-    def sendto(self, data: bytes, address: Any) -> int:
+    async def sendto(self, data: bytes, address: Any) -> int:
         """
         The 'sendto()' socket API placeholder.
 
@@ -1720,7 +1669,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def recvfrom(
+    async def recvfrom(
         self,
         bufsize: int | None = None,
         timeout: float | None = None,
@@ -1737,7 +1686,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def recvfrom__mv(
+    async def recvfrom__mv(
         self,
         bufsize: int | None = None,
         timeout: float | None = None,
@@ -1748,7 +1697,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def recvmsg(
+    async def recvmsg(
         self,
         bufsize: int | None = None,
         ancbufsize: int = 0,
@@ -1763,7 +1712,7 @@ class socket(ABC):
 
         raise NotImplementedError
 
-    def sendmsg(
+    async def sendmsg(
         self,
         buffers: Iterable[bytes | bytearray | memoryview],
         ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),

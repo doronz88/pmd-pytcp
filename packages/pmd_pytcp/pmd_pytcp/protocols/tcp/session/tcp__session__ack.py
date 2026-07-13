@@ -740,8 +740,7 @@ class TcpAckProcessor:
                 # ACK after tcp__constants.TCP__DELAYED_ACK__DELAY_MS rather than immediately.
                 session._arm_timer("delayed_ack", tcp__constants.TCP__DELAYED_ACK__DELAY_MS)
         # Purge acked data from TX buffer.
-        with session._lock__tx_buffer:
-            session._tx.drain(bytes_count=session._tx_buffer_una)
+        session._tx.drain(bytes_count=session._tx_buffer_una)
         __debug__ and log(
             "tcp-ss",
             f"[{session}] - Purged TX buffer up to SEQ {session._snd_seq.una}",

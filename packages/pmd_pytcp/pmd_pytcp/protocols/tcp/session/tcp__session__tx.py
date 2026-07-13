@@ -373,9 +373,8 @@ class TcpTxEngine:
             tfo_data: bytes = b""
             cached = stack.tcp_stack.fastopen_cookie(session._remote_ip_address)
             if cached and session._advertise.fastopen and session._tx.buffer:
-                with session._lock__tx_buffer:
-                    slice_len = min(session._win.snd_mss, len(session._tx.buffer))
-                    tfo_data = bytes(session._tx.buffer[:slice_len])
+                slice_len = min(session._win.snd_mss, len(session._tx.buffer))
+                tfo_data = bytes(session._tx.buffer[:slice_len])
             __debug__ and log(
                 "tcp-ss",
                 f"[{session}] - Transmitting initial SYN packet_rx_md: seq {session._snd_seq.nxt}"
@@ -550,10 +549,9 @@ class TcpTxEngine:
                             f"still unacked (SND.UNA={session._snd_seq.una})",
                         )
                         return
-                    with session._lock__tx_buffer:
-                        transmit_data = session._tx.buffer[
-                            session._tx_buffer_nxt : session._tx_buffer_nxt + transmit_data_len
-                        ]
+                    transmit_data = session._tx.buffer[
+                        session._tx_buffer_nxt : session._tx_buffer_nxt + transmit_data_len
+                    ]
                     # RFC 1122 §4.2.2.2: PSH MUST be set on the last
                     # segment of a write. The current segment drains
                     # the buffer iff 'transmit_data_len ==
@@ -624,8 +622,7 @@ class TcpTxEngine:
                             f"with timeout {session._persist.timeout} ms",
                         )
                     elif session._timer_expired("persist"):
-                        with session._lock__tx_buffer:
-                            probe_data = bytes(session._tx.buffer[session._tx_buffer_nxt : session._tx_buffer_nxt + 1])
+                        probe_data = bytes(session._tx.buffer[session._tx_buffer_nxt : session._tx_buffer_nxt + 1])
                         __debug__ and log(
                             "tcp-ss",
                             f"[{session}] - Persist: emitting 1-byte probe at seq {session._snd_seq.nxt}",
