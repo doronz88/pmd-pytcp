@@ -38,7 +38,7 @@ from __future__ import annotations
 import os
 import tempfile
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_pytcp import stack
 from pmd_pytcp.client import wait_for_daemon
@@ -46,7 +46,7 @@ from pmd_pytcp.ipc.ipc__errors import IpcConnectionError
 from pmd_pytcp.ipc.ipc__server import IpcServer
 
 
-class TestIpcDaemonReadiness(TestCase):
+class TestIpcDaemonReadiness(IsolatedAsyncioTestCase):
     """
     The daemon-readiness ('wait_for_daemon') tests.
     """
@@ -84,7 +84,7 @@ class TestIpcDaemonReadiness(TestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def test__wait_for_daemon__returns_once_the_socket_is_listening(self) -> None:
+    async def test__wait_for_daemon__returns_once_the_socket_is_listening(self) -> None:
         """
         Ensure 'wait_for_daemon' returns once the daemon's control socket
         is accepting connections.
@@ -93,14 +93,22 @@ class TestIpcDaemonReadiness(TestCase):
         """
 
         server = IpcServer(socket_path=self._socket_path)
-        server.start()
-        self.addCleanup(server.stop)
+        await server.start()
+        self.addAsyncCleanup(self._stop_server, server)
 
         # Returns without raising (no assertion form needed; a timeout
         # would raise and fail the test).
-        wait_for_daemon(socket_path=self._socket_path, timeout=5.0)
+        await wait_for_daemon(socket_path=self._socket_path, timeout=5.0)
 
-    def test__wait_for_daemon__times_out_when_no_daemon(self) -> None:
+    async def _stop_server(self, server: IpcServer) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        server.stop()
+        await server.wait_stopped()
+
+    async def test__wait_for_daemon__times_out_when_no_daemon(self) -> None:
         """
         Ensure 'wait_for_daemon' raises 'IpcConnectionError' when no
         daemon is listening within the timeout.
@@ -109,4 +117,4 @@ class TestIpcDaemonReadiness(TestCase):
         """
 
         with self.assertRaises(IpcConnectionError):
-            wait_for_daemon(socket_path=os.path.join(self._tmp_dir, "absent.sock"), timeout=0.2)
+            await wait_for_daemon(socket_path=os.path.join(self._tmp_dir, "absent.sock"), timeout=0.2)

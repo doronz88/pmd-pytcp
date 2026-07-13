@@ -151,7 +151,7 @@ class TestUdpSocketApiBindRx(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp_socket_api__bind_recvfrom__round_trip(self) -> None:
+    async def test__udp_socket_api__bind_recvfrom__round_trip(self) -> None:
         """
         Ensure an inbound IPv4 UDP datagram addressed to a bound
         socket appears on the socket's RX queue and 'recvfrom()'
@@ -165,7 +165,7 @@ class TestUdpSocketApiBindRx(UdpTestCase):
         frame = _build_udp_frame_ipv4(payload=b"hello world")
         self._drive_udp_rx(frame=frame)
 
-        data, address = self._recvfrom(self._socket)
+        data, address = await self._recvfrom(self._socket)
 
         self.assertEqual(
             data,
@@ -197,7 +197,7 @@ class TestUdpSocketApiSendto(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp_socket_api__sendto__wire_frame_round_trip(self) -> None:
+    async def test__udp_socket_api__sendto__wire_frame_round_trip(self) -> None:
         """
         Ensure 'sendto()' emits a single Ethernet/IPv4/UDP frame
         whose source 4-tuple matches the socket's local address
@@ -208,7 +208,7 @@ class TestUdpSocketApiSendto(UdpTestCase):
         Reference: RFC 768 (UDP datagram structure on the wire).
         """
 
-        sent = self._socket.sendto(b"hello", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        sent = await self._socket.sendto(b"hello", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
 
         self.assertEqual(
             sent,
@@ -273,7 +273,7 @@ class TestUdpSocketApiSend(UdpTestCase):
             remote_port=_REMOTE_PORT,
         )
 
-    def test__udp_socket_api__send__on_connected_socket_emits_wire_frame(self) -> None:
+    async def test__udp_socket_api__send__on_connected_socket_emits_wire_frame(self) -> None:
         """
         Ensure 'send()' on a connected UdpSocket emits a single
         Ethernet/IPv4/UDP frame whose 4-tuple matches the
@@ -285,7 +285,7 @@ class TestUdpSocketApiSend(UdpTestCase):
         semantics; applies to UDP via the same surface).
         """
 
-        sent = self._socket.send(b"connected payload")
+        sent = await self._socket.send(b"connected payload")
 
         self.assertEqual(
             sent,
@@ -330,7 +330,7 @@ class TestUdpSocketApiSendmsg(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp_socket_api__sendmsg__concatenated_buffers_round_trip(self) -> None:
+    async def test__udp_socket_api__sendmsg__concatenated_buffers_round_trip(self) -> None:
         """
         Ensure 'sendmsg()' concatenates its scatter-gather buffer
         list into a single Ethernet/IPv4/UDP frame whose payload is
@@ -340,7 +340,7 @@ class TestUdpSocketApiSendmsg(UdpTestCase):
         Reference: RFC 768 (UDP datagram structure on the wire).
         """
 
-        sent = self._socket.sendmsg(
+        sent = await self._socket.sendmsg(
             [b"foo", b"bar", b"baz"],
             address=(str(HOST_A__IP4_ADDRESS), _REMOTE_PORT),
         )
@@ -392,7 +392,7 @@ class TestUdpSocketApiIpTtlOnWire(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp_socket_api__ip_ttl__appears_on_outbound_wire(self) -> None:
+    async def test__udp_socket_api__ip_ttl__appears_on_outbound_wire(self) -> None:
         """
         Ensure 'setsockopt(IPPROTO_IP, IP_TTL, N)' makes every
         outbound IPv4 UDP datagram from that socket carry 'N' in
@@ -404,7 +404,7 @@ class TestUdpSocketApiIpTtlOnWire(UdpTestCase):
 
         self._socket.setsockopt(IPPROTO_IP, IP_TTL, 7)
 
-        self._socket.sendto(b"x", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        await self._socket.sendto(b"x", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
 
         probe = self._parse_tx(self._frames_tx[0])
         self.assertEqual(
@@ -421,7 +421,7 @@ class TestUdpSocketApiIpDscpOnWire(UdpTestCase):
     setsockopt → the wire, alongside the already-shipped ECN (low 2).
     """
 
-    def test__udp_socket_api__ip_tos_dscp__appears_on_outbound_ipv4_wire(self) -> None:
+    async def test__udp_socket_api__ip_tos_dscp__appears_on_outbound_ipv4_wire(self) -> None:
         """
         Ensure 'setsockopt(IPPROTO_IP, IP_TOS, dscp<<2 | ecn)' makes
         every outbound IPv4 UDP datagram carry the DSCP value in the
@@ -438,7 +438,7 @@ class TestUdpSocketApiIpDscpOnWire(UdpTestCase):
         # DSCP 46 (EF) with ECN ECT(0) = (46 << 2) | 2 = 0xBA.
         sock.setsockopt(IPPROTO_IP, IP_TOS, (46 << 2) | 2)
 
-        sock.sendto(b"x", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        await sock.sendto(b"x", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
 
         probe = self._parse_tx(self._frames_tx[0])
         self.assertEqual(
@@ -452,7 +452,7 @@ class TestUdpSocketApiIpDscpOnWire(UdpTestCase):
             msg="The IP_TOS ECN bits must still appear on the outbound IPv4 'ecn' field.",
         )
 
-    def test__udp_socket_api__ipv6_tclass_dscp__appears_on_outbound_ipv6_wire(self) -> None:
+    async def test__udp_socket_api__ipv6_tclass_dscp__appears_on_outbound_ipv6_wire(self) -> None:
         """
         Ensure 'setsockopt(IPPROTO_IPV6, IPV6_TCLASS, dscp<<2 | ecn)'
         makes every outbound IPv6 UDP datagram carry the DSCP value in
@@ -469,7 +469,7 @@ class TestUdpSocketApiIpDscpOnWire(UdpTestCase):
         )
         sock.setsockopt(IPPROTO_IPV6, IPV6_TCLASS, (46 << 2) | 2)
 
-        sock.sendto(b"x", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
+        await sock.sendto(b"x", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
 
         probe = self._parse_tx(self._frames_tx[0])
         self.assertEqual(
@@ -525,7 +525,7 @@ class TestUdpSocketApiIpMtuGetsockopt(UdpTestCase):
             msg="IP_MTU must return the egress interface MTU when pmtu_cache is empty.",
         )
 
-    def test__udp_socket_api__ip_mtu__updates_after_icmp_frag_needed(self) -> None:
+    async def test__udp_socket_api__ip_mtu__updates_after_icmp_frag_needed(self) -> None:
         """
         Ensure an inbound ICMPv4 Type 3 Code 4 (Fragmentation
         Needed) frame whose embedded IPv4+UDP header matches
@@ -541,7 +541,7 @@ class TestUdpSocketApiIpMtuGetsockopt(UdpTestCase):
 
         # Stage 1: emit a UDP datagram so the ICMPv4 demux can
         # match the embedded 4-tuple to our socket.
-        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        await self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
         outbound_frame = self._frames_tx[-1]
         embedded_ip4_and_udp = outbound_frame[14:]
 
@@ -600,7 +600,7 @@ class TestUdpSocketApiIcmpUnreachable(UdpTestCase):
             remote_port=_REMOTE_PORT,
         )
 
-    def test__udp_socket_api__icmp4_unreachable__next_recv_raises(self) -> None:
+    async def test__udp_socket_api__icmp4_unreachable__next_recv_raises(self) -> None:
         """
         Ensure an inbound ICMPv4 Destination Unreachable whose
         embedded payload identifies a UDP datagram sent from the
@@ -614,7 +614,7 @@ class TestUdpSocketApiIcmpUnreachable(UdpTestCase):
 
         # Stage 1: outbound UDP datagram so the ICMP demux has a
         # real wire frame to embed in the unreachable reply.
-        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        await self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
         outbound_frame = self._frames_tx[-1]
         # Strip Ethernet header (14 bytes) — ICMP embeds the IPv4
         # header onward.
@@ -630,7 +630,7 @@ class TestUdpSocketApiIcmpUnreachable(UdpTestCase):
 
         # Stage 3: next recv() must raise.
         with self.assertRaises(ConnectionRefusedError) as ctx:
-            self._socket.recv(timeout=0.1)
+            await self._socket.recv(timeout=0.1)
 
         import errno
 
@@ -671,7 +671,7 @@ class TestUdpSocketApiIpRecverr(UdpTestCase):
             remote_port=_REMOTE_PORT,
         )
 
-    def test__udp_socket_api__ip_recverr__port_unreachable_surfaces_via_errqueue(self) -> None:
+    async def test__udp_socket_api__ip_recverr__port_unreachable_surfaces_via_errqueue(self) -> None:
         """
         Ensure an inbound ICMPv4 Port Unreachable matched to a
         connected UDP socket with 'IP_RECVERR=1' appears on the
@@ -693,7 +693,7 @@ class TestUdpSocketApiIpRecverr(UdpTestCase):
 
         # Stage 1: outbound UDP datagram (drives the demux's
         # embedded-4-tuple matcher).
-        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        await self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
         outbound_frame = self._frames_tx[-1]
         embedded_ip4_and_udp = outbound_frame[14:]
 
@@ -708,7 +708,7 @@ class TestUdpSocketApiIpRecverr(UdpTestCase):
         # Stage 3: dequeue via recvmsg(MSG_ERRQUEUE). Data is
         # the embedded triggering datagram (the IPv4+UDP
         # header + payload from stage 1).
-        data, ancdata, flags, address = self._socket.recvmsg(
+        data, ancdata, flags, address = await self._socket.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -756,7 +756,7 @@ class TestUdpSocketApiIpRecverr(UdpTestCase):
         self.assertEqual(ee_type, 3, msg="ICMPv4 Destination Unreachable type=3")
         self.assertEqual(ee_code, 3, msg="ICMPv4 Port Unreachable code=3")
 
-    def test__udp_socket_api__ip_recverr__disabled_empty_queue(self) -> None:
+    async def test__udp_socket_api__ip_recverr__disabled_empty_queue(self) -> None:
         """
         Ensure an inbound ICMPv4 Port Unreachable does NOT
         populate the error queue when 'IP_RECVERR=0' (default).
@@ -770,7 +770,7 @@ class TestUdpSocketApiIpRecverr(UdpTestCase):
 
         from pmd_pytcp.socket import MSG_ERRQUEUE
 
-        self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        await self._socket.sendto(b"probe", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
         embedded_ip4_and_udp = self._frames_tx[-1][14:]
 
         unreachable_frame = _build_icmp4_unreachable_for_udp(
@@ -780,4 +780,4 @@ class TestUdpSocketApiIpRecverr(UdpTestCase):
         self._drive_udp_rx(frame=unreachable_frame)
 
         with self.assertRaises(TimeoutError):
-            self._socket.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
+            await self._socket.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)

@@ -43,10 +43,10 @@ class UdpService(Service):
     _protocol_name = "UDP"
 
     @override
-    def _thread__service(self) -> None:
+    async def _task__service(self) -> None:
         """
-        Service thread.
+        Service task.
         """
 
-        if listening_socket := self._acquire_service_socket():
-            self._service(socket=listening_socket)
+        if listening_socket := await self._acquire_service_socket():
+            await self._service(socket=listening_socket)

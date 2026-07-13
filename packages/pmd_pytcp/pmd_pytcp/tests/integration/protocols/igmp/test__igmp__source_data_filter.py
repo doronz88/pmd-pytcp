@@ -92,7 +92,7 @@ class TestIgmpSourceDataFilter(UdpTestCase):
         super().setUp()
         self._sock = self._bind_udp_socket(local_ip=_GROUP, local_port=_LOCAL_PORT)
 
-    def test__include_filter__delivers_listed_source(self) -> None:
+    async def test__include_filter__delivers_listed_source(self) -> None:
         """
         Ensure a datagram from a source in the socket's INCLUDE list is
         delivered.
@@ -106,7 +106,7 @@ class TestIgmpSourceDataFilter(UdpTestCase):
 
         self._drive_udp_rx(frame=_udp_mcast_frame(source=_ALLOWED, payload=b"hello"))
 
-        data, addr = self._recvfrom(self._sock, timeout=0.5)
+        data, addr = await self._recvfrom(self._sock, timeout=0.5)
         self.assertEqual(data, b"hello", msg="A datagram from an included source must be delivered.")
         self.assertEqual(addr, (str(_ALLOWED), _REMOTE_PORT), msg="recvfrom must report the sender address.")
 
@@ -136,7 +136,7 @@ class TestIgmpSourceDataFilter(UdpTestCase):
             msg="A filtered multicast source must bump udp__multicast_source_filtered__drop.",
         )
 
-    def test__exclude_filter__drops_blocked_source(self) -> None:
+    async def test__exclude_filter__drops_blocked_source(self) -> None:
         """
         Ensure a datagram from a source blocked on an any-source
         (EXCLUDE) membership is not delivered, while an unblocked source
@@ -158,5 +158,5 @@ class TestIgmpSourceDataFilter(UdpTestCase):
 
         # An unblocked source is delivered.
         self._drive_udp_rx(frame=_udp_mcast_frame(source=_ALLOWED, payload=b"ok"))
-        data, _ = self._recvfrom(self._sock, timeout=0.5)
+        data, _ = await self._recvfrom(self._sock, timeout=0.5)
         self.assertEqual(data, b"ok", msg="A datagram from an unblocked EXCLUDE source must be delivered.")

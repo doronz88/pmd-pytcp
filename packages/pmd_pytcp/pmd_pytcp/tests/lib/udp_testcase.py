@@ -38,6 +38,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
+from unittest import IsolatedAsyncioTestCase
+
 from pmd_pytcp._compat import dataclass
 from typing import Any
 
@@ -94,7 +96,7 @@ class UdpProbe:
     payload: bytes
 
 
-class UdpTestCase(NetworkTestCase):
+class UdpTestCase(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     Base class for UDP integration tests. Snapshots the stack-global
     socket / PMTU-cache / ICMP-error-rate-limiter state so per-test
@@ -229,7 +231,7 @@ class UdpTestCase(NetworkTestCase):
         self._packet_handler._phrx_ethernet(PacketRx(frame))
         return list(self._frames_tx[before:])
 
-    def _recvmsg(
+    async def _recvmsg(
         self,
         sock: UdpSocket,
         *,
@@ -242,11 +244,15 @@ class UdpTestCase(NetworkTestCase):
         defaults UDP integration tests use ('ancbufsize=256' so
         every emitted cmsg fits; 'timeout=0.5' so a missing-RX bug
         is surfaced quickly instead of hanging the suite).
+
+        Pure-asyncio ('docs/refactor/pure_asyncio.md'): 'recvmsg' is
+        now an 'async def' waiting point, so this wrapper is awaitable
+        too; callers 'await self._recvmsg(...)'.
         """
 
-        return sock.recvmsg(bufsize=bufsize, ancbufsize=ancbufsize, timeout=timeout)
+        return await sock.recvmsg(bufsize=bufsize, ancbufsize=ancbufsize, timeout=timeout)
 
-    def _recvfrom(
+    async def _recvfrom(
         self,
         sock: UdpSocket,
         *,
@@ -256,9 +262,13 @@ class UdpTestCase(NetworkTestCase):
         """
         Convenience wrapper over 'UdpSocket.recvfrom' with the
         standard test-suite timeout.
+
+        Pure-asyncio ('docs/refactor/pure_asyncio.md'): 'recvfrom' is
+        now an 'async def' waiting point, so this wrapper is awaitable
+        too; callers 'await self._recvfrom(...)'.
         """
 
-        return sock.recvfrom(bufsize=bufsize, timeout=timeout)
+        return await sock.recvfrom(bufsize=bufsize, timeout=timeout)
 
     def _parse_tx(self, frame: bytes, /) -> UdpProbe:
         """

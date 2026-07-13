@@ -43,9 +43,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-import time
 from typing import cast
 from typing_extensions import override
 
@@ -104,20 +104,29 @@ class TestIpcRawEcho(UdpTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mocked UDP runtime (via 'UdpTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Build the mocked UDP runtime (via 'UdpTestCase', sync 'setUp'
+        runs first through the MRO) then stand up an 'IpcServer' on a
+        temp AF_UNIX path against it. The server needs the running loop.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -130,28 +139,27 @@ class TestIpcRawEcho(UdpTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 
-    def _bound_raw_socket(self) -> ClientRawSocket:
+    async def _bound_raw_socket(self) -> ClientRawSocket:
         """
-        Open and bind a client raw IPv4 socket onto the stack address,
-        with a receive timeout set.
+        Open and bind a client raw IPv4 socket onto the stack address.
         """
 
+        client = await self._connect()
         sock = cast(
             ClientRawSocket,
-            self._connect().socket(AddressFamily.INET4, SocketType.RAW, _PROTO),
+            await client.socket(AddressFamily.INET4, SocketType.RAW, _PROTO),
         )
-        self.addCleanup(sock.close)
-        sock.settimeout(_DEADLINE__SEC)
-        sock.bind((str(STACK__IP4_HOST.address), 0))
+        self.addAsyncCleanup(sock.close)
+        await sock.bind((str(STACK__IP4_HOST.address), 0))
         return sock
 
     def _peer_datagram(self, *, payload: bytes) -> bytes:
@@ -172,7 +180,7 @@ class TestIpcRawEcho(UdpTestCase):
             )
         )
 
-    def test__raw_echo__client_receives_peer_datagram(self) -> None:
+    async def test__raw_echo__client_receives_peer_datagram(self) -> None:
         """
         Ensure a raw IP datagram a peer sends on the wire is delivered to
         the out-of-process client over its real fd, paired with the
@@ -181,16 +189,16 @@ class TestIpcRawEcho(UdpTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sock = self._bound_raw_socket()
+        sock = await self._bound_raw_socket()
         self._drive_udp_rx(frame=self._peer_datagram(payload=b"rawin"))
 
         self.assertEqual(
-            sock.recvfrom(),
+            await asyncio.wait_for(sock.recvfrom(), timeout=_DEADLINE__SEC),
             (b"rawin", (str(HOST_A__IP4_ADDRESS), 0)),
             msg="The client must receive the raw IP payload and its sender address over its fd.",
         )
 
-    def test__raw_echo__client_datagram_reaches_the_wire(self) -> None:
+    async def test__raw_echo__client_datagram_reaches_the_wire(self) -> None:
         """
         Ensure a raw IP datagram the out-of-process client writes via
         'sendto' is carried by the stack onto the wire as an IPv4 packet
@@ -199,13 +207,13 @@ class TestIpcRawEcho(UdpTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sock = self._bound_raw_socket()
-        sock.sendto(b"rawout", (str(HOST_A__IP4_ADDRESS), 0))
+        sock = await self._bound_raw_socket()
+        await sock.sendto(b"rawout", (str(HOST_A__IP4_ADDRESS), 0))
 
-        deadline = time.monotonic() + _DEADLINE__SEC
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
         proto = None
         payload = b""
-        while time.monotonic() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             for frame in list(self._frames_tx):
                 packet_rx = PacketRx(frame)
                 EthernetParser(packet_rx)
@@ -218,7 +226,7 @@ class TestIpcRawEcho(UdpTestCase):
                     break
             if payload:
                 break
-            time.sleep(0.01)
+            await asyncio.sleep(0.01)
 
         self.assertEqual(
             (proto, payload),

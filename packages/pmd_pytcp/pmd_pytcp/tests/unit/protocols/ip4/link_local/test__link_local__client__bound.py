@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import cast
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from pmd_net_addr import MacAddress
@@ -52,17 +52,19 @@ from pmd_pytcp.stack.address import AddressApi
 _PEER_MAC = MacAddress("02:00:00:00:00:99")
 
 
-class TestIp4LinkLocalBoundConflict(TestCase):
+class TestIp4LinkLocalBoundConflict(IsolatedAsyncioTestCase):
     """
     The 'Ip4LinkLocal' BOUND-state conflict-defence tests.
     """
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
         Stand up a client and drive it to BOUND so each test
         can drive conflict outcomes directly through the mocked
-        'Ip4Acd' engine's 'poll_conflict' return value.
+        'Ip4Acd' engine's 'poll_conflict' return value. Async —
+        the BOUND drive awaits the client's '_do_claiming'
+        coroutine on the test loop ('docs/refactor/pure_asyncio.md').
         """
 
         self.enterContext(patch("pmd_pytcp.protocols.ip4.link_local.link_local__client.log"))
@@ -88,10 +90,10 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         candidate = self._client._candidate
         assert candidate is not None
         cast(MagicMock, self._acd).claim.return_value = AcdResult(success=True, address=candidate.address)
-        self._client._do_claiming()
+        await self._client._do_claiming()
         assert self._client._state is Ip4LinkLocalState.BOUND
 
-    def test__ip4_link_local__bound_tick_polls_acd_for_conflict(self) -> None:
+    async def test__ip4_link_local__bound_tick_polls_acd_for_conflict(self) -> None:
         """
         Ensure a BOUND subsystem tick polls the ACD engine for a
         post-claim conflict — ongoing detection reads ARP off the
@@ -102,11 +104,11 @@ class TestIp4LinkLocalBoundConflict(TestCase):
 
         cast(MagicMock, self._acd).poll_conflict.return_value = None
 
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         cast(MagicMock, self._acd).poll_conflict.assert_called_once()
 
-    def test__ip4_link_local__first_conflict_defends_and_stays_bound(self) -> None:
+    async def test__ip4_link_local__first_conflict_defends_and_stays_bound(self) -> None:
         """
         Ensure the first conflict within the DEFEND_INTERVAL
         triggers a single defensive gratuitous ARP and the
@@ -115,7 +117,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         Reference: RFC 3927 §2.5(b) (defend with one gratuitous ARP).
         """
 
-        self._client._handle_bound_conflict(_PEER_MAC)
+        await self._client._handle_bound_conflict(_PEER_MAC)
 
         cast(MagicMock, self._acd).defend.assert_called_once_with()
         self.assertEqual(
@@ -124,7 +126,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
             msg="First conflict must keep the FSM in BOUND.",
         )
 
-    def test__ip4_link_local__second_conflict_in_window_abandons(self) -> None:
+    async def test__ip4_link_local__second_conflict_in_window_abandons(self) -> None:
         """
         Ensure a second conflict within DEFEND_INTERVAL of the first
         triggers the abandon path — remove the host (which aborts bound
@@ -139,10 +141,10 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         bound_address = bound_candidate.address
 
         self._mock_time.return_value = 100.0
-        self._client._handle_bound_conflict(_PEER_MAC)
+        await self._client._handle_bound_conflict(_PEER_MAC)
 
         self._mock_time.return_value = 105.0
-        self._client._handle_bound_conflict(_PEER_MAC)
+        await self._client._handle_bound_conflict(_PEER_MAC)
 
         # Verify abandon side effects: remove (aborts sessions by
         # default) + ACD release.
@@ -164,7 +166,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
             msg="Abandon must bump the conflict_count for the RNG attempt roll.",
         )
 
-    def test__ip4_link_local__second_conflict_outside_window_defends_again(self) -> None:
+    async def test__ip4_link_local__second_conflict_outside_window_defends_again(self) -> None:
         """
         Ensure a second conflict OUTSIDE DEFEND_INTERVAL is
         treated as a fresh first-conflict — defend again,
@@ -175,11 +177,11 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         """
 
         self._mock_time.return_value = 100.0
-        self._client._handle_bound_conflict(_PEER_MAC)
+        await self._client._handle_bound_conflict(_PEER_MAC)
 
         # Second conflict at t=200s — well past DEFEND_INTERVAL (10s).
         self._mock_time.return_value = 200.0
-        self._client._handle_bound_conflict(_PEER_MAC)
+        await self._client._handle_bound_conflict(_PEER_MAC)
 
         # Two defends (one per conflict), no abandon.
         self.assertEqual(
@@ -195,7 +197,7 @@ class TestIp4LinkLocalBoundConflict(TestCase):
             msg="FSM must remain BOUND across rolling-window conflicts.",
         )
 
-    def test__ip4_link_local__abandon_uses_arp_defend_interval(self) -> None:
+    async def test__ip4_link_local__abandon_uses_arp_defend_interval(self) -> None:
         """
         Ensure the defend-or-abandon decision reads
         'ARP__DEFEND_INTERVAL' via qualified-module access so
@@ -210,9 +212,9 @@ class TestIp4LinkLocalBoundConflict(TestCase):
         # and the second one defends (no abandon).
         with patch.object(arp__constants, "ARP__DEFEND_INTERVAL", 1):
             self._mock_time.return_value = 100.0
-            self._client._handle_bound_conflict(_PEER_MAC)
+            await self._client._handle_bound_conflict(_PEER_MAC)
             self._mock_time.return_value = 102.0  # gap = 2s > 1s
-            self._client._handle_bound_conflict(_PEER_MAC)
+            await self._client._handle_bound_conflict(_PEER_MAC)
 
         cast(MagicMock, self._acd).release.assert_not_called()
         self.assertEqual(

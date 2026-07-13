@@ -34,8 +34,8 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing_extensions import override
-from unittest import TestCase
-from unittest.mock import create_autospec, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, create_autospec, patch
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from pmd_net_proto import Dhcp6MessageType, Dhcp6Options, Dhcp6OptionType, Dhcp6StatusCode
@@ -94,7 +94,7 @@ class TestDhcp6ClientInit(TestCase):
             Dhcp6Client(_DEFAULT_MAC)  # type: ignore[misc]
 
 
-class TestDhcp6ClientFetch(TestCase):
+class TestDhcp6ClientFetch(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client.fetch_other_config' stateless-exchange tests.
     """
@@ -131,7 +131,7 @@ class TestDhcp6ClientFetch(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__fetch_returns_dns_servers(self) -> None:
+    async def test__dhcp6_client__fetch_returns_dns_servers(self) -> None:
         """
         Ensure a REPLY carrying DNS Recursive Name Server addresses is
         surfaced as the stateless other-configuration.
@@ -141,7 +141,7 @@ class TestDhcp6ClientFetch(TestCase):
 
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53"), Ip6Address("2001:db8::54")])
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertEqual(
             config,
@@ -149,7 +149,7 @@ class TestDhcp6ClientFetch(TestCase):
             msg="fetch_other_config must surface the REPLY's DNS servers.",
         )
 
-    def test__dhcp6_client__fetch_sends_information_request(self) -> None:
+    async def test__dhcp6_client__fetch_sends_information_request(self) -> None:
         """
         Ensure the client transmits an INFORMATION-REQUEST carrying the
         Client Identifier DUID, a zero Elapsed Time, and an Option
@@ -160,7 +160,7 @@ class TestDhcp6ClientFetch(TestCase):
 
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53")])
 
-        self._client.fetch_other_config()
+        await self._client.fetch_other_config()
 
         request = self._server.tx_log[0]
         self.assertIs(
@@ -173,7 +173,7 @@ class TestDhcp6ClientFetch(TestCase):
         self.assertEqual(request.elapsed_time, 0, msg="The first request must carry Elapsed Time 0.")
         self.assertEqual(request.oro, [Dhcp6OptionType.DNS_SERVERS], msg="The request must ORO the DNS Servers option.")
 
-    def test__dhcp6_client__fetch_sends_to_multicast_and_binds_client_port(self) -> None:
+    async def test__dhcp6_client__fetch_sends_to_multicast_and_binds_client_port(self) -> None:
         """
         Ensure the client binds the DHCPv6 client port and transmits to
         the All_DHCP_Relay_Agents_and_Servers group on the server port.
@@ -183,7 +183,7 @@ class TestDhcp6ClientFetch(TestCase):
 
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53")])
 
-        self._client.fetch_other_config()
+        await self._client.fetch_other_config()
 
         self._sock.bind.assert_called_once_with(("::", 546))
         self.assertEqual(
@@ -193,7 +193,7 @@ class TestDhcp6ClientFetch(TestCase):
         )
         self._sock.close.assert_called_once_with()
 
-    def test__dhcp6_client__fetch_reply_without_dns_returns_empty(self) -> None:
+    async def test__dhcp6_client__fetch_reply_without_dns_returns_empty(self) -> None:
         """
         Ensure a REPLY with no DNS Servers option yields an empty DNS
         list rather than None.
@@ -203,11 +203,11 @@ class TestDhcp6ClientFetch(TestCase):
 
         self._server.enqueue_reply()
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertEqual(config, Dhcp6StatelessConfig(dns_servers=[]), msg="A DNS-less REPLY must yield empty config.")
 
-    def test__dhcp6_client__fetch_silent_server_returns_none(self) -> None:
+    async def test__dhcp6_client__fetch_silent_server_returns_none(self) -> None:
         """
         Ensure an unanswered exchange returns None after exhausting the
         retransmission budget, having retransmitted on each timeout.
@@ -215,7 +215,7 @@ class TestDhcp6ClientFetch(TestCase):
         Reference: RFC 8415 §15 (retransmission until the budget is exhausted).
         """
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertIsNone(config, msg="A silent server must yield None.")
         self.assertEqual(
@@ -224,7 +224,7 @@ class TestDhcp6ClientFetch(TestCase):
             msg="The client must transmit retrans_max_attempts (5) times before giving up.",
         )
 
-    def test__dhcp6_client__fetch_drops_mismatched_xid_then_succeeds(self) -> None:
+    async def test__dhcp6_client__fetch_drops_mismatched_xid_then_succeeds(self) -> None:
         """
         Ensure a REPLY with a mismatched transaction-id is dropped and
         the client retransmits, succeeding on the next REPLY.
@@ -236,7 +236,7 @@ class TestDhcp6ClientFetch(TestCase):
         self._server.enqueue_timeout()
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53")])
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertEqual(
             config,
@@ -247,7 +247,7 @@ class TestDhcp6ClientFetch(TestCase):
             self._sock.sendto.call_count, 2, msg="The client must retransmit once after dropping the bogus REPLY."
         )
 
-    def test__dhcp6_client__fetch_drops_malformed_then_succeeds(self) -> None:
+    async def test__dhcp6_client__fetch_drops_malformed_then_succeeds(self) -> None:
         """
         Ensure a malformed inbound frame is dropped without aborting the
         exchange, and a valid REPLY on retransmit is accepted.
@@ -259,7 +259,7 @@ class TestDhcp6ClientFetch(TestCase):
         self._server.enqueue_timeout()
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53")])
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertEqual(
             config,
@@ -267,7 +267,7 @@ class TestDhcp6ClientFetch(TestCase):
             msg="The client must drop the malformed frame and accept the next valid REPLY.",
         )
 
-    def test__dhcp6_client__fetch_with_interface_pins_socket(self) -> None:
+    async def test__dhcp6_client__fetch_with_interface_pins_socket(self) -> None:
         """
         Ensure a client built with an interface name pins the socket to
         that interface via SO_BINDTODEVICE.
@@ -278,11 +278,11 @@ class TestDhcp6ClientFetch(TestCase):
         client = Dhcp6Client(mac_address=_DEFAULT_MAC, interface_name="tap7")
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53")])
 
-        client.fetch_other_config()
+        await client.fetch_other_config()
 
         self._sock.setsockopt.assert_called_once_with(SOL_SOCKET, SO_BINDTODEVICE, b"tap7")
 
-    def test__dhcp6_client__fetch_drops_non_reply_message(self) -> None:
+    async def test__dhcp6_client__fetch_drops_non_reply_message(self) -> None:
         """
         Ensure an inbound message that is not a REPLY (e.g. an
         ADVERTISE) is dropped, and a valid REPLY on retransmit is
@@ -296,7 +296,7 @@ class TestDhcp6ClientFetch(TestCase):
         self._server.enqueue_timeout()
         self._server.enqueue_reply(dns_servers=[Ip6Address("2001:db8::53")])
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertEqual(
             config,
@@ -304,7 +304,7 @@ class TestDhcp6ClientFetch(TestCase):
             msg="The client must drop the non-REPLY message and accept the next valid REPLY.",
         )
 
-    def test__dhcp6_client__retransmit_backoff_caps_at_max_rt(self) -> None:
+    async def test__dhcp6_client__retransmit_backoff_caps_at_max_rt(self) -> None:
         """
         Ensure the retransmission backoff caps the retransmission timeout
         at INF_MAX_RT once the doubled value would exceed it.
@@ -316,12 +316,12 @@ class TestDhcp6ClientFetch(TestCase):
         # the cap branch on the second retransmission.
         sysctl.set("dhcp6.inf_max_rt_ms", 1500)
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertIsNone(config, msg="A silent server must still yield None with a low MRT.")
         self.assertEqual(self._sock.sendto.call_count, 5, msg="The capped backoff must not change the attempt budget.")
 
-    def test__dhcp6_client__recv_window_deadline_exhausted(self) -> None:
+    async def test__dhcp6_client__recv_window_deadline_exhausted(self) -> None:
         """
         Ensure the recv window returns no REPLY once its deadline has
         elapsed after dropping a bogus packet mid-window.
@@ -339,12 +339,12 @@ class TestDhcp6ClientFetch(TestCase):
 
         self._server.enqueue_reply(xid=0x111111)  # mismatched xid -> dropped
 
-        config = self._client.fetch_other_config()
+        config = await self._client.fetch_other_config()
 
         self.assertIsNone(config, msg="An exhausted recv-window deadline must yield None.")
 
 
-class TestDhcp6ClientAcquireLease(TestCase):
+class TestDhcp6ClientAcquireLease(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client.acquire_lease' stateful-exchange tests.
     """
@@ -382,7 +382,7 @@ class TestDhcp6ClientAcquireLease(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__acquire_lease_returns_lease(self) -> None:
+    async def test__dhcp6_client__acquire_lease_returns_lease(self) -> None:
         """
         Ensure a full SOLICIT/ADVERTISE/REQUEST/REPLY exchange returns the
         leased IA_NA address with its lifetimes, timers, and server DUID.
@@ -399,7 +399,7 @@ class TestDhcp6ClientAcquireLease(TestCase):
             t2=2880,
         )
 
-        lease = self._client.acquire_lease()
+        lease = await self._client.acquire_lease()
 
         self.assertEqual(
             lease,
@@ -415,7 +415,7 @@ class TestDhcp6ClientAcquireLease(TestCase):
             msg="acquire_lease must return the leased IA_NA address bundle.",
         )
 
-    def test__dhcp6_client__acquire_lease_solicit_contents(self) -> None:
+    async def test__dhcp6_client__acquire_lease_solicit_contents(self) -> None:
         """
         Ensure the SOLICIT carries the Client Identifier, an IA_NA, and an
         Option Request.
@@ -426,7 +426,7 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         solicit = self._server.tx_log[0]
         self.assertIs(solicit.msg_type, Dhcp6MessageType.SOLICIT, msg="The first message must be SOLICIT.")
@@ -435,7 +435,7 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self.assertIsNotNone(solicit.ia_na, msg="The SOLICIT must carry an IA_NA.")
         self.assertEqual(solicit.oro, [Dhcp6OptionType.DNS_SERVERS], msg="The SOLICIT must ORO the DNS option.")
 
-    def test__dhcp6_client__acquire_lease_request_addresses_advertised_server(self) -> None:
+    async def test__dhcp6_client__acquire_lease_request_addresses_advertised_server(self) -> None:
         """
         Ensure the REQUEST is addressed to the server that ADVERTISEd, by
         echoing its DUID in the Server Identifier option.
@@ -446,14 +446,14 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         request = self._server.tx_log[1]
         self.assertIs(request.msg_type, Dhcp6MessageType.REQUEST, msg="The second message must be REQUEST.")
         self.assertEqual(request.xid, _REQ_XID, msg="The REQUEST must carry the pinned REQUEST xid.")
         self.assertEqual(request.server_id, _SERVER_DUID, msg="The REQUEST must echo the advertised Server DUID.")
 
-    def test__dhcp6_client__acquire_lease_silent_server_returns_none(self) -> None:
+    async def test__dhcp6_client__acquire_lease_silent_server_returns_none(self) -> None:
         """
         Ensure an unanswered SOLICIT returns None after exhausting the
         retransmission budget.
@@ -461,12 +461,12 @@ class TestDhcp6ClientAcquireLease(TestCase):
         Reference: RFC 8415 §15 (retransmission until the budget is exhausted).
         """
 
-        lease = self._client.acquire_lease()
+        lease = await self._client.acquire_lease()
 
         self.assertIsNone(lease, msg="A silent server must yield no lease.")
         self.assertEqual(self._sock.sendto.call_count, 5, msg="The SOLICIT must be retransmitted to budget.")
 
-    def test__dhcp6_client__acquire_lease_advertise_without_server_id(self) -> None:
+    async def test__dhcp6_client__acquire_lease_advertise_without_server_id(self) -> None:
         """
         Ensure an ADVERTISE lacking a Server Identifier yields no lease.
 
@@ -475,9 +475,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
 
         self._server.enqueue_advertise(server_id=None)
 
-        self.assertIsNone(self._client.acquire_lease(), msg="An ADVERTISE without a Server ID must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="An ADVERTISE without a Server ID must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_request_unanswered(self) -> None:
+    async def test__dhcp6_client__acquire_lease_request_unanswered(self) -> None:
         """
         Ensure a silent server on the REQUEST leg (after a valid ADVERTISE)
         yields no lease.
@@ -487,9 +488,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
 
         self._server.enqueue_advertise()
 
-        self.assertIsNone(self._client.acquire_lease(), msg="An unanswered REQUEST must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="An unanswered REQUEST must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_reply_without_ia_na(self) -> None:
+    async def test__dhcp6_client__acquire_lease_reply_without_ia_na(self) -> None:
         """
         Ensure a REPLY with no IA_NA option yields no lease.
 
@@ -499,9 +501,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_reply()  # a REPLY with Server/Client IDs but no IA_NA
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A REPLY without IA_NA must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A REPLY without IA_NA must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_reply_without_ia_address(self) -> None:
+    async def test__dhcp6_client__acquire_lease_reply_without_ia_address(self) -> None:
         """
         Ensure a REPLY whose IA_NA carries no IA Address yields no lease.
 
@@ -511,9 +514,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), omit_ia_address=True)
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A REPLY IA_NA with no address must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A REPLY IA_NA with no address must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_reply_ia_na_status_failure(self) -> None:
+    async def test__dhcp6_client__acquire_lease_reply_ia_na_status_failure(self) -> None:
         """
         Ensure a REPLY whose IA_NA carries a non-Success Status Code yields
         no lease.
@@ -528,9 +532,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
             ia_status=Dhcp6StatusCode.NO_ADDRS_AVAIL,
         )
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A NoAddrsAvail IA_NA must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A NoAddrsAvail IA_NA must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_reply_ia_na_malformed_suboptions(self) -> None:
+    async def test__dhcp6_client__acquire_lease_reply_ia_na_malformed_suboptions(self) -> None:
         """
         Ensure a REPLY whose IA_NA sub-option block is malformed is dropped
         without crashing the exchange.
@@ -542,9 +547,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
         # A 3-byte IA_NA sub-block — shorter than the 4-byte option header.
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), ia_na_options_override=b"\x00\x05\x00")
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A malformed IA_NA sub-block must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A malformed IA_NA sub-block must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_top_level_not_on_link_yields_no_lease(self) -> None:
+    async def test__dhcp6_client__acquire_lease_top_level_not_on_link_yields_no_lease(self) -> None:
         """
         Ensure a REPLY carrying a top-level NotOnLink Status Code yields no
         lease even when it also carries a usable IA_NA address.
@@ -555,9 +561,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), top_status=Dhcp6StatusCode.NOT_ON_LINK)
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A top-level NotOnLink REPLY must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A top-level NotOnLink REPLY must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_top_level_use_multicast_yields_no_lease(self) -> None:
+    async def test__dhcp6_client__acquire_lease_top_level_use_multicast_yields_no_lease(self) -> None:
         """
         Ensure a REPLY carrying a top-level UseMulticast Status Code yields
         no lease.
@@ -568,9 +575,10 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), top_status=Dhcp6StatusCode.USE_MULTICAST)
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A top-level UseMulticast REPLY must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A top-level UseMulticast REPLY must yield no lease.")
 
-    def test__dhcp6_client__acquire_lease_top_level_unspec_fail_yields_no_lease(self) -> None:
+    async def test__dhcp6_client__acquire_lease_top_level_unspec_fail_yields_no_lease(self) -> None:
         """
         Ensure a REPLY carrying a top-level UnspecFail Status Code yields no
         lease.
@@ -581,14 +589,15 @@ class TestDhcp6ClientAcquireLease(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), top_status=Dhcp6StatusCode.UNSPEC_FAIL)
 
-        self.assertIsNone(self._client.acquire_lease(), msg="A top-level UnspecFail REPLY must yield no lease.")
+        lease = await self._client.acquire_lease()
+        self.assertIsNone(lease, msg="A top-level UnspecFail REPLY must yield no lease.")
 
 
 _SERVER_DUID_A = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xaa"
 _SERVER_DUID_B = b"\x00\x03\x00\x01\x02\x00\x00\x00\x00\xbb"
 
 
-class TestDhcp6ClientAdvertiseSelection(TestCase):
+class TestDhcp6ClientAdvertiseSelection(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' RFC 8415 §18.2.9 ADVERTISE preference-selection
     tests — the client collects ADVERTISEs for the first window and
@@ -627,7 +636,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__advertise_selection_prefers_highest_preference(self) -> None:
+    async def test__dhcp6_client__advertise_selection_prefers_highest_preference(self) -> None:
         """
         Ensure the client collects multiple ADVERTISEs and addresses its
         REQUEST to the server that advertised the highest preference.
@@ -639,7 +648,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         self._server.enqueue_advertise(preference=200, server_id=_SERVER_DUID_B)
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         request = self._server.tx_log[1]
         self.assertIs(request.msg_type, Dhcp6MessageType.REQUEST, msg="The second message must be REQUEST.")
@@ -647,7 +656,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
             request.server_id, _SERVER_DUID_B, msg="The REQUEST must address the highest-preference server."
         )
 
-    def test__dhcp6_client__advertise_selection_absent_preference_is_zero(self) -> None:
+    async def test__dhcp6_client__advertise_selection_absent_preference_is_zero(self) -> None:
         """
         Ensure an ADVERTISE with no Preference option is treated as
         preference 0 and loses to one that carries a positive preference.
@@ -659,7 +668,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         self._server.enqueue_advertise(preference=5, server_id=_SERVER_DUID_B)
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertEqual(
             self._server.tx_log[1].server_id,
@@ -667,7 +676,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
             msg="A positive preference must beat an absent (zero) preference.",
         )
 
-    def test__dhcp6_client__advertise_selection_falls_back_to_next_server(self) -> None:
+    async def test__dhcp6_client__advertise_selection_falls_back_to_next_server(self) -> None:
         """
         Ensure that when the highest-preference server does not answer the
         REQUEST, the client falls back to the next-best advertised server.
@@ -683,7 +692,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         # Only server B answers the REQUEST; A (the preferred server) is silent.
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"), for_server=_SERVER_DUID_B)
 
-        lease = self._client.acquire_lease()
+        lease = await self._client.acquire_lease()
 
         assert lease is not None
         self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="The fallback server's lease must be used.")
@@ -694,7 +703,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
             self._server.tx_log[2].server_id, _SERVER_DUID_B, msg="The fallback REQUEST must address server B."
         )
 
-    def test__dhcp6_client__advertise_selection_preference_255_selected(self) -> None:
+    async def test__dhcp6_client__advertise_selection_preference_255_selected(self) -> None:
         """
         Ensure an ADVERTISE carrying a preference of 255 is selected.
 
@@ -705,7 +714,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         self._server.enqueue_advertise(preference=10, server_id=_SERVER_DUID_A)
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertEqual(
             self._server.tx_log[1].server_id,
@@ -714,7 +723,7 @@ class TestDhcp6ClientAdvertiseSelection(TestCase):
         )
 
 
-class TestDhcp6ClientRapidCommit(TestCase):
+class TestDhcp6ClientRapidCommit(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' RFC 8415 §18.2.1 Rapid Commit two-message exchange
     tests.
@@ -752,7 +761,7 @@ class TestDhcp6ClientRapidCommit(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__solicit_omits_rapid_commit_by_default(self) -> None:
+    async def test__dhcp6_client__solicit_omits_rapid_commit_by_default(self) -> None:
         """
         Ensure the SOLICIT carries no Rapid Commit option when the knob is
         off (the default).
@@ -763,11 +772,11 @@ class TestDhcp6ClientRapidCommit(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertFalse(self._server.tx_log[0].rapid_commit, msg="Default SOLICIT must omit the Rapid Commit option.")
 
-    def test__dhcp6_client__solicit_includes_rapid_commit_when_enabled(self) -> None:
+    async def test__dhcp6_client__solicit_includes_rapid_commit_when_enabled(self) -> None:
         """
         Ensure the SOLICIT carries the Rapid Commit option when the knob is
         enabled.
@@ -778,11 +787,11 @@ class TestDhcp6ClientRapidCommit(TestCase):
         sysctl.set("dhcp6.rapid_commit", 1)
         self._server.enqueue_rapid_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertTrue(self._server.tx_log[0].rapid_commit, msg="An opted-in SOLICIT must carry Rapid Commit.")
 
-    def test__dhcp6_client__rapid_commit_two_message_lease(self) -> None:
+    async def test__dhcp6_client__rapid_commit_two_message_lease(self) -> None:
         """
         Ensure a Rapid Commit REPLY answering the SOLICIT directly yields a
         lease without sending a REQUEST (the two-message exchange).
@@ -793,14 +802,14 @@ class TestDhcp6ClientRapidCommit(TestCase):
         sysctl.set("dhcp6.rapid_commit", 1)
         self._server.enqueue_rapid_reply(address=Ip6Address("2001:db8::100"))
 
-        lease = self._client.acquire_lease()
+        lease = await self._client.acquire_lease()
 
         assert lease is not None
         self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="Rapid Commit must yield the leased address.")
         self.assertEqual(len(self._server.tx_log), 1, msg="Rapid Commit must send only the SOLICIT (no REQUEST).")
         self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.SOLICIT, msg="The only TX must be the SOLICIT.")
 
-    def test__dhcp6_client__rapid_commit_reply_without_option_discarded(self) -> None:
+    async def test__dhcp6_client__rapid_commit_reply_without_option_discarded(self) -> None:
         """
         Ensure a REPLY lacking the Rapid Commit option is discarded and the
         client falls back to the four-message exchange.
@@ -813,7 +822,7 @@ class TestDhcp6ClientRapidCommit(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        lease = self._client.acquire_lease()
+        lease = await self._client.acquire_lease()
 
         assert lease is not None
         self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="The four-message lease must be used.")
@@ -821,7 +830,7 @@ class TestDhcp6ClientRapidCommit(TestCase):
             self._server.tx_log[1].msg_type, Dhcp6MessageType.REQUEST, msg="A REQUEST must follow the SOLICIT."
         )
 
-    def test__dhcp6_client__rapid_commit_disabled_ignores_rapid_reply(self) -> None:
+    async def test__dhcp6_client__rapid_commit_disabled_ignores_rapid_reply(self) -> None:
         """
         Ensure that with Rapid Commit off the client ignores a Rapid Commit
         REPLY and completes the four-message exchange.
@@ -833,7 +842,7 @@ class TestDhcp6ClientRapidCommit(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        lease = self._client.acquire_lease()
+        lease = await self._client.acquire_lease()
 
         assert lease is not None
         self.assertEqual(lease.address, Ip6Address("2001:db8::100"), msg="The four-message lease must be used.")
@@ -854,7 +863,7 @@ _LEASE = Dhcp6Lease(
 )
 
 
-class TestDhcp6ClientRenewRebind(TestCase):
+class TestDhcp6ClientRenewRebind(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' RENEW / REBIND lease-maintenance exchange tests.
     """
@@ -892,7 +901,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__renew_returns_updated_lease(self) -> None:
+    async def test__dhcp6_client__renew_returns_updated_lease(self) -> None:
         """
         Ensure a RENEW answered with a REPLY returns the lease bundle
         carrying the server's refreshed lifetimes and timers.
@@ -908,7 +917,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
             t2=5760,
         )
 
-        renewed = self._client._renew(_LEASE, deadline=1e18)
+        renewed = await self._client._renew(_LEASE, deadline=1e18)
 
         self.assertEqual(
             renewed,
@@ -924,7 +933,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
             msg="RENEW must return the refreshed lease bundle.",
         )
 
-    def test__dhcp6_client__renew_message_contents(self) -> None:
+    async def test__dhcp6_client__renew_message_contents(self) -> None:
         """
         Ensure the RENEW carries the granting server's DUID, the Client
         Identifier, and an IA_NA echoing the currently leased address.
@@ -934,7 +943,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
 
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client._renew(_LEASE, deadline=1e18)
+        await self._client._renew(_LEASE, deadline=1e18)
 
         renew = self._server.tx_log[0]
         self.assertIs(renew.msg_type, Dhcp6MessageType.RENEW, msg="The maintenance message must be RENEW.")
@@ -950,7 +959,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
             msg="RENEW IA_NA must echo the currently leased address.",
         )
 
-    def test__dhcp6_client__rebind_returns_updated_lease(self) -> None:
+    async def test__dhcp6_client__rebind_returns_updated_lease(self) -> None:
         """
         Ensure a REBIND answered with a REPLY returns the lease bundle
         with the responding server's DUID and refreshed lifetimes.
@@ -966,7 +975,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
             t2=5760,
         )
 
-        rebound = self._client._rebind(_LEASE, deadline=1e18)
+        rebound = await self._client._rebind(_LEASE, deadline=1e18)
 
         self.assertEqual(
             rebound,
@@ -982,7 +991,7 @@ class TestDhcp6ClientRenewRebind(TestCase):
             msg="REBIND must return the refreshed lease with the responding server's DUID.",
         )
 
-    def test__dhcp6_client__rebind_omits_server_id(self) -> None:
+    async def test__dhcp6_client__rebind_omits_server_id(self) -> None:
         """
         Ensure the REBIND is sent without a Server Identifier so any
         server on the link may answer.
@@ -992,14 +1001,14 @@ class TestDhcp6ClientRenewRebind(TestCase):
 
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client._rebind(_LEASE, deadline=1e18)
+        await self._client._rebind(_LEASE, deadline=1e18)
 
         rebind = self._server.tx_log[0]
         self.assertIs(rebind.msg_type, Dhcp6MessageType.REBIND, msg="The maintenance message must be REBIND.")
         self.assertIsNone(rebind.server_id, msg="REBIND must omit the Server Identifier.")
         self.assertIsNotNone(rebind.ia_na, msg="REBIND must carry an IA_NA.")
 
-    def test__dhcp6_client__renew_retransmits_then_succeeds(self) -> None:
+    async def test__dhcp6_client__renew_retransmits_then_succeeds(self) -> None:
         """
         Ensure a RENEW whose first recv window times out is retransmitted
         and succeeds on the server's eventual REPLY before the deadline.
@@ -1010,12 +1019,12 @@ class TestDhcp6ClientRenewRebind(TestCase):
         self._server.enqueue_timeout()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        renewed = self._client._renew(_LEASE, deadline=1e18)
+        renewed = await self._client._renew(_LEASE, deadline=1e18)
 
         self.assertIsNotNone(renewed, msg="RENEW must succeed after one retransmission.")
         self.assertEqual(self._sock.sendto.call_count, 2, msg="RENEW must be retransmitted once before the REPLY.")
 
-    def test__dhcp6_client__renew_gives_up_at_deadline(self) -> None:
+    async def test__dhcp6_client__renew_gives_up_at_deadline(self) -> None:
         """
         Ensure a RENEW whose max retransmission duration (the time to T2)
         has elapsed stops retransmitting and returns None.
@@ -1026,13 +1035,13 @@ class TestDhcp6ClientRenewRebind(TestCase):
         mock_time = self.enterContext(patch("pmd_pytcp.protocols.dhcp6.dhcp6__client.time"))
         mock_time.monotonic.return_value = 100.0
 
-        result = self._client._renew(_LEASE, deadline=100.0)
+        result = await self._client._renew(_LEASE, deadline=100.0)
 
         self.assertIsNone(result, msg="RENEW must give up once the MRD deadline has elapsed.")
         self.assertEqual(self._sock.sendto.call_count, 1, msg="An expired RENEW must not retransmit past its deadline.")
 
 
-class TestDhcp6ClientElapsedTime(TestCase):
+class TestDhcp6ClientElapsedTime(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' Elapsed Time option tests — the value is 0 in the
     first message of an exchange and advances on each retransmission.
@@ -1093,7 +1102,7 @@ class TestDhcp6ClientElapsedTime(TestCase):
 
         self._sock.recv__mv.side_effect = _wrapped
 
-    def test__dhcp6_client__elapsed_time_first_message_is_zero(self) -> None:
+    async def test__dhcp6_client__elapsed_time_first_message_is_zero(self) -> None:
         """
         Ensure the first message of an exchange carries an Elapsed Time
         of 0.
@@ -1104,11 +1113,11 @@ class TestDhcp6ClientElapsedTime(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertEqual(self._server.tx_log[0].elapsed_time, 0, msg="The first SOLICIT must carry elapsed_time 0.")
 
-    def test__dhcp6_client__elapsed_time_advances_on_retransmit(self) -> None:
+    async def test__dhcp6_client__elapsed_time_advances_on_retransmit(self) -> None:
         """
         Ensure a retransmitted message carries an Elapsed Time measured
         from the first transmission of the exchange.
@@ -1121,7 +1130,7 @@ class TestDhcp6ClientElapsedTime(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertEqual(self._server.tx_log[0].elapsed_time, 0, msg="The first SOLICIT must carry elapsed_time 0.")
         self.assertEqual(
@@ -1130,7 +1139,7 @@ class TestDhcp6ClientElapsedTime(TestCase):
             msg="The retransmitted SOLICIT must carry elapsed_time of 50 (0.5 s in hundredths).",
         )
 
-    def test__dhcp6_client__elapsed_time_caps_at_uint16_max(self) -> None:
+    async def test__dhcp6_client__elapsed_time_caps_at_uint16_max(self) -> None:
         """
         Ensure an elapsed time larger than the 16-bit field is clamped to
         0xFFFF rather than overflowing.
@@ -1143,7 +1152,7 @@ class TestDhcp6ClientElapsedTime(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self.assertEqual(
             self._server.tx_log[1].elapsed_time,
@@ -1152,7 +1161,7 @@ class TestDhcp6ClientElapsedTime(TestCase):
         )
 
 
-class TestDhcp6ClientSolicitDelay(TestCase):
+class TestDhcp6ClientSolicitDelay(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' RFC 8415 §18.2.1 first-SOLICIT random-delay tests.
     """
@@ -1161,8 +1170,9 @@ class TestDhcp6ClientSolicitDelay(TestCase):
     def setUp(self) -> None:
         """
         Wire a mock server into an autospec'd socket, pin the
-        transaction-ids, and install a controllable clock whose 'sleep'
-        is an assertable mock.
+        transaction-ids, and install a controllable clock alongside an
+        assertable 'asyncio.sleep' mock (the first-SOLICIT delay is an
+        awaited 'asyncio.sleep' under the pure-asyncio runtime).
         """
 
         self._socket_factory = self.enterContext(
@@ -1180,6 +1190,13 @@ class TestDhcp6ClientSolicitDelay(TestCase):
         self._mock_time = self.enterContext(patch("pmd_pytcp.protocols.dhcp6.dhcp6__client.time"))
         self._mock_time.monotonic.side_effect = lambda: self._clock["t"]
 
+        # The first-SOLICIT random delay is an awaited 'asyncio.sleep';
+        # replace it with an assertable AsyncMock so the delay is observed
+        # without actually suspending the test.
+        self._mock_sleep = self.enterContext(
+            patch("pmd_pytcp.protocols.dhcp6.dhcp6__client.asyncio.sleep", new=AsyncMock()),
+        )
+
         self._server = Dhcp6MockServer(server_duid=_SERVER_DUID)
         self._server.wire(self._sock)
         self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
@@ -1193,7 +1210,7 @@ class TestDhcp6ClientSolicitDelay(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__solicit_delay_sleeps_random_interval(self) -> None:
+    async def test__dhcp6_client__solicit_delay_sleeps_random_interval(self) -> None:
         """
         Ensure the first SOLICIT is preceded by a random delay drawn from
         [0, SOL_MAX_DELAY] before transmission.
@@ -1205,11 +1222,11 @@ class TestDhcp6ClientSolicitDelay(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
-        self._mock_time.sleep.assert_called_once_with(0.25)
+        self._mock_sleep.assert_called_once_with(0.25)
 
-    def test__dhcp6_client__solicit_delay_zero_does_not_sleep(self) -> None:
+    async def test__dhcp6_client__solicit_delay_zero_does_not_sleep(self) -> None:
         """
         Ensure a drawn delay of 0 transmits the first SOLICIT immediately
         without sleeping.
@@ -1221,12 +1238,12 @@ class TestDhcp6ClientSolicitDelay(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
-        self._mock_time.sleep.assert_not_called()
+        self._mock_sleep.assert_not_called()
 
 
-class TestDhcp6ClientLifecycle(TestCase):
+class TestDhcp6ClientLifecycle(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' BOUND lease-lifecycle tests — T1 RENEW, T2 REBIND,
     valid-lifetime expiry, and the Address-API reconciliation each drives.
@@ -1281,7 +1298,7 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._client._lease = _LEASE
         self._client._arm_timers(_LEASE)
 
-    def test__dhcp6_client__lifecycle_idle_before_t1(self) -> None:
+    async def test__dhcp6_client__lifecycle_idle_before_t1(self) -> None:
         """
         Ensure a serviced lease whose T1 has not yet been reached emits no
         maintenance message and does not touch the Address API.
@@ -1292,12 +1309,12 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._bind_lease()
         self._clock["t"] = 2000.0
 
-        self._client._service_lease()
+        await self._client._service_lease()
 
         self.assertEqual(self._server.tx_log, [], msg="No maintenance message must be sent before T1.")
         self._address_api.replace.assert_not_called()
 
-    def test__dhcp6_client__lifecycle_renew_at_t1(self) -> None:
+    async def test__dhcp6_client__lifecycle_renew_at_t1(self) -> None:
         """
         Ensure crossing T1 sends a RENEW and adopts the refreshed lease
         with re-armed timers.
@@ -1315,7 +1332,7 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._bind_lease()
         self._clock["t"] = 2801.0
 
-        self._client._service_lease()
+        await self._client._service_lease()
 
         self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.RENEW, msg="Crossing T1 must send a RENEW.")
         assert self._client._lease is not None
@@ -1323,7 +1340,7 @@ class TestDhcp6ClientLifecycle(TestCase):
         self.assertEqual(self._client._t1_deadline, 2801.0 + 1800, msg="The timers must be re-armed from the RENEW.")
         self._address_api.replace.assert_not_called()
 
-    def test__dhcp6_client__lifecycle_rebind_at_t2(self) -> None:
+    async def test__dhcp6_client__lifecycle_rebind_at_t2(self) -> None:
         """
         Ensure crossing T2 sends a REBIND and adopts the refreshed lease.
 
@@ -1334,11 +1351,11 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._bind_lease()
         self._clock["t"] = 3881.0
 
-        self._client._service_lease()
+        await self._client._service_lease()
 
         self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.REBIND, msg="Crossing T2 must send a REBIND.")
 
-    def test__dhcp6_client__lifecycle_expiry_releases_and_resolicits(self) -> None:
+    async def test__dhcp6_client__lifecycle_expiry_releases_and_resolicits(self) -> None:
         """
         Ensure crossing the valid lifetime removes the leased address and
         restarts the stateful exchange from SOLICIT.
@@ -1351,7 +1368,7 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._bind_lease()
         self._clock["t"] = 8201.0
 
-        self._client._service_lease()
+        await self._client._service_lease()
 
         self._address_api.remove.assert_called_once_with(address=Ip6Address("2001:db8::100"))
         self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.SOLICIT, msg="Expiry must restart at SOLICIT.")
@@ -1360,7 +1377,7 @@ class TestDhcp6ClientLifecycle(TestCase):
             self._client._lease.address, Ip6Address("2001:db8::200"), msg="A fresh lease must be acquired on expiry."
         )
 
-    def test__dhcp6_client__lifecycle_renew_address_change_replaces(self) -> None:
+    async def test__dhcp6_client__lifecycle_renew_address_change_replaces(self) -> None:
         """
         Ensure a RENEW that returns a different address swaps it on the
         interface through the Address API.
@@ -1372,14 +1389,14 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._bind_lease()
         self._clock["t"] = 2801.0
 
-        self._client._service_lease()
+        await self._client._service_lease()
 
         self._address_api.replace.assert_called_once_with(
             old_address=Ip6Address("2001:db8::100"),
             new_ifaddr=Ip6IfAddr("2001:db8::200/128"),
         )
 
-    def test__dhcp6_client__lifecycle_renew_failure_defers_to_rebind(self) -> None:
+    async def test__dhcp6_client__lifecycle_renew_failure_defers_to_rebind(self) -> None:
         """
         Ensure a RENEW that yields no usable lease keeps the current lease
         and advances T1 to T2 so the next service rebinds rather than
@@ -1394,7 +1411,7 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._bind_lease()
         self._clock["t"] = 2801.0
 
-        self._client._service_lease()
+        await self._client._service_lease()
 
         self.assertEqual(self._client._lease, _LEASE, msg="A failed RENEW must keep the current lease.")
         self.assertEqual(
@@ -1403,7 +1420,7 @@ class TestDhcp6ClientLifecycle(TestCase):
         self._address_api.replace.assert_not_called()
 
 
-class TestDhcp6ClientRelease(TestCase):
+class TestDhcp6ClientRelease(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' RELEASE-on-shutdown tests.
     """
@@ -1433,7 +1450,7 @@ class TestDhcp6ClientRelease(TestCase):
         self._server.wire(self._sock)
         self._client = Dhcp6Client(mac_address=_DEFAULT_MAC, address_api=self._address_api)
 
-    def test__dhcp6_client__release_message_contents(self) -> None:
+    async def test__dhcp6_client__release_message_contents(self) -> None:
         """
         Ensure RELEASE carries the granting server's DUID, the Client
         Identifier, and an IA_NA echoing the released address.
@@ -1441,7 +1458,7 @@ class TestDhcp6ClientRelease(TestCase):
         Reference: RFC 8415 §18.2.7 (Release message contents).
         """
 
-        self._client.release(_LEASE)
+        await self._client.release(_LEASE)
 
         release = self._server.tx_log[0]
         self.assertIs(release.msg_type, Dhcp6MessageType.RELEASE, msg="The shutdown message must be RELEASE.")
@@ -1456,7 +1473,7 @@ class TestDhcp6ClientRelease(TestCase):
             msg="RELEASE IA_NA must echo the released address.",
         )
 
-    def test__dhcp6_client__release_stops_on_reply(self) -> None:
+    async def test__dhcp6_client__release_stops_on_reply(self) -> None:
         """
         Ensure RELEASE stops retransmitting as soon as the server's REPLY
         arrives (a single transmission in the common case).
@@ -1466,11 +1483,11 @@ class TestDhcp6ClientRelease(TestCase):
 
         self._server.enqueue_reply()
 
-        self._client.release(_LEASE)
+        await self._client.release(_LEASE)
 
         self.assertEqual(self._sock.sendto.call_count, 1, msg="RELEASE must stop on the server's REPLY.")
 
-    def test__dhcp6_client__release_retransmits_to_budget(self) -> None:
+    async def test__dhcp6_client__release_retransmits_to_budget(self) -> None:
         """
         Ensure a silent server makes RELEASE retransmit up to REL_MAX_RC
         times and then give up (bounded, never wedged).
@@ -1478,11 +1495,11 @@ class TestDhcp6ClientRelease(TestCase):
         Reference: RFC 8415 §18.2.7 (REL_TIMEOUT / REL_MAX_RC retransmission).
         """
 
-        self._client.release(_LEASE)
+        await self._client.release(_LEASE)
 
         self.assertEqual(self._sock.sendto.call_count, 5, msg="RELEASE must retransmit to the REL_MAX_RC budget.")
 
-    def test__dhcp6_client__stop_releases_held_lease(self) -> None:
+    async def test__dhcp6_client__stop_releases_held_lease(self) -> None:
         """
         Ensure stopping the worker while a lease is held emits a RELEASE,
         removes the leased address, and clears the lease.
@@ -1492,7 +1509,12 @@ class TestDhcp6ClientRelease(TestCase):
 
         self._client._lease = _LEASE
 
+        # '_stop' is a sync hook that spawns the best-effort RELEASE as a
+        # task (it cannot await the wire exchange itself); await that task
+        # so the RELEASE frame is actually transmitted before asserting.
         self._client._stop()
+        assert self._client._task__release_on_stop is not None
+        await self._client._task__release_on_stop
 
         self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.RELEASE, msg="Stop must emit a RELEASE.")
         self._address_api.remove.assert_called_once_with(address=Ip6Address("2001:db8::100"))
@@ -1512,7 +1534,7 @@ class TestDhcp6ClientRelease(TestCase):
         self._address_api.remove.assert_not_called()
         self.assertTrue(self._client._event__trigger.is_set(), msg="_stop() must still wake the trigger event.")
 
-    def test__dhcp6_client__stop_release_socket_error_does_not_propagate(self) -> None:
+    async def test__dhcp6_client__stop_release_socket_error_does_not_propagate(self) -> None:
         """
         Ensure a socket error while emitting the shutdown RELEASE is
         swallowed so it cannot abort the rest of stack teardown, with the
@@ -1524,13 +1546,17 @@ class TestDhcp6ClientRelease(TestCase):
         self._sock.sendto.side_effect = OSError("network down")
         self._client._lease = _LEASE
 
+        # '_stop' spawns the best-effort RELEASE as a task; await it to
+        # drive the swallowed OSError path.
         self._client._stop()
+        assert self._client._task__release_on_stop is not None
+        await self._client._task__release_on_stop
 
         self._address_api.remove.assert_called_once_with(address=Ip6Address("2001:db8::100"))
         self.assertIsNone(self._client._lease, msg="The lease must be cleared even when RELEASE fails.")
 
 
-class TestDhcp6ClientDecline(TestCase):
+class TestDhcp6ClientDecline(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' DECLINE-on-DAD-conflict tests.
     """
@@ -1571,7 +1597,7 @@ class TestDhcp6ClientDecline(TestCase):
         sysctl.reset_to_defaults()
         super().tearDown()
 
-    def test__dhcp6_client__decline_message_contents(self) -> None:
+    async def test__dhcp6_client__decline_message_contents(self) -> None:
         """
         Ensure DECLINE carries the granting server's DUID, the Client
         Identifier, and an IA_NA echoing the declined address.
@@ -1579,7 +1605,7 @@ class TestDhcp6ClientDecline(TestCase):
         Reference: RFC 8415 §18.2.8 (Decline message contents).
         """
 
-        self._client.decline(_LEASE)
+        await self._client.decline(_LEASE)
 
         decline = self._server.tx_log[0]
         self.assertIs(decline.msg_type, Dhcp6MessageType.DECLINE, msg="The conflict message must be DECLINE.")
@@ -1594,7 +1620,7 @@ class TestDhcp6ClientDecline(TestCase):
             msg="DECLINE IA_NA must echo the declined address.",
         )
 
-    def test__dhcp6_client__decline_stops_on_reply(self) -> None:
+    async def test__dhcp6_client__decline_stops_on_reply(self) -> None:
         """
         Ensure DECLINE stops retransmitting as soon as the server's REPLY
         arrives.
@@ -1604,11 +1630,11 @@ class TestDhcp6ClientDecline(TestCase):
 
         self._server.enqueue_reply()
 
-        self._client.decline(_LEASE)
+        await self._client.decline(_LEASE)
 
         self.assertEqual(self._sock.sendto.call_count, 1, msg="DECLINE must stop on the server's REPLY.")
 
-    def test__dhcp6_client__dad_conflict_declines_and_resolicits(self) -> None:
+    async def test__dhcp6_client__dad_conflict_declines_and_resolicits(self) -> None:
         """
         Ensure a DAD conflict on the leased address declines it, removes
         it, and restarts the stateful exchange to obtain a fresh address.
@@ -1622,7 +1648,7 @@ class TestDhcp6ClientDecline(TestCase):
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::200"))
 
         self._client.notify_dad_conflict(Ip6Address("2001:db8::100"))
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertIs(self._server.tx_log[0].msg_type, Dhcp6MessageType.DECLINE, msg="A conflict must send a DECLINE.")
         self.assertIs(self._server.tx_log[1].msg_type, Dhcp6MessageType.SOLICIT, msg="DECLINE must restart at SOLICIT.")
@@ -1632,7 +1658,7 @@ class TestDhcp6ClientDecline(TestCase):
             self._client._lease.address, Ip6Address("2001:db8::200"), msg="A fresh address must be acquired."
         )
 
-    def test__dhcp6_client__dad_conflict_nonmatching_address_ignored(self) -> None:
+    async def test__dhcp6_client__dad_conflict_nonmatching_address_ignored(self) -> None:
         """
         Ensure a DAD conflict for an address the client does not hold is
         ignored — no DECLINE, lease intact.
@@ -1643,12 +1669,12 @@ class TestDhcp6ClientDecline(TestCase):
         self._client._lease = _LEASE
 
         self._client.notify_dad_conflict(Ip6Address("2001:db8::999"))
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(self._server.tx_log, [], msg="A non-matching conflict must send nothing.")
         self.assertEqual(self._client._lease, _LEASE, msg="A non-matching conflict must keep the lease.")
 
-    def test__dhcp6_client__dad_conflict_without_lease_ignored(self) -> None:
+    async def test__dhcp6_client__dad_conflict_without_lease_ignored(self) -> None:
         """
         Ensure a DAD conflict reported with no held lease is a no-op.
 
@@ -1656,12 +1682,12 @@ class TestDhcp6ClientDecline(TestCase):
         """
 
         self._client.notify_dad_conflict(Ip6Address("2001:db8::100"))
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(self._server.tx_log, [], msg="A conflict without a lease must send nothing.")
 
 
-class TestDhcp6ClientLeaseAssignment(TestCase):
+class TestDhcp6ClientLeaseAssignment(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client.acquire_lease' Address-API assignment tests.
     """
@@ -1690,7 +1716,7 @@ class TestDhcp6ClientLeaseAssignment(TestCase):
         self._address_api = create_autospec(AddressApi, spec_set=True)
         self._client = Dhcp6Client(mac_address=_DEFAULT_MAC, address_api=self._address_api)
 
-    def test__dhcp6_client__acquire_lease_assigns_address_as_128(self) -> None:
+    async def test__dhcp6_client__acquire_lease_assigns_address_as_128(self) -> None:
         """
         Ensure a successful lease installs the leased address as a /128
         host through the Address API.
@@ -1701,14 +1727,14 @@ class TestDhcp6ClientLeaseAssignment(TestCase):
         self._server.enqueue_advertise()
         self._server.enqueue_lease_reply(address=Ip6Address("2001:db8::100"))
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self._address_api.add.assert_called_once_with(
             ifaddr=Ip6IfAddr("2001:db8::100/128"),
             dad_conflict_callback=self._client.notify_dad_conflict,
         )
 
-    def test__dhcp6_client__acquire_lease_failure_does_not_assign(self) -> None:
+    async def test__dhcp6_client__acquire_lease_failure_does_not_assign(self) -> None:
         """
         Ensure a failed lease (NoAddrsAvail) installs no address.
 
@@ -1722,7 +1748,7 @@ class TestDhcp6ClientLeaseAssignment(TestCase):
             ia_status=Dhcp6StatusCode.NO_ADDRS_AVAIL,
         )
 
-        self._client.acquire_lease()
+        await self._client.acquire_lease()
 
         self._address_api.add.assert_not_called()
 
@@ -1738,7 +1764,7 @@ _SAMPLE_LEASE = Dhcp6Lease(
 )
 
 
-class TestDhcp6ClientTrigger(TestCase):
+class TestDhcp6ClientTrigger(IsolatedAsyncioTestCase):
     """
     The 'Dhcp6Client' RA-driven trigger / Subsystem-loop tests.
     """
@@ -1761,7 +1787,7 @@ class TestDhcp6ClientTrigger(TestCase):
 
         self._client = Dhcp6Client(mac_address=_DEFAULT_MAC)
 
-    def test__dhcp6_client__trigger_managed_acquires_lease(self) -> None:
+    async def test__dhcp6_client__trigger_managed_acquires_lease(self) -> None:
         """
         Ensure a Managed trigger runs the stateful lease exchange.
 
@@ -1769,12 +1795,12 @@ class TestDhcp6ClientTrigger(TestCase):
         """
 
         self._client.trigger(managed=True, other=False)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self._acquire.assert_called_once_with(self._client)
         self._fetch.assert_not_called()
 
-    def test__dhcp6_client__trigger_other_fetches_config(self) -> None:
+    async def test__dhcp6_client__trigger_other_fetches_config(self) -> None:
         """
         Ensure an Other-config trigger runs the stateless exchange.
 
@@ -1782,12 +1808,12 @@ class TestDhcp6ClientTrigger(TestCase):
         """
 
         self._client.trigger(managed=False, other=True)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self._fetch.assert_called_once_with(self._client)
         self._acquire.assert_not_called()
 
-    def test__dhcp6_client__trigger_managed_takes_precedence(self) -> None:
+    async def test__dhcp6_client__trigger_managed_takes_precedence(self) -> None:
         """
         Ensure a trigger with both flags runs only the stateful exchange.
 
@@ -1795,12 +1821,12 @@ class TestDhcp6ClientTrigger(TestCase):
         """
 
         self._client.trigger(managed=True, other=True)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self._acquire.assert_called_once_with(self._client)
         self._fetch.assert_not_called()
 
-    def test__dhcp6_client__trigger_managed_debounced_once_bound(self) -> None:
+    async def test__dhcp6_client__trigger_managed_debounced_once_bound(self) -> None:
         """
         Ensure a second Managed trigger after a successful lease does not
         re-solicit.
@@ -1809,13 +1835,13 @@ class TestDhcp6ClientTrigger(TestCase):
         """
 
         self._client.trigger(managed=True, other=False)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
         self._client.trigger(managed=True, other=False)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self._acquire.assert_called_once_with(self._client)
 
-    def test__dhcp6_client__trigger_other_debounced_once_acquired(self) -> None:
+    async def test__dhcp6_client__trigger_other_debounced_once_acquired(self) -> None:
         """
         Ensure a second Other-config trigger after a successful fetch does
         not re-fetch.
@@ -1824,13 +1850,13 @@ class TestDhcp6ClientTrigger(TestCase):
         """
 
         self._client.trigger(managed=False, other=True)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
         self._client.trigger(managed=False, other=True)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self._fetch.assert_called_once_with(self._client)
 
-    def test__dhcp6_client__trigger_managed_failure_allows_retry(self) -> None:
+    async def test__dhcp6_client__trigger_managed_failure_allows_retry(self) -> None:
         """
         Ensure a failed lease leaves the client unbound so a later trigger
         retries.
@@ -1841,13 +1867,13 @@ class TestDhcp6ClientTrigger(TestCase):
         self._acquire.return_value = None
 
         self._client.trigger(managed=True, other=False)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
         self._client.trigger(managed=True, other=False)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(self._acquire.call_count, 2, msg="A failed lease must allow a later retry.")
 
-    def test__dhcp6_client__trigger_other_failure_allows_retry(self) -> None:
+    async def test__dhcp6_client__trigger_other_failure_allows_retry(self) -> None:
         """
         Ensure a failed stateless fetch leaves the client unconfigured so a
         later trigger retries.
@@ -1858,20 +1884,20 @@ class TestDhcp6ClientTrigger(TestCase):
         self._fetch.return_value = None
 
         self._client.trigger(managed=False, other=True)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
         self._client.trigger(managed=False, other=True)
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(self._fetch.call_count, 2, msg="A failed fetch must allow a later retry.")
 
-    def test__dhcp6_client__loop_without_trigger_is_idle(self) -> None:
+    async def test__dhcp6_client__loop_without_trigger_is_idle(self) -> None:
         """
         Ensure the worker loop runs no exchange when no trigger is pending.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self._acquire.assert_not_called()
         self._fetch.assert_not_called()

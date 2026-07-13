@@ -34,20 +34,20 @@ The DAD plumbing keys on a per-address slot registry
 ('_icmp6_nd_dad__registry') so multiple addresses can DAD
 concurrently. The RX path looks up the slot
 by inbound NS / NA 'target_address' and signals the right
-Event. '_claim_ip6_address_async' spawns one daemon worker
-thread per claim.
+Event. '_claim_ip6_address_async' spawns one asyncio worker
+task per claim.
 
 These tests pin the new concurrency invariants:
 
-- Two simultaneous '_perform_ip6_nd_dad' calls in different
-  threads do not interfere — each owns its own Event slot.
+- Two simultaneous '_perform_ip6_nd_dad' coroutines awaited
+  concurrently do not interfere — each owns its own Event slot.
 - An NS targeting address A signals A's Event; B's Event is
   unaffected.
 - Per-address Nonce sets are isolated — a hairpin echo for
   A is dropped, but the same nonce for B counts as a peer
   conflict (it isn't B's nonce).
-- '_claim_ip6_address_async' returns a Thread the caller can
-  '.join()'; the worker eventually exits with the address
+- '_claim_ip6_address_async' returns an asyncio.Task the caller
+  can 'await'; the worker eventually exits with the address
   installed in '_ip6_ifaddr' on success.
 
 pmd_pytcp/tests/integration/protocols/icmp6/nd/test__icmp6__nd__async_dad.py
@@ -57,9 +57,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
-import time
+import asyncio
 from typing import cast
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr, MacAddress
 from pmd_pytcp.protocols.icmp6.nd.nd__router_state import Icmp6DadState
@@ -89,7 +89,7 @@ def _join_candidate_multicast(handler: object, *, address: Ip6Address) -> None:
         h._ip6_multicast.append(snm_ip)
 
 
-class TestIcmp6Nd__AsyncDad__ConcurrentClaims(NdTestCase):
+class TestIcmp6Nd__AsyncDad__ConcurrentClaims(NdTestCase, IsolatedAsyncioTestCase):
     """
     Two concurrent DAD claims for distinct addresses both
     succeed — the per-address slot dicts isolate their state.
@@ -103,31 +103,23 @@ class TestIcmp6Nd__AsyncDad__ConcurrentClaims(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__async_dad__two_threads_succeed_in_parallel(self) -> None:
+    async def test__icmp6__nd__async_dad__two_threads_succeed_in_parallel(self) -> None:
         """
-        Ensure two '_perform_ip6_nd_dad' calls running in
-        different threads at the same time both return True
-        when no peer conflict arrives — neither blocks on the
-        other's Event.
+        Ensure two '_perform_ip6_nd_dad' coroutines awaited
+        concurrently both return True when no peer conflict
+        arrives — neither blocks on the other's Event.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        results: dict[Ip6Address, bool] = {}
-
-        def _claim(addr: Ip6Address) -> None:
-            results[addr] = self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=addr)
-
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 50):
-            t_a = threading.Thread(target=_claim, args=(_CANDIDATE_A,))
-            t_b = threading.Thread(target=_claim, args=(_CANDIDATE_B,))
-            t_a.start()
-            t_b.start()
-            t_a.join(timeout=5.0)
-            t_b.join(timeout=5.0)
+            result_a, result_b = await asyncio.gather(
+                self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE_A),
+                self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE_B),
+            )
 
-        self.assertTrue(results.get(_CANDIDATE_A), msg="Concurrent DAD A must succeed.")
-        self.assertTrue(results.get(_CANDIDATE_B), msg="Concurrent DAD B must succeed.")
+        self.assertTrue(result_a, msg="Concurrent DAD A must succeed.")
+        self.assertTrue(result_b, msg="Concurrent DAD B must succeed.")
         self.assertEqual(
             self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE_A),
             Icmp6DadState.VALID,
@@ -237,11 +229,11 @@ class TestIcmp6Nd__AsyncDad__PerTargetRxDispatch(NdTestCase):
         )
 
 
-class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
+class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase, IsolatedAsyncioTestCase):
     """
-    '_claim_ip6_address_async' spawns a daemon worker thread
-    and returns the Thread handle. The caller can either
-    '.join()' to wait for completion or fire-and-forget.
+    '_claim_ip6_address_async' spawns a worker task and returns
+    the 'asyncio.Task' handle. The caller can either 'await' it
+    to wait for completion or fire-and-forget.
     """
 
     def tearDown(self) -> None:
@@ -252,25 +244,23 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__async_dad__claim_async_returns_daemon_thread(self) -> None:
+    async def test__icmp6__nd__async_dad__claim_async_returns_daemon_thread(self) -> None:
         """
         Ensure '_claim_ip6_address_async' returns a started
-        daemon Thread.
+        asyncio.Task.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 50):
-            thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
-            self.assertIsInstance(thread, threading.Thread, msg="Must return a Thread.")
-            self.assertTrue(thread.daemon, msg="Worker thread must be a daemon.")
-            self.assertTrue(thread.is_alive() or not thread.is_alive(), msg="Thread must be started.")
-            thread.join(timeout=5.0)
+            task = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
+            self.assertIsInstance(task, asyncio.Task, msg="Must return an asyncio.Task.")
+            await task
 
         self.assertEqual(
             self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE_HOST.address),
             Icmp6DadState.VALID,
-            msg="After '.join()', the address must be in VALID state.",
+            msg="After awaiting the task, the address must be in VALID state.",
         )
         self.assertIn(
             _CANDIDATE_HOST.address,
@@ -278,27 +268,25 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
             msg="After successful async claim, address must be in '_ip6_ifaddr'.",
         )
 
-    def test__icmp6__nd__async_dad__claim_async_optimistic_fire_and_forget(self) -> None:
+    async def test__icmp6__nd__async_dad__claim_async_optimistic_fire_and_forget(self) -> None:
         """
         Ensure under 'icmp6.optimistic_dad=1' the boot caller
         can fire '_claim_ip6_address_async' and the worker
         installs the address as OPTIMISTIC immediately, even
-        before the caller eventually '.join()'s.
+        before the caller eventually awaits it.
 
         Reference: RFC 4429 §3.3 (Optimistic Tentative Address).
         """
 
         with sysctl_module.override("icmp6.default.optimistic_dad", 1):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
+                task = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
                 # The worker's first action under optimistic=1 is
-                # '_assign_ip6_host'. Poll briefly for it to land
-                # so the test isn't racy on slow runners.
-                deadline = time.monotonic() + 1.0
-                while time.monotonic() < deadline:
-                    if _CANDIDATE_HOST.address in [h.address for h in self._packet_handler._ip6_ifaddr]:
-                        break
-                    time.sleep(0.005)
+                # '_assign_ip6_host'. Yield to the loop so the worker
+                # runs up to its first 'await' (the DAD initial delay
+                # / probe wait), by which point the pre-claim has
+                # landed but DAD has not yet completed.
+                await asyncio.sleep(0)
 
                 self.assertIn(
                     _CANDIDATE_HOST.address,
@@ -310,13 +298,13 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase):
                     Icmp6DadState.OPTIMISTIC,
                     msg="State must be OPTIMISTIC during the wait.",
                 )
-                thread.join(timeout=5.0)
+                await task
 
-        # After join, state has transitioned to VALID.
+        # After awaiting, state has transitioned to VALID.
         self.assertEqual(
             self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE_HOST.address),
             Icmp6DadState.VALID,
-            msg="After '.join()', state must be VALID (DAD passed).",
+            msg="After awaiting the task, state must be VALID (DAD passed).",
         )
 
         # MacAddress is referenced via HOST_A__MAC_ADDRESS only at module

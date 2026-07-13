@@ -60,12 +60,13 @@ class _ClientApiProxy:
         self._client = client
         self._ifindex = ifindex
 
-    def _call(self, method: str, args: dict[str, Any], /) -> Any:
+    async def _call(self, method: str, args: dict[str, Any], /) -> Any:
         """
-        Issue a control-plane call for one of this API's methods.
+        Issue a control-plane call for one of this API's methods
+        (a coroutine — 'docs/refactor/pure_asyncio.md').
         """
 
-        return control_call(
+        return await control_call(
             self._client,
             api=self._api_name,
             method=method,

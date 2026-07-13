@@ -694,9 +694,11 @@ def _stop_interface(iface: PacketHandlerL2 | PacketHandlerL3, /) -> None:
     iface._nd_cache.stop()
 
 
-def start() -> None:
+async def start() -> None:
     """
-    Start stack components.
+    Start stack components. A coroutine — the stack runs entirely
+    on the caller's event loop ('docs/refactor/pure_asyncio.md');
+    every subsystem below is armed as loop callbacks / tasks.
     """
 
     import pmd_pytcp.stack as _stack
@@ -735,7 +737,7 @@ def start() -> None:
 
         boot_wait_s = dhcp4__constants.DHCP4__BOOT_WAIT_MS / 1000.0
         for dhcp4_client in dhcp4_clients:
-            bound = dhcp4_client.start_and_wait_for_bind(timeout_s=boot_wait_s)
+            bound = await dhcp4_client.start_and_wait_for_bind(timeout_s=boot_wait_s)
             if bound:
                 __debug__ and log("stack", "DHCPv4 lifecycle reached BOUND during boot")
             else:
@@ -759,17 +761,16 @@ def start() -> None:
 def _abort_open_sockets() -> None:
     """
     Abort every registered connection-oriented socket (TCP) so any
-    application thread parked in a blocking 'recv()' / 'connect()'
+    task awaiting the socket's 'recv()' / 'connect()' coroutine
     unblocks with a connection error instead of staying parked
     forever — after teardown nothing ever sets those sessions'
-    events again, so a thread still waiting on one would survive
-    'stop()' for the process lifetime. Called from 'stop()' while
-    the TX path is still live so the RFC 9293 §3.9.1 RSTs emitted
-    for synchronized states actually reach the peers. Datagram /
-    raw sockets have no 'abort' (nothing blocks beyond per-call
-    timeouts the caller opted into) and are skipped; a raising
-    'abort' is logged and skipped so one bad session cannot stall
-    stack teardown.
+    events again, so a coroutine still awaiting one would hang for
+    the loop's lifetime. Called from 'stop()' while the TX path is
+    still live so the RFC 9293 §3.9.1 RSTs emitted for synchronized
+    states actually reach the peers. Datagram / raw sockets have no
+    'abort' (nothing blocks beyond per-call timeouts the caller
+    opted into) and are skipped; a raising 'abort' is logged and
+    skipped so one bad session cannot stall stack teardown.
     """
 
     import pmd_pytcp.stack as _stack
@@ -787,9 +788,11 @@ def _abort_open_sockets() -> None:
             )
 
 
-def stop() -> None:
+async def stop() -> None:
     """
-    Stop stack components.
+    Stop stack components. A coroutine — after signalling every
+    subsystem it awaits the worker tasks' actual exit so a caller
+    returning from 'stop()' observes a fully quiesced stack.
     """
 
     import pmd_pytcp.stack as _stack
@@ -805,9 +808,8 @@ def stop() -> None:
         iface._send_igmp_leave_all()
 
     # Abort open TCP sessions while TX is still live: peers get their
-    # RSTs, and application threads parked in blocking recv()/connect()
-    # unblock with a connection error instead of surviving teardown
-    # parked forever.
+    # RSTs, and tasks awaiting a socket's recv()/connect() coroutine
+    # unblock with a connection error instead of hanging past teardown.
     _abort_open_sockets()
 
     _stack.stack_running = False
@@ -823,19 +825,24 @@ def stop() -> None:
     #   3. rx_ring         — stop kernel reads.
     #   4. tx_ring         — drain anything still queued + stop.
     #   5. arp_cache / nd_cache — stop cache-refresh threads.
+    stopped_subsystems = []
     for handler in _stack.interfaces.values():
         if isinstance(handler, PacketHandlerL2) and handler._dhcp4_client is not None:
             handler._dhcp4_client.stop()
+            stopped_subsystems.append(handler._dhcp4_client)
         if isinstance(handler, PacketHandlerL2) and handler._dhcp6_client is not None:
             handler._dhcp6_client.stop()
+            stopped_subsystems.append(handler._dhcp6_client)
     if _stack.link_local is not None:
         _stack.link_local.stop()
+        stopped_subsystems.append(_stack.link_local)
     # Per-interface handlers first (stop application-side TX
     # producers), then the shared timer (so periodic callbacks cannot
     # enqueue onto a stopped ring), then each interface's rings +
     # caches. At N=1 this is the single boot interface.
     for iface in _stack.interfaces.values():
         iface.stop()
+        stopped_subsystems.append(iface)
     _stack.timer.stop()
     for iface in _stack.interfaces.values():
         assert iface._rx_ring is not None and iface._tx_ring is not None
@@ -843,8 +850,17 @@ def stop() -> None:
         iface._tx_ring.stop()
         if iface._arp_cache is not None:
             iface._arp_cache.stop()
+            stopped_subsystems.append(iface._arp_cache)
         assert iface._nd_cache is not None
         iface._nd_cache.stop()
+        stopped_subsystems.append(iface._nd_cache)
+
+    # Await every cancelled worker's actual exit so teardown is
+    # complete (not merely signalled) when 'stop()' returns.
+    for subsystem in stopped_subsystems:
+        wait_stopped = getattr(subsystem, "wait_stopped", None)
+        if wait_stopped is not None:
+            await wait_stopped()
 
     # Restore every registered sysctl to its compile-time default
     # so a follow-up 'stack.init()' (typical in long-running test

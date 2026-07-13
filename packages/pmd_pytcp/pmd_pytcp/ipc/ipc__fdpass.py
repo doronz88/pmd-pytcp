@@ -34,6 +34,19 @@ receiver 'recvmsg's the prefix to capture the descriptor, then reads the
 payload. Pinning the descriptor to the fixed-size prefix keeps capture
 independent of the payload length.
 
+Pure-asyncio transport ('docs/refactor/pure_asyncio.md'): asyncio
+streams cannot carry ancillary data ('StreamReader' buffering drops
+SCM_RIGHTS on the floor), so the descriptor-bearing prefix rides a raw
+non-blocking 'sendmsg' / 'recvmsg' on the connection socket. On the
+sending (daemon) side the connection is otherwise owned by a
+'StreamWriter' transport; the raw 'sendmsg' is issued only once the
+writer's buffer is verifiably empty (sequential per-connection serving
+makes that a stable state), so the prefix cannot overtake buffered
+response bytes, and EAGAIN is retried on a short sleep — the loop's
+'add_writer' cannot be used on a transport-owned fd. On the receiving
+(client) side no transport owns the socket, so readiness waits ride a
+plain 'add_reader' future.
+
 pmd_pytcp/ipc/ipc__fdpass.py
 
 ver 3.0.7
@@ -42,6 +55,7 @@ ver 3.0.7
 from __future__ import annotations
 
 import array
+import asyncio
 import os
 import socket
 import struct
@@ -53,17 +67,73 @@ from pmd_pytcp.ipc.ipc__frame import (
     IPC__FRAME__LENGTH_PREFIX_STRUCT,
     IPC__FRAME__MAX_PAYLOAD_LEN,
     recv_exactly,
+    unpack_frame_length,
 )
 
 IPC__FDPASS__FD_STRUCT: str = "i"
 
+# Pacing for the (rare) EAGAIN retry paths that cannot use the loop's
+# readiness callbacks: the daemon-side 'sendmsg' on a transport-owned
+# fd, and the wait for the 'StreamWriter' buffer to flush.
+IPC__FDPASS__RETRY_SLEEP__SEC: float = 0.001
 
-def send_frame_with_fd(sock: socket.socket, payload: Buffer, fd: int, /) -> None:
+
+async def _wait_readable(sock: socket.socket, /) -> None:
     """
-    Send a length-prefixed frame with a file descriptor attached.
+    Await the socket becoming readable — the 'recvmsg' analogue of the
+    loop's 'sock_recv' readiness wait (which cannot capture ancillary
+    data itself).
+    """
 
-    The descriptor rides the prefix's 'sendmsg' as an SCM_RIGHTS
-    ancillary message; the payload follows as a normal stream write.
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[None] = loop.create_future()
+
+    def _on_readable() -> None:
+        if not future.done():
+            future.set_result(None)
+
+    loop.add_reader(sock.fileno(), _on_readable)
+    try:
+        await future
+    finally:
+        loop.remove_reader(sock.fileno())
+
+
+def _writer_socket(writer: asyncio.StreamWriter, /) -> socket.socket:
+    """
+    Return a raw 'socket.socket' view over the connection owned by
+    'writer'. The transport exposes only an 'asyncio.trsock.
+    TransportSocket' wrapper (no 'sendmsg'), so the descriptor is
+    re-wrapped without duplication — the caller MUST 'detach()' the
+    returned socket instead of closing it, or the transport's fd would
+    be closed out from under it.
+    """
+
+    transport_socket = writer.get_extra_info("socket")
+    return socket.socket(fileno=transport_socket.fileno())
+
+
+async def _flush_writer(writer: asyncio.StreamWriter, /) -> None:
+    """
+    Await the stream writer's buffer draining to EMPTY (not merely
+    below the high-water mark, which is all 'drain()' guarantees), so a
+    raw 'sendmsg' issued next cannot overtake buffered bytes.
+    """
+
+    await writer.drain()
+    transport = writer.transport
+    while transport.get_write_buffer_size() > 0:
+        await asyncio.sleep(IPC__FDPASS__RETRY_SLEEP__SEC)
+
+
+async def send_frame_with_fd(writer: asyncio.StreamWriter, payload: Buffer, fd: int, /) -> None:
+    """
+    Send a length-prefixed frame with a file descriptor attached over
+    the connection owned by 'writer'.
+
+    The descriptor rides the prefix's raw 'sendmsg' as an SCM_RIGHTS
+    ancillary message (issued once the writer's buffer is verifiably
+    empty); the payload follows as a normal stream write.
     """
 
     length = len(payload)
@@ -74,14 +144,34 @@ def send_frame_with_fd(sock: socket.socket, payload: Buffer, fd: int, /) -> None
         )
 
     prefix = struct.pack(IPC__FRAME__LENGTH_PREFIX_STRUCT, length)
-    sock.sendmsg(
-        [prefix],
-        [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array(IPC__FDPASS__FD_STRUCT, [fd]))],
-    )
-    sock.sendall(bytes(payload))
+
+    await _flush_writer(writer)
+
+    # The 4-byte prefix + one cmsg virtually always fits the send buffer,
+    # but a backpressured connection can still EAGAIN — retry on a short
+    # sleep ('add_writer' is unavailable on a transport-owned fd; a
+    # partial 'sendmsg' of a 4-byte iov cannot happen: stream sendmsg
+    # either queues the whole iov+cmsg or fails). The raw-socket view is
+    # detached (never closed) — the transport still owns the fd.
+    sock = _writer_socket(writer)
+    try:
+        while True:
+            try:
+                sock.sendmsg(
+                    [prefix],
+                    [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array(IPC__FDPASS__FD_STRUCT, [fd]))],
+                )
+                break
+            except (BlockingIOError, InterruptedError):
+                await asyncio.sleep(IPC__FDPASS__RETRY_SLEEP__SEC)
+    finally:
+        sock.detach()
+
+    writer.write(bytes(payload))
+    await writer.drain()
 
 
-def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
+async def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     """
     Receive a length-prefixed frame and the descriptor attached to it.
 
@@ -94,18 +184,16 @@ def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     does not leak.
     """
 
-    prefix, fd = _recv_prefix_with_fd(sock)
+    prefix, fd = await _recv_prefix_with_fd(sock)
 
-    length = int(struct.unpack(IPC__FRAME__LENGTH_PREFIX_STRUCT, prefix)[0])
-
-    if length > IPC__FRAME__MAX_PAYLOAD_LEN:
+    try:
+        length = unpack_frame_length(prefix)
+    except IpcFrameError:
         if fd is not None:
             os.close(fd)
-        raise IpcFrameError(
-            f"Frame length prefix {length} exceeds the maximum " f"of {IPC__FRAME__MAX_PAYLOAD_LEN} bytes.",
-        )
+        raise
 
-    payload = recv_exactly(sock, length)
+    payload = await recv_exactly(sock, length)
 
     if len(payload) < length:
         if fd is not None:
@@ -117,7 +205,7 @@ def recv_frame_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     return payload, fd
 
 
-def _recv_prefix_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
+async def _recv_prefix_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     """
     Read the length prefix, capturing the SCM_RIGHTS descriptor if one is
     attached (zero or one; more than one is a protocol error).
@@ -129,7 +217,11 @@ def _recv_prefix_with_fd(sock: socket.socket, /) -> tuple[bytes, int | None]:
     ancillary_size = socket.CMSG_SPACE(struct.calcsize(IPC__FDPASS__FD_STRUCT))
 
     while remaining > 0:
-        data, ancillary, _, _ = sock.recvmsg(remaining, ancillary_size)
+        try:
+            data, ancillary, _, _ = sock.recvmsg(remaining, ancillary_size)
+        except (BlockingIOError, InterruptedError):
+            await _wait_readable(sock)
+            continue
         if not data:
             break
         chunks.append(data)

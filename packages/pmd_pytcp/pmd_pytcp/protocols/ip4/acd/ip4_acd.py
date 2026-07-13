@@ -37,6 +37,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import random
 import time
 from pmd_pytcp._compat import dataclass
@@ -120,37 +121,37 @@ class Ip4Acd:
         self._sock: socket | None = None
         self._claimed: Ip4Address | None = None
 
-    def probe(self, *, address: Ip4Address) -> AcdResult:
+    async def probe(self, *, address: Ip4Address) -> AcdResult:
         """
         Run the RFC 5227 §2.1.1 ARP Probe sequence for 'address':
         an initial 0..PROBE_WAIT random delay, PROBE_NUM Probes spaced
         PROBE_MIN..PROBE_MAX apart, then an ANNOUNCE_WAIT quiet period —
         watching the ARP socket for a conflict throughout. Returns an
-        'AcdResult'; blocks for the full window (~5-9 s with the default
+        'AcdResult'; awaits for the full window (~5-9 s with the default
         sysctls) unless a conflict is seen first.
         """
 
         sock = self._open_socket()
         try:
-            return self._run_probe(sock, address)
+            return await self._run_probe(sock, address)
         finally:
             sock.close()
 
-    def announce(self, *, address: Ip4Address) -> None:
+    async def announce(self, *, address: Ip4Address) -> None:
         """
         Emit the RFC 5227 §2.3 ANNOUNCE_NUM gratuitous-ARP burst for
         'address' (spaced ANNOUNCE_INTERVAL apart) so peers refresh any
-        stale cache entry from a previous holder. Blocks for
+        stale cache entry from a previous holder. Awaits for
         (ANNOUNCE_NUM - 1) * ANNOUNCE_INTERVAL seconds.
         """
 
         sock = self._open_socket()
         try:
-            self._run_announce(sock, address)
+            await self._run_announce(sock, address)
         finally:
             sock.close()
 
-    def claim(self, *, address: Ip4Address) -> AcdResult:
+    async def claim(self, *, address: Ip4Address) -> AcdResult:
         """
         Claim 'address' for ongoing defense: run the RFC 5227 §2.1.1
         Probe and, on a clean probe, the §2.3 Announcement, then KEEP
@@ -162,16 +163,16 @@ class Ip4Acd:
         """
 
         sock = self._open_socket()
-        result = self._run_probe(sock, address)
+        result = await self._run_probe(sock, address)
         if not result.success:
             sock.close()
             return result
-        self._run_announce(sock, address)
+        await self._run_announce(sock, address)
         self._sock = sock
         self._claimed = address
         return result
 
-    def start_defense(self, *, address: Ip4Address) -> None:
+    async def start_defense(self, *, address: Ip4Address) -> None:
         """
         Begin RFC 5227 §2.4 ongoing defense of an address the caller has
         already probed clean elsewhere: open the defense socket, emit the
@@ -185,11 +186,11 @@ class Ip4Acd:
         """
 
         sock = self._open_socket()
-        self._run_announce(sock, address)
+        await self._run_announce(sock, address)
         self._sock = sock
         self._claimed = address
 
-    def probe_reachable(
+    async def probe_reachable(
         self,
         *,
         target: Ip4Address,
@@ -212,16 +213,16 @@ class Ip4Acd:
 
         sock = self._open_socket()
         try:
-            self._send(sock, oper=ArpOperation.REQUEST, spa=sender, tpa=target, dst_mac=target_mac)
+            await self._send(sock, oper=ArpOperation.REQUEST, spa=sender, tpa=target, dst_mac=target_mac)
             __debug__ and log("stack", f"<lg>DNAv4</>: unicast ARP probe to {target} @ {target_mac}")
             deadline = time.monotonic() + timeout
             while True:
                 try:
-                    frame, _ = sock.recvfrom()
+                    frame, _ = await sock.recvfrom()
                 except (BlockingIOError, TimeoutError):
                     if time.monotonic() >= deadline:
                         return False
-                    time.sleep(_CONFLICT_POLL_TICK__SEC)
+                    await asyncio.sleep(_CONFLICT_POLL_TICK__SEC)
                     continue
                 arp = self._parse_arp(frame)
                 if arp is not None and self._is_gateway_reply(arp, target, target_mac):
@@ -241,7 +242,7 @@ class Ip4Acd:
 
         return arp.oper is ArpOperation.REPLY and arp.spa == target and arp.sha == target_mac
 
-    def poll_conflict(self) -> MacAddress | None:
+    async def poll_conflict(self) -> MacAddress | None:
         """
         Non-blocking RFC 5227 §2.4 ongoing-conflict check on the claimed
         address: drain any ARP queued on the defense socket and return
@@ -254,7 +255,7 @@ class Ip4Acd:
         assert self._sock is not None and self._claimed is not None, "poll_conflict requires an active claim"
         while True:
             try:
-                frame, _ = self._sock.recvfrom()
+                frame, _ = await self._sock.recvfrom()
             except (BlockingIOError, TimeoutError):
                 return None
             arp = self._parse_arp(frame)
@@ -262,7 +263,7 @@ class Ip4Acd:
                 __debug__ and log("stack", f"<lg>ACD</>: ongoing conflict for {self._claimed} from {arp.sha}")
                 return arp.sha
 
-    def defend(self) -> None:
+    async def defend(self) -> None:
         """
         Broadcast a single defensive gratuitous ARP for the claimed
         address (RFC 5227 §2.4(b)) — an ARP Reply with sender = target =
@@ -271,7 +272,7 @@ class Ip4Acd:
         """
 
         assert self._sock is not None and self._claimed is not None, "defend requires an active claim"
-        self._send(self._sock, oper=ArpOperation.REPLY, spa=self._claimed, tpa=self._claimed)
+        await self._send(self._sock, oper=ArpOperation.REPLY, spa=self._claimed, tpa=self._claimed)
         __debug__ and log("stack", f"<lg>ACD</>: defended {self._claimed}")
 
     def release(self) -> None:
@@ -297,7 +298,7 @@ class Ip4Acd:
         sock.setblocking(False)
         return sock
 
-    def _run_probe(self, sock: socket, address: Ip4Address, /) -> AcdResult:
+    async def _run_probe(self, sock: socket, address: Ip4Address, /) -> AcdResult:
         """
         Probe loop over an already-open socket (the testable core of
         'probe'). Returns clean as soon as the full window elapses with
@@ -307,26 +308,26 @@ class Ip4Acd:
         # RFC 5227 §2.1.1 PROBE_WAIT — initial 0..PROBE_WAIT random delay
         # so a fleet powered on together does not probe in lockstep.
         if (
-            mac := self._watch_for_conflict(sock, address, random.uniform(0, arp__constants.ARP__PROBE_WAIT))
+            mac := await self._watch_for_conflict(sock, address, random.uniform(0, arp__constants.ARP__PROBE_WAIT))
         ) is not None:
             return AcdResult(success=False, address=address, conflict_mac=mac)
 
         # RFC 5227 §2.1.1 — PROBE_NUM Probes spaced PROBE_MIN..PROBE_MAX.
         for _ in range(arp__constants.ARP__PROBE_NUM):
-            self._send(sock, oper=ArpOperation.REQUEST, spa=Ip4Address(), tpa=address)
+            await self._send(sock, oper=ArpOperation.REQUEST, spa=Ip4Address(), tpa=address)
             __debug__ and log("stack", f"<lg>ACD</>: sent ARP Probe for {address}")
             spacing = random.uniform(arp__constants.ARP__PROBE_MIN, arp__constants.ARP__PROBE_MAX)
-            if (mac := self._watch_for_conflict(sock, address, spacing)) is not None:
+            if (mac := await self._watch_for_conflict(sock, address, spacing)) is not None:
                 return AcdResult(success=False, address=address, conflict_mac=mac)
 
         # RFC 5227 §2.1.1 ANNOUNCE_WAIT — post-probe quiet period; a late
         # conflicting ARP can still flag the candidate here.
-        if (mac := self._watch_for_conflict(sock, address, arp__constants.ARP__ANNOUNCE_WAIT)) is not None:
+        if (mac := await self._watch_for_conflict(sock, address, arp__constants.ARP__ANNOUNCE_WAIT)) is not None:
             return AcdResult(success=False, address=address, conflict_mac=mac)
 
         return AcdResult(success=True, address=address)
 
-    def _run_announce(self, sock: socket, address: Ip4Address, /) -> None:
+    async def _run_announce(self, sock: socket, address: Ip4Address, /) -> None:
         """
         Announce burst over an already-open socket (the testable core of
         'announce').
@@ -334,11 +335,11 @@ class Ip4Acd:
 
         for announce_idx in range(arp__constants.ARP__ANNOUNCE_NUM):
             if announce_idx > 0:
-                time.sleep(arp__constants.ARP__ANNOUNCE_INTERVAL)
-            self._send(sock, oper=ArpOperation.REQUEST, spa=address, tpa=address)
+                await asyncio.sleep(arp__constants.ARP__ANNOUNCE_INTERVAL)
+            await self._send(sock, oper=ArpOperation.REQUEST, spa=address, tpa=address)
             __debug__ and log("stack", f"<lg>ACD</>: sent ARP Announcement for {address}")
 
-    def _send(
+    async def _send(
         self,
         sock: socket,
         /,
@@ -369,9 +370,9 @@ class Ip4Acd:
                 ),
             )
         )
-        sock.sendto(frame, SockAddrLl(ifindex=self._ifindex, ethertype=ETH_P_ARP))
+        await sock.sendto(frame, SockAddrLl(ifindex=self._ifindex, ethertype=ETH_P_ARP))
 
-    def _watch_for_conflict(self, sock: socket, address: Ip4Address, duration: float, /) -> MacAddress | None:
+    async def _watch_for_conflict(self, sock: socket, address: Ip4Address, duration: float, /) -> MacAddress | None:
         """
         Read ARP off the socket for up to 'duration' seconds, returning
         the offending peer MAC the moment a conflict for 'address' is
@@ -384,11 +385,11 @@ class Ip4Acd:
         deadline = time.monotonic() + duration
         while True:
             try:
-                frame, _ = sock.recvfrom()
+                frame, _ = await sock.recvfrom()
             except (BlockingIOError, TimeoutError):
                 if time.monotonic() >= deadline:
                     return None
-                time.sleep(_CONFLICT_POLL_TICK__SEC)
+                await asyncio.sleep(_CONFLICT_POLL_TICK__SEC)
                 continue
             arp = self._parse_arp(frame)
             if arp is not None and self._is_conflict(arp, address):

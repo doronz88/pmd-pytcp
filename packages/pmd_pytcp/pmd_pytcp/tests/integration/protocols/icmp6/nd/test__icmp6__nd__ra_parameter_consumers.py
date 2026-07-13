@@ -47,9 +47,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from pmd_net_addr import Ip6Address, MacAddress
 from pmd_net_proto import Ip6Parser, RawAssembler
@@ -206,7 +205,7 @@ class TestIcmp6Nd__RaConsumer__DadRetransTimer(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__ra__retrans_timer_consumed_by_dad(self) -> None:
+    async def test__icmp6__nd__ra__retrans_timer_consumed_by_dad(self) -> None:
         """
         Ensure a non-zero RA-advertised Retrans-Timer overrides
         the 'icmp6.retrans_timer_ms' sysctl when the DAD loop
@@ -229,21 +228,24 @@ class TestIcmp6Nd__RaConsumer__DadRetransTimer(NdTestCase):
         )
 
         # Set the sysctl to a much larger value so we can prove
-        # the override is what won. Patch threading.Event.wait
-        # at the class level — the per-address Event is created
-        # inside '_perform_ip6_nd_dad' so we cannot patch a
-        # specific instance before the call.
+        # the override is what won. Patch the 'wait_event' compat
+        # helper the DAD loop awaits (in the packet-handler
+        # namespace) so it returns immediately without a
+        # per-probe wait; the loop passes the effective
+        # inter-probe timeout as its second positional argument,
+        # which we read back off the mock.
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 60000):
-            with patch.object(
-                threading.Event,
-                "wait",
-                return_value=False,
+            with patch(
+                "pmd_pytcp.runtime.packet_handler.wait_event",
+                new=AsyncMock(return_value=False),
             ) as mock_wait:
-                self._packet_handler._perform_ip6_nd_dad(
+                await self._packet_handler._perform_ip6_nd_dad(
                     ip6_unicast_candidate=Ip6Address("2001:db8:0:1::42"),
                 )
 
-        timeout = mock_wait.call_args.kwargs.get("timeout")
+        # 'wait_event(dad_event, retrans_timer_s)' — the timeout
+        # is the second positional argument.
+        timeout = mock_wait.call_args.args[1]
         self.assertAlmostEqual(
             cast(float, timeout),
             0.250,

@@ -108,7 +108,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__slaac_runtime__new_prefix_claims(self) -> None:
+    async def test__icmp6__nd__slaac_runtime__new_prefix_claims(self) -> None:
         """
         Ensure a post-boot RA carrying a new prefix admits the
         prefix to the SLAAC table AND triggers a stable-address
@@ -139,15 +139,10 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                     ),
                 )
 
-                # Wait briefly for the DAD worker to finish
-                # (dad_transmits=0 makes it return almost
-                # immediately).
+                # Let the DAD worker finish (dad_transmits=0 makes
+                # it return almost immediately).
                 expected = self._packet_handler._derive_ip6_host(ip6_network=PREFIX_NEW).address
-                deadline = time.monotonic() + 1.0
-                while time.monotonic() < deadline:
-                    if expected in [host.address for host in self._packet_handler._ip6_ifaddr]:
-                        break
-                    time.sleep(0.005)
+                await self._settle_dad_tasks()
 
         self.assertIn(
             expected,
@@ -204,7 +199,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
             msg="Pre-boot PI must still update the SLAAC tracking table.",
         )
 
-    def test__icmp6__nd__slaac_runtime__refresh_no_double_claim(self) -> None:
+    async def test__icmp6__nd__slaac_runtime__refresh_no_double_claim(self) -> None:
         """
         Ensure a post-boot PI for an EXISTING prefix only
         refreshes lifetimes — no fresh claim is spawned. The
@@ -232,11 +227,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                     ),
                 )
                 expected = self._packet_handler._derive_ip6_host(ip6_network=PREFIX_NEW).address
-                deadline = time.monotonic() + 1.0
-                while time.monotonic() < deadline:
-                    if expected in [h.address for h in self._packet_handler._ip6_ifaddr]:
-                        break
-                    time.sleep(0.005)
+                await self._settle_dad_tasks()
 
                 ip6_host_count_after_first = sum(1 for h in self._packet_handler._ip6_ifaddr if h.address == expected)
                 self.assertEqual(
@@ -258,7 +249,7 @@ class TestIcmp6Nd__SlaacRuntimeClaim__PostBootClaims(NdTestCase):
                         ],
                     ),
                 )
-                time.sleep(0.05)
+                await self._settle_dad_tasks()
 
         ip6_host_count_after_second = sum(1 for h in self._packet_handler._ip6_ifaddr if h.address == expected)
         self.assertEqual(

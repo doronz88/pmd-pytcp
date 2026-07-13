@@ -23,7 +23,14 @@
 
 
 """
-This module contains tests for the 'TxRing' subsystem.
+This module contains tests for the 'TxRing' class — the pure-asyncio
+egress ('docs/refactor/pure_asyncio.md'): producers run on the one
+stack loop, so 'enqueue' appends to the deque and schedules a drain
+with 'loop.call_soon'; the drain writes with 'io_backend.writev' until
+the deque is empty or the fd would block, in which case it re-arms via
+'loop.add_writer'. There is no worker thread, no eventfd, and no
+'_TxRequest' marshaling — single-writer holds by construction on a
+single loop.
 
 pmd_pytcp/tests/unit/runtime/test__runtime__tx_ring.py
 
@@ -32,11 +39,11 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
-import threading
 from typing import Any
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, patch
 
 import pmd_pytcp.runtime.tx_ring as tx_ring_module
@@ -48,38 +55,54 @@ from pmd_net_proto import (
     Ip6Assembler,
 )
 from pmd_net_proto.lib.buffer import Buffer
-from pmd_pytcp.lib.tx_status import TxStatus
-from pmd_pytcp.runtime.tx_ring import TxRing
 from pmd_pytcp._compat import as_buffer
+from pmd_pytcp.lib.packet_stats import PacketStatsTx
+from pmd_pytcp.runtime.tx_ring import TxRing
+
+
+def _make_ethernet() -> MagicMock:
+    """
+    Build a MagicMock that behaves like an 'EthernetAssembler':
+    passes 'isinstance(packet, EthernetAssembler)', has __len__,
+    and has an 'assemble()' method that appends a stub buffer.
+    """
+
+    pkt = MagicMock(spec=EthernetAssembler)
+    pkt.__len__.return_value = 64
+
+    def assemble(buffers: list[Buffer]) -> None:
+        buffers.append(as_buffer(b"x" * 64))
+
+    pkt.assemble.side_effect = assemble
+    return pkt
 
 
 class _TxRingFixture(TestCase):
     """
-    Shared fixture that opens a pipe (the read end stands in for the
-    TX file descriptor in tests of enqueue-only behavior) and
-    suppresses module-level logging.
+    Shared synchronous fixture that opens a pipe (the write end stands
+    in for the TX file descriptor) and suppresses module-level
+    logging. No event loop runs — these tests exercise the
+    enqueue-side behavior only, where 'enqueue' appends to the deque
+    and '_schedule_drain' is a no-op on a never-started ring.
     """
 
     @override
     def setUp(self) -> None:
         """
-        Install the logging patches and open the pipe.
+        Install the logging patch and open the pipe.
         """
 
-        # Register the log patches via 'enterContext' so their
-        # cleanup runs LAST (LIFO) — after any 'addCleanup(ring.stop)'
-        # a test registers — keeping start/stop log output silenced
-        # while a started worker is torn down.
-        self.enterContext(patch("pmd_pytcp.runtime.tx_ring.log"))
-        self.enterContext(patch("pmd_pytcp.runtime.subsystem.log"))
+        self._log_patch = patch("pmd_pytcp.runtime.tx_ring.log")
+        self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
 
         self._read_fd, self._write_fd = os.pipe()
         self.addCleanup(self._close_fd, self._read_fd)
         self.addCleanup(self._close_fd, self._write_fd)
         self._ring = TxRing(fd=self._write_fd, mtu=1500)
-        # Release the ring's eventfd back to the kernel; '_stop' is
-        # idempotent and safe on a never-started ring.
-        self.addCleanup(self._ring._stop)
+        # 'stop' is idempotent and safe on a never-started ring — no
+        # loop, no armed writer, nothing to disarm.
+        self.addCleanup(self._ring.stop)
 
     @staticmethod
     def _close_fd(fd: int) -> None:
@@ -122,23 +145,36 @@ class TestTxRingInit(_TxRingFixture):
             msg="TxRing._queue_max_size must default to 1000.",
         )
 
-    def test__tx_ring__creates_empty_deque(self) -> None:
+    def test__tx_ring__creates_empty_deque_and_disarmed_egress(self) -> None:
         """
-        Ensure '__init__' creates an empty deque and a sane
-        configured queue cap.
+        Ensure '__init__' creates an empty deque and leaves the
+        egress disarmed — no loop bound, not running, no drain
+        scheduled, no writability callback armed. 'start()' on the
+        running loop is what arms the machinery.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
-            self._ring._queue_max_size,
-            1000,
-            msg="TxRing._queue_max_size must equal queue_max_size.",
-        )
-        self.assertEqual(
             len(self._ring._tx_deque),
             0,
             msg="TxRing._tx_deque must start empty.",
+        )
+        self.assertIsNone(
+            self._ring._loop,
+            msg="A fresh TxRing must not be bound to any event loop.",
+        )
+        self.assertFalse(
+            self._ring._running,
+            msg="A fresh TxRing must not be running.",
+        )
+        self.assertFalse(
+            self._ring._drain_scheduled,
+            msg="A fresh TxRing must have no drain scheduled.",
+        )
+        self.assertFalse(
+            self._ring._writer_armed,
+            msg="A fresh TxRing must have no writability callback armed.",
         )
 
 
@@ -157,9 +193,37 @@ class TestTxRingEnqueue(_TxRingFixture):
         pkt = MagicMock(spec=EthernetAssembler)
         self._ring.enqueue(pkt)
         self.assertEqual(
-            len(self._ring._tx_deque),
-            1,
+            list(self._ring._tx_deque),
+            [pkt],
             msg="enqueue() must place the packet on the TX ring.",
+        )
+
+    def test__tx_ring__enqueue_on_unstarted_ring_schedules_nothing(self) -> None:
+        """
+        Ensure enqueue() on a never-started ring leaves the packet
+        queued and does NOT schedule a drain — '_schedule_drain' is
+        a no-op until 'start()' binds the running loop. Pre-'start()'
+        boot enqueues drain on 'start()'; unit tests (like this one)
+        enqueue and assert on the deque.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = MagicMock(spec=EthernetAssembler)
+        self._ring.enqueue(pkt)
+
+        self.assertEqual(
+            list(self._ring._tx_deque),
+            [pkt],
+            msg="The packet must stay queued on an unstarted ring.",
+        )
+        self.assertFalse(
+            self._ring._drain_scheduled,
+            msg="enqueue() before start() must not schedule a drain.",
+        )
+        self.assertFalse(
+            self._ring._writer_armed,
+            msg="enqueue() before start() must not arm the writability callback.",
         )
 
     def test__tx_ring__enqueue_drops_when_full(self) -> None:
@@ -172,389 +236,13 @@ class TestTxRingEnqueue(_TxRingFixture):
         """
 
         ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
-        self.addCleanup(ring._stop)
+        self.addCleanup(ring.stop)
         ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
         ring.enqueue(MagicMock(spec=EthernetAssembler))  # must not raise
         self.assertEqual(
             len(ring._tx_deque),
             1,
             msg="enqueue() on a full TX ring must drop the new packet (size unchanged).",
-        )
-
-
-class TestTxRingSubsystemLoop(_TxRingFixture):
-    """
-    The 'TxRing._subsystem_loop' tests.
-    """
-
-    def test__tx_ring__loop_returns_early_when_queue_empty(self) -> None:
-        """
-        Ensure the loop returns early on 'queue.Empty' — there is
-        nothing to transmit so os.writev() must not be called.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with (
-            patch(
-                "pmd_pytcp.runtime.tx_ring.SUBSYSTEM_SLEEP_TIME__SEC",
-                0.001,
-            ),
-            patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev,
-        ):
-            self._ring._subsystem_loop()
-        mock_writev.assert_not_called()
-
-    def _make_ethernet(self) -> MagicMock:
-        """
-        Build a MagicMock that behaves like an 'EthernetAssembler':
-        passes 'isinstance(packet, EthernetAssembler)', has __len__,
-        and has an 'assemble()' method that appends a stub buffer.
-        """
-
-        pkt = MagicMock(spec=EthernetAssembler)
-        pkt.__len__.return_value = 64
-
-        def assemble(buffers: list[Buffer]) -> None:
-            buffers.append(as_buffer(b"x" * 64))
-
-        pkt.assemble.side_effect = assemble
-        return pkt
-
-    def test__tx_ring__loop_writes_ethernet_frame(self) -> None:
-        """
-        Ensure the loop builds the buffer list for an
-        'EthernetAssembler' packet and writes it to the fd via
-        'os.writev'. The Ethernet branch uses an empty initial buffer
-        list and adds Ethernet-header overhead to the MTU check.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = self._make_ethernet()
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        mock_writev.assert_called_once()
-        fd_arg, buffers_arg = mock_writev.call_args.args
-        self.assertEqual(
-            fd_arg,
-            self._write_fd,
-            msg="os.writev must be called with the TX ring fd.",
-        )
-        self.assertEqual(
-            buffers_arg,
-            [b"x" * 64],
-            msg="os.writev must be called with the assembled buffer list.",
-        )
-
-    def test__tx_ring__loop_ip6_uses_ipv6_ethertype_prefix(self) -> None:
-        """
-        Ensure the loop prepends the IPv6 EtherType prefix
-        (b'\\x00\\x00\\x86\\xdd') to the buffer list for an
-        'Ip6Assembler' packet.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = MagicMock(spec=Ip6Assembler)
-        pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(b"p6")
-
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        buffers_arg = mock_writev.call_args.args[1]
-        self.assertEqual(
-            buffers_arg[0],
-            b"\x00\x00\x86\xdd",
-            msg="The Ip6Assembler branch must prepend the IPv6 EtherType prefix.",
-        )
-
-    def test__tx_ring__loop_ip4_uses_ipv4_ethertype_prefix(self) -> None:
-        """
-        Ensure the loop prepends the IPv4 EtherType prefix
-        (b'\\x00\\x00\\x08\\x00') to the buffer list for an
-        'Ip4Assembler' packet.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = MagicMock(spec=Ip4Assembler)
-        pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(b"p4")
-
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        buffers_arg = mock_writev.call_args.args[1]
-        self.assertEqual(
-            buffers_arg[0],
-            b"\x00\x00\x08\x00",
-            msg="The Ip4Assembler branch must prepend the IPv4 EtherType prefix.",
-        )
-
-    def test__tx_ring__loop_ip4_frag_uses_ipv4_prefix(self) -> None:
-        """
-        Ensure 'Ip4FragAssembler' packets also receive the IPv4
-        EtherType prefix — they share a branch with 'Ip4Assembler'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = MagicMock(spec=Ip4FragAssembler)
-        pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(b"frag")
-
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        buffers_arg = mock_writev.call_args.args[1]
-        self.assertEqual(
-            buffers_arg[0],
-            b"\x00\x00\x08\x00",
-            msg="The Ip4FragAssembler branch must share the IPv4 EtherType prefix.",
-        )
-
-    def test__tx_ring__loop_eth802_3_branch_writes(self) -> None:
-        """
-        Ensure 'Ethernet8023Assembler' packets exercise the
-        corresponding MTU branch and get written out — the test only
-        verifies the dispatch, not the 802.3 framing internals.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = MagicMock(spec=Ethernet8023Assembler)
-        pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(b"z")
-
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        mock_writev.assert_called_once()
-
-    def test__tx_ring__loop_drops_oversized_frame(self) -> None:
-        """
-        Ensure the loop drops a frame whose length exceeds the MTU
-        (plus Ethernet header overhead) without calling os.writev.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = self._make_ethernet()
-        pkt.__len__.return_value = 65535  # way bigger than MTU + 14
-
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        mock_writev.assert_not_called()
-
-    def test__tx_ring__loop_swallows_oserror(self) -> None:
-        """
-        Ensure an 'OSError' from 'os.writev' is caught so the TX
-        thread does not crash on transient interface errors.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = self._make_ethernet()
-        self._ring.enqueue(pkt)
-
-        with patch(
-            "pmd_pytcp.runtime.tx_ring.os.writev",
-            side_effect=OSError("no buffer space"),
-        ):
-            self._ring._subsystem_loop()  # must not propagate the error
-
-    def test__tx_ring__loop_unknown_packet_type_dropped(self) -> None:
-        """
-        Ensure packets of an unexpected type (not one of the five
-        accepted assemblers) are logged and dropped — os.writev must
-        not be called.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        pkt = MagicMock()  # plain MagicMock, no spec -> unknown type
-        pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(b"x")
-
-        self._ring.enqueue(pkt)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        mock_writev.assert_not_called()
-
-
-class TestTxRingInnerDrain(_TxRingFixture):
-    """
-    The 'TxRing._subsystem_loop' inner-drain tests.
-    """
-
-    def _make_ethernet(self) -> MagicMock:
-        """
-        Build a MagicMock 'EthernetAssembler' for queue insertion.
-        """
-
-        pkt = MagicMock(spec=EthernetAssembler)
-        pkt.__len__.return_value = 64
-
-        def assemble(buffers: list[Buffer]) -> None:
-            buffers.append(as_buffer(b"x" * 64))
-
-        pkt.assemble.side_effect = assemble
-        return pkt
-
-    def test__tx_ring__loop_drains_all_pending_packets_per_get_wake(self) -> None:
-        """
-        Ensure a single '_subsystem_loop' invocation drains every
-        packet currently in the TX ring queue, not just one. The
-        inner-drain pattern mirrors the RX-side optimisation: the
-        outer 'queue.get(block=True, timeout=0.1)' is the slow path;
-        once awoken, the worker should drain the rest of the queue
-        via cheap 'queue.get(block=False)' calls until the queue
-        is empty, then yield back to the Subsystem driver.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        n_frames = 10
-        for _ in range(n_frames):
-            self._ring.enqueue(self._make_ethernet())
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        self.assertEqual(
-            mock_writev.call_count,
-            n_frames,
-            msg=(
-                f"A single _subsystem_loop call must drain all {n_frames} "
-                f"queued packets in one pass. Got {mock_writev.call_count} "
-                f"os.writev calls."
-            ),
-        )
-        self.assertEqual(
-            len(self._ring._tx_deque),
-            0,
-            msg="After the inner drain the deque must be empty.",
-        )
-
-    def test__tx_ring__loop_inner_drain_breaks_on_writev_oserror(self) -> None:
-        """
-        Ensure the inner-drain loop stops on the first 'os.writev'
-        OSError. Repeatedly retrying when the interface is down /
-        ENOBUFS would only burn cycles — better to yield and let
-        the next outer-loop iteration check the stop event.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        for _ in range(5):
-            self._ring.enqueue(self._make_ethernet())
-
-        with patch(
-            "pmd_pytcp.runtime.tx_ring.os.writev",
-            side_effect=OSError("link down"),
-        ) as mock_writev:
-            self._ring._subsystem_loop()
-
-        # First writev errors → break. No further writev calls,
-        # but exactly one drop counted.
-        self.assertEqual(
-            mock_writev.call_count,
-            1,
-            msg=(
-                "Inner drain must break after the first writev OSError. "
-                f"Expected 1 writev call; got {mock_writev.call_count}."
-            ),
-        )
-        self.assertEqual(
-            self._ring.os_error_drop_count,
-            1,
-            msg="Exactly one drop should be counted before the drain breaks.",
-        )
-
-
-class TestTxRingSharedPacketStats(_TxRingFixture):
-    """
-    The 'TxRing' shared-PacketStats integration tests.
-    """
-
-    def test__tx_ring__queue_full_drop_increments_shared_stats(self) -> None:
-        """
-        Ensure that when a 'PacketStatsTx' instance is wired in via
-        the constructor's 'packet_stats=' kwarg, queue-full drops
-        bump 'stats.tx_ring__queue_full__drop' instead of the
-        ring's private internal counter.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        from pmd_pytcp.lib.packet_stats import PacketStatsTx
-
-        stats = PacketStatsTx()
-        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1, packet_stats=stats)
-        self.addCleanup(ring._stop)
-        ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
-
-        ring.enqueue(MagicMock(spec=EthernetAssembler))
-        ring.enqueue(MagicMock(spec=EthernetAssembler))
-
-        self.assertEqual(
-            stats.tx_ring__queue_full__drop,
-            2,
-            msg="Each enqueue-on-full drop must bump the shared PacketStatsTx field.",
-        )
-        self.assertEqual(
-            ring.queue_full_drop_count,
-            2,
-            msg="queue_full_drop_count property must read the shared stats value.",
-        )
-
-    def test__tx_ring__os_error_drop_increments_shared_stats(self) -> None:
-        """
-        Ensure that 'os.writev' OSError increments
-        'stats.tx_ring__os_error__drop' when stats are shared.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        from pmd_pytcp.lib.packet_stats import PacketStatsTx
-
-        stats = PacketStatsTx()
-        ring = TxRing(fd=self._write_fd, mtu=1500, packet_stats=stats)
-        self.addCleanup(ring._stop)
-
-        pkt = MagicMock(spec=EthernetAssembler)
-        pkt.__len__.return_value = 64
-        pkt.assemble.side_effect = lambda buffers: buffers.append(as_buffer(b"x" * 64))
-        ring.enqueue(pkt)
-
-        with patch(
-            "pmd_pytcp.runtime.tx_ring.os.writev",
-            side_effect=OSError("link down"),
-        ):
-            ring._subsystem_loop()
-
-        self.assertEqual(
-            stats.tx_ring__os_error__drop,
-            1,
-            msg="os.writev OSError must bump the shared PacketStatsTx field.",
         )
 
 
@@ -600,7 +288,7 @@ class TestTxRingDropCounters(_TxRingFixture):
         """
 
         ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
-        self.addCleanup(ring._stop)
+        self.addCleanup(ring.stop)
         ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
 
         ring.enqueue(MagicMock(spec=EthernetAssembler))
@@ -613,38 +301,547 @@ class TestTxRingDropCounters(_TxRingFixture):
             msg="Each full-queue drop must bump 'queue_full_drop_count' by exactly one.",
         )
 
-    def test__tx_ring__loop_increments_os_error_drop_count(self) -> None:
+
+class TestTxRingSharedPacketStats(_TxRingFixture):
+    """
+    The 'TxRing' shared-PacketStats integration tests (enqueue side —
+    the write-side shared-stats test lives with the drain tests).
+    """
+
+    def test__tx_ring__queue_full_drop_increments_shared_stats(self) -> None:
         """
-        Ensure 'os_error_drop_count' bumps each time 'os.writev'
-        raises 'OSError' (interface down, ENOBUFS, etc.). Without
-        the counter, link-down conditions silently lose every
-        outbound packet.
+        Ensure that when a 'PacketStatsTx' instance is wired in via
+        the constructor's 'packet_stats=' kwarg, queue-full drops
+        bump 'stats.tx_ring__queue_full__drop' instead of the
+        ring's private internal counter.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        def _make_pkt() -> MagicMock:
-            pkt = MagicMock(spec=EthernetAssembler)
-            pkt.__len__.return_value = 64
-            pkt.assemble.side_effect = lambda buffers: buffers.append(as_buffer(b"x" * 64))
-            return pkt
+        stats = PacketStatsTx()
+        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1, packet_stats=stats)
+        self.addCleanup(ring.stop)
+        ring._tx_deque.append(MagicMock(spec=EthernetAssembler))
 
-        for _ in range(2):
-            self._ring.enqueue(_make_pkt())
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+        ring.enqueue(MagicMock(spec=EthernetAssembler))
+
+        self.assertEqual(
+            stats.tx_ring__queue_full__drop,
+            2,
+            msg="Each enqueue-on-full drop must bump the shared PacketStatsTx field.",
+        )
+        self.assertEqual(
+            ring.queue_full_drop_count,
+            2,
+            msg="queue_full_drop_count property must read the shared stats value.",
+        )
+
+
+class TestTxRingRawFrame(_TxRingFixture):
+    """
+    The 'TxRing.enqueue_raw_frame' enqueue-side tests (the drain-side
+    verbatim-write test lives with the drain tests).
+    """
+
+    def test__tx_ring__enqueue_raw_frame_appends(self) -> None:
+        """
+        Ensure 'enqueue_raw_frame' places the verbatim frame bytes on
+        the internal deque (the AF_PACKET egress primitive that skips
+        the assembler / IP layers).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06payload"
+        self._ring.enqueue_raw_frame(frame)
+
+        self.assertEqual(
+            list(self._ring._tx_deque),
+            [frame],
+            msg="enqueue_raw_frame() must place the verbatim frame on the TX ring.",
+        )
+
+    def test__tx_ring__enqueue_raw_frame_drops_when_full(self) -> None:
+        """
+        Ensure 'enqueue_raw_frame' silently drops the frame when the
+        deque is already at capacity.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
+        self.addCleanup(ring.stop)
+        ring.enqueue_raw_frame(b"first-frame")
+
+        ring.enqueue_raw_frame(b"second-frame")  # must not raise
+
+        self.assertEqual(
+            len(ring._tx_deque),
+            1,
+            msg="enqueue_raw_frame() on a full TX ring must drop the new frame.",
+        )
+
+
+class TestTxRingDrain(IsolatedAsyncioTestCase):
+    """
+    The 'TxRing._drain' write-path tests over a real event loop. The
+    ring is started on the test loop; 'enqueue' schedules the drain
+    with 'loop.call_soon', so a loop tick ('asyncio.sleep(0)') runs
+    it. 'io_backend.writev' is patched so no bytes hit the pipe —
+    the assertions target the writev calls, the buffer contents
+    (ethertype prefixes per protocol), and the deque state.
+    """
+
+    async def asyncSetUp(self) -> None:
+        """
+        Suppress logging, open the pipe, and build a fresh 'TxRing'
+        over the write end so 'start()' has an OS-level fd to put
+        into non-blocking mode (and 'add_writer' has one to arm on
+        the backpressure path).
+        """
+
+        self._log_patch = patch("pmd_pytcp.runtime.tx_ring.log")
+        self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
+
+        self._read_fd, self._write_fd = os.pipe()
+        self.addCleanup(self._close_fd, self._read_fd)
+        self.addCleanup(self._close_fd, self._write_fd)
+        self._ring = TxRing(fd=self._write_fd, mtu=1500)
+        # 'stop' disarms any writer left armed by a backpressure test
+        # before the loop shuts down (and is safe if never started).
+        self.addCleanup(self._ring.stop)
+
+    @staticmethod
+    def _close_fd(fd: int) -> None:
+        """
+        Close a file descriptor, tolerating an already-closed fd.
+        """
+
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+
+    @staticmethod
+    async def _tick() -> None:
+        """
+        Let the 'call_soon'-scheduled drain run: yield to the loop a
+        couple of times so both the drain callback and anything it
+        schedules get a turn.
+        """
+
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    async def test__tx_ring__drain_skips_writev_when_queue_empty(self) -> None:
+        """
+        Ensure a started ring with an empty deque never touches the
+        fd — there is nothing to transmit so 'io_backend.writev'
+        must not be called.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            await self._tick()
+
+        mock_writev.assert_not_called()
+
+    async def test__tx_ring__enqueue_after_start_writes_ethernet_frame(self) -> None:
+        """
+        Ensure 'enqueue' on a started ring schedules the drain by
+        itself — one loop tick later the 'EthernetAssembler' frame
+        is written to the TX fd via 'io_backend.writev' with the
+        assembled buffer list (the Ethernet branch uses an empty
+        ethertype prefix), and no explicit drain call is needed.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(_make_ethernet())
+            await self._tick()
+
+        mock_writev.assert_called_once()
+        fd_arg, buffers_arg = mock_writev.call_args.args
+        self.assertEqual(
+            fd_arg,
+            self._write_fd,
+            msg="io_backend.writev must be called with the TX ring fd.",
+        )
+        self.assertEqual(
+            buffers_arg,
+            [b"x" * 64],
+            msg="io_backend.writev must be called with the assembled buffer list.",
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="The written frame must be popped off the deque.",
+        )
+
+    async def test__tx_ring__start_drains_pre_queued_frames(self) -> None:
+        """
+        Ensure frames enqueued BEFORE 'start()' (the boot path — the
+        packet handler can emit its gratuitous ARP / ND solicitations
+        while the ring is still cold) are drained once 'start()'
+        arms the egress on the running loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._ring.enqueue(_make_ethernet())
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            await self._tick()
+
+        mock_writev.assert_called_once()
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="start() must drain frames enqueued before the ring was started.",
+        )
+
+    async def test__tx_ring__drain_ip6_uses_ipv6_ethertype_prefix(self) -> None:
+        """
+        Ensure the drain prepends the IPv6 EtherType prefix
+        (b'\\x00\\x00\\x86\\xdd') to the buffer list for an
+        'Ip6Assembler' packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = MagicMock(spec=Ip6Assembler)
+        pkt.__len__.return_value = 64
+        pkt.assemble.side_effect = lambda buffers: buffers.append(b"p6")
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(pkt)
+            await self._tick()
+
+        buffers_arg = mock_writev.call_args.args[1]
+        self.assertEqual(
+            buffers_arg[0],
+            b"\x00\x00\x86\xdd",
+            msg="The Ip6Assembler branch must prepend the IPv6 EtherType prefix.",
+        )
+
+    async def test__tx_ring__drain_ip4_uses_ipv4_ethertype_prefix(self) -> None:
+        """
+        Ensure the drain prepends the IPv4 EtherType prefix
+        (b'\\x00\\x00\\x08\\x00') to the buffer list for an
+        'Ip4Assembler' packet.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = MagicMock(spec=Ip4Assembler)
+        pkt.__len__.return_value = 64
+        pkt.assemble.side_effect = lambda buffers: buffers.append(b"p4")
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(pkt)
+            await self._tick()
+
+        buffers_arg = mock_writev.call_args.args[1]
+        self.assertEqual(
+            buffers_arg[0],
+            b"\x00\x00\x08\x00",
+            msg="The Ip4Assembler branch must prepend the IPv4 EtherType prefix.",
+        )
+
+    async def test__tx_ring__drain_ip4_frag_uses_ipv4_prefix(self) -> None:
+        """
+        Ensure 'Ip4FragAssembler' packets also receive the IPv4
+        EtherType prefix — they share a dispatch entry with
+        'Ip4Assembler'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = MagicMock(spec=Ip4FragAssembler)
+        pkt.__len__.return_value = 64
+        pkt.assemble.side_effect = lambda buffers: buffers.append(b"frag")
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(pkt)
+            await self._tick()
+
+        buffers_arg = mock_writev.call_args.args[1]
+        self.assertEqual(
+            buffers_arg[0],
+            b"\x00\x00\x08\x00",
+            msg="The Ip4FragAssembler branch must share the IPv4 EtherType prefix.",
+        )
+
+    async def test__tx_ring__drain_eth802_3_branch_writes(self) -> None:
+        """
+        Ensure 'Ethernet8023Assembler' packets exercise the
+        corresponding dispatch entry and get written out — the test
+        only verifies the dispatch, not the 802.3 framing internals.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = MagicMock(spec=Ethernet8023Assembler)
+        pkt.__len__.return_value = 64
+        pkt.assemble.side_effect = lambda buffers: buffers.append(b"z")
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(pkt)
+            await self._tick()
+
+        mock_writev.assert_called_once()
+
+    async def test__tx_ring__drain_drops_oversized_frame(self) -> None:
+        """
+        Ensure the drain drops a frame whose length exceeds the MTU
+        (plus Ethernet header overhead) without calling
+        'io_backend.writev' — a silent non-fatal drop, and the item
+        is popped so it cannot wedge the head of the queue.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = _make_ethernet()
+        pkt.__len__.return_value = 65535  # way bigger than MTU + 14
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(pkt)
+            await self._tick()
+
+        mock_writev.assert_not_called()
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="An oversized frame must be popped off the deque when dropped.",
+        )
+
+    async def test__tx_ring__drain_unknown_packet_type_dropped(self) -> None:
+        """
+        Ensure packets of an unexpected type (not one of the five
+        accepted assemblers) are logged and dropped — writev must
+        not be called and the item must not wedge the queue head.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = MagicMock()  # plain MagicMock, no spec -> unknown type
+        pkt.__len__.return_value = 64
+        pkt.assemble.side_effect = lambda buffers: buffers.append(b"x")
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring._tx_deque.append(pkt)
+            self._ring._schedule_drain()
+            await self._tick()
+
+        mock_writev.assert_not_called()
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="An unknown-type packet must be popped off the deque when dropped.",
+        )
+
+    async def test__tx_ring__drain_counts_oserror_and_continues(self) -> None:
+        """
+        Ensure a plain 'OSError' from 'io_backend.writev' (interface
+        down, ENOBUFS, EIO) is counted per frame and the drain
+        CONTINUES with the next queued item — unlike EAGAIN there is
+        no writability event coming to resume a broken-out drain, so
+        stalling the queue on a hard error would strand every frame
+        behind it. Two queued frames + an always-raising writev must
+        yield two writev attempts, two counted drops, and an empty
+        deque.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
 
         with patch(
-            "pmd_pytcp.runtime.tx_ring.os.writev",
+            "pmd_pytcp.runtime.tx_ring.io_backend.writev",
             side_effect=OSError("link down"),
-        ):
-            self._ring._subsystem_loop()
-            # Inner drain re-armed the eventfd on break; second
-            # call processes the second packet.
-            self._ring._subsystem_loop()
+        ) as mock_writev:
+            self._ring.start()
+            self._ring.enqueue(_make_ethernet())
+            self._ring.enqueue(_make_ethernet())
+            await self._tick()
 
+        self.assertEqual(
+            mock_writev.call_count,
+            2,
+            msg=(
+                "The drain must attempt every queued frame despite writev OSError. "
+                f"Expected 2 writev calls; got {mock_writev.call_count}."
+            ),
+        )
         self.assertEqual(
             self._ring.os_error_drop_count,
             2,
-            msg="Each os.writev OSError must bump 'os_error_drop_count' by exactly one.",
+            msg="Each writev OSError must bump 'os_error_drop_count' by exactly one.",
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="Frames dropped on OSError must be popped so the queue drains.",
+        )
+
+    async def test__tx_ring__os_error_drop_increments_shared_stats(self) -> None:
+        """
+        Ensure a writev 'OSError' increments the shared
+        'PacketStatsTx.tx_ring__os_error__drop' field when a shared
+        stats object is wired in, keeping the ring property in sync.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        stats = PacketStatsTx()
+        ring = TxRing(fd=self._write_fd, mtu=1500, packet_stats=stats)
+        self.addCleanup(ring.stop)
+
+        with patch(
+            "pmd_pytcp.runtime.tx_ring.io_backend.writev",
+            side_effect=OSError("link down"),
+        ):
+            ring.start()
+            ring.enqueue(_make_ethernet())
+            await self._tick()
+
+        self.assertEqual(
+            stats.tx_ring__os_error__drop,
+            1,
+            msg="The writev OSError must bump the shared PacketStatsTx field.",
+        )
+        self.assertEqual(
+            ring.os_error_drop_count,
+            1,
+            msg="os_error_drop_count property must read the shared stats value.",
+        )
+
+    async def test__tx_ring__drain_writes_all_pending_frames_per_wake(self) -> None:
+        """
+        Ensure a single drain wake writes every frame currently in
+        the TX ring queue, not just one. The drain loops on the
+        deque until it is empty (or the fd would block) — one
+        'call_soon' scheduling per enqueue burst, not one per frame.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        n_frames = 10
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            for _ in range(n_frames):
+                self._ring.enqueue(_make_ethernet())
+            await self._tick()
+
+        self.assertEqual(
+            mock_writev.call_count,
+            n_frames,
+            msg=(
+                f"A single drain wake must write all {n_frames} queued frames "
+                f"in one pass. Got {mock_writev.call_count} writev calls."
+            ),
+        )
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="After the drain the deque must be empty.",
+        )
+
+    async def test__tx_ring__drain_backpressure_arms_writer_and_resumes(self) -> None:
+        """
+        Ensure the EAGAIN backpressure path: when 'io_backend.writev'
+        raises 'BlockingIOError' (kernel buffer full) the drain
+        leaves the frame at the HEAD of the deque (no data loss) and
+        arms the writability callback via 'loop.add_writer'
+        ('_writer_armed' set); once the fd is writable again a drain
+        pass writes the frame and disarms the callback.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        pkt = _make_ethernet()
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            mock_writev.side_effect = BlockingIOError()
+            self._ring.start()
+            self._ring.enqueue(pkt)
+            await self._tick()
+
+            # The frame must survive the failed write attempt at the
+            # head of the queue, with the writability callback armed
+            # to resume the drain.
+            self.assertEqual(
+                len(self._ring._tx_deque),
+                1,
+                msg="A frame hitting EAGAIN must stay queued (no data loss).",
+            )
+            self.assertIs(
+                self._ring._tx_deque[0],
+                pkt,
+                msg="The EAGAIN frame must remain at the HEAD of the deque.",
+            )
+            self.assertTrue(
+                self._ring._writer_armed,
+                msg="EAGAIN must arm the writability callback via add_writer.",
+            )
+
+            # Simulate the fd becoming writable: writev now succeeds
+            # and the resumed drain (the add_writer callback invokes
+            # '_drain'; calling it directly is equivalent and keeps
+            # the test deterministic) writes the frame and disarms.
+            mock_writev.side_effect = None
+            mock_writev.return_value = 64
+            self._ring._drain()
+
+            self.assertEqual(
+                len(self._ring._tx_deque),
+                0,
+                msg="The resumed drain must write the frame that hit EAGAIN.",
+            )
+            self.assertFalse(
+                self._ring._writer_armed,
+                msg="A completed drain must disarm the writability callback.",
+            )
+
+    async def test__tx_ring__drain_writes_raw_frame_verbatim(self) -> None:
+        """
+        Ensure the drain writes a queued raw frame to the TX fd
+        verbatim via 'io_backend.writev', without prepending any
+        ethertype framing prefix.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06payload"
+
+        with patch("pmd_pytcp.runtime.tx_ring.io_backend.writev") as mock_writev:
+            self._ring.start()
+            self._ring.enqueue_raw_frame(frame)
+            await self._tick()
+
+        mock_writev.assert_called_once()
+        fd_arg, buffers_arg = mock_writev.call_args.args
+        self.assertEqual(
+            fd_arg,
+            self._write_fd,
+            msg="io_backend.writev must target the TX ring fd.",
+        )
+        self.assertEqual(
+            b"".join(bytes(b) for b in buffers_arg),
+            frame,
+            msg="A raw frame must be written verbatim, with no framing prefix added.",
         )
 
 
@@ -685,9 +882,9 @@ class TestTxRingDispatchFastPath(_TxRingFixture):
                 ),
             )
 
-    def test__tx_ring__send_one_real_assembler_resolves_via_type_lookup(self) -> None:
+    def test__tx_ring__send_item_real_assembler_resolves_via_type_lookup(self) -> None:
         """
-        Ensure '_send_one' on a real (non-mock) 'EthernetAssembler'
+        Ensure '_send_item' on a real (non-mock) 'EthernetAssembler'
         resolves its dispatch entry via the 'type()' dict-lookup fast
         path: 'dict.get' returns non-None and the 'isinstance' fallback
         loop is not entered. Existing unit tests use 'MagicMock(spec=X)'
@@ -722,577 +919,21 @@ class TestTxRingDispatchFastPath(_TxRingFixture):
 
         with (
             patch.object(tx_ring_module, "_TX_PROTO_DISPATCH", spy_dispatch),
-            patch("pmd_pytcp.runtime.tx_ring.os.writev", return_value=14) as writev,
+            patch("pmd_pytcp.runtime.tx_ring.io_backend.writev", return_value=14) as writev,
         ):
-            sent_ok = self._ring._send_one(real_assembler)
+            sent_ok = self._ring._send_item(real_assembler)
 
         self.assertTrue(
             sent_ok,
-            msg="_send_one on a real EthernetAssembler must return True (success).",
+            msg="_send_item on a real EthernetAssembler must return True (success).",
         )
         self.assertEqual(
             get_calls,
             [EthernetAssembler],
-            msg=("_send_one must call _TX_PROTO_DISPATCH.get exactly once with type(packet); " f"got: {get_calls!r}"),
+            msg=("_send_item must call _TX_PROTO_DISPATCH.get exactly once with type(packet); " f"got: {get_calls!r}"),
         )
         self.assertEqual(
             writev.call_count,
             1,
-            msg="_send_one must invoke os.writev exactly once on a successful dispatch.",
+            msg="_send_item must invoke io_backend.writev exactly once on a successful dispatch.",
         )
-
-
-class TestTxRingDispatch(_TxRingFixture):
-    """
-    The 'TxRing.dispatch' ring-handoff (single-writer) tests. The
-    TX worker thread is the sole executor of a marshaled '_phtx_*'
-    pipeline; 'dispatch' marshals the callable to the worker and
-    blocks for its 'TxStatus' result, except when there is no live
-    worker (unit-test / pre-start path) or the caller IS the worker
-    (re-entrant solicitation), in which case it runs inline.
-    """
-
-    def test__tx_ring__dispatch_runs_inline_when_no_worker(self) -> None:
-        """
-        Ensure 'dispatch' runs the callable inline on the calling
-        thread when the worker has not been started, and returns its
-        'TxStatus'. With no worker to hand off to, blocking would
-        deadlock; running inline preserves the synchronous contract.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ran_on: list[threading.Thread] = []
-
-        def run() -> TxStatus:
-            ran_on.append(threading.current_thread())
-            return TxStatus.PASSED__ETHERNET__TO_TX_RING
-
-        result = self._ring.dispatch(run)
-
-        self.assertEqual(
-            result,
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="dispatch must return the callable's TxStatus when running inline.",
-        )
-        self.assertEqual(
-            ran_on,
-            [threading.current_thread()],
-            msg="With no worker, dispatch must run the callable on the calling thread.",
-        )
-
-    def test__tx_ring__dispatch_marshals_to_worker_thread(self) -> None:
-        """
-        Ensure 'dispatch' from a non-worker thread, with a live
-        worker, executes the callable on the worker thread (not the
-        caller's) and blocks until the worker returns the result.
-        This is the single-writer guarantee: the per-interface
-        '_phtx_*' state writes happen only on the worker thread.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = TxRing(fd=self._write_fd, mtu=1500)
-        ring.start()
-        self.addCleanup(ring.stop)
-
-        ran_on: list[threading.Thread] = []
-
-        def run() -> TxStatus:
-            ran_on.append(threading.current_thread())
-            return TxStatus.PASSED__IP6__TO_TX_RING
-
-        result = ring.dispatch(run)
-
-        self.assertEqual(
-            result,
-            TxStatus.PASSED__IP6__TO_TX_RING,
-            msg="dispatch must block for and return the worker's TxStatus result.",
-        )
-        self.assertEqual(
-            ran_on,
-            [ring._thread],
-            msg="dispatch from a non-worker thread must execute the callable on the worker thread.",
-        )
-
-    def test__tx_ring__dispatch_runs_inline_when_called_from_worker(self) -> None:
-        """
-        Ensure a 'dispatch' issued from within a callable already
-        running on the worker thread (the re-entrant solicitation
-        case — a '_phtx_*' pipeline emitting an ARP/ND probe) runs
-        the nested callable inline rather than re-enqueuing onto its
-        own queue and deadlocking waiting for itself.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = TxRing(fd=self._write_fd, mtu=1500)
-        ring.start()
-        self.addCleanup(ring.stop)
-
-        outer_thread: list[threading.Thread] = []
-        inner_thread: list[threading.Thread] = []
-
-        def inner() -> TxStatus:
-            inner_thread.append(threading.current_thread())
-            return TxStatus.PASSED__IP4__TO_TX_RING
-
-        def outer() -> TxStatus:
-            outer_thread.append(threading.current_thread())
-            return ring.dispatch(inner)
-
-        result = ring.dispatch(outer)
-
-        self.assertEqual(
-            result,
-            TxStatus.PASSED__IP4__TO_TX_RING,
-            msg="A re-entrant dispatch must return the nested callable's result without deadlock.",
-        )
-        self.assertEqual(
-            inner_thread,
-            outer_thread,
-            msg="A re-entrant dispatch must run the nested callable on the same (worker) thread inline.",
-        )
-        self.assertEqual(
-            outer_thread,
-            [ring._thread],
-            msg="The outer marshaled callable must run on the worker thread.",
-        )
-
-    def test__tx_ring__dispatch_propagates_exception_when_marshaled(self) -> None:
-        """
-        Ensure an exception raised by the callable on the worker
-        thread is re-raised to the blocked caller, so 'send_*_packet'
-        surfaces the same error it would have raised running inline.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = TxRing(fd=self._write_fd, mtu=1500)
-        ring.start()
-        self.addCleanup(ring.stop)
-
-        def run() -> TxStatus:
-            raise ValueError("boom")
-
-        with self.assertRaises(ValueError) as ctx:
-            ring.dispatch(run)
-
-        self.assertEqual(
-            str(ctx.exception),
-            "boom",
-            msg="dispatch must re-raise the worker-side exception verbatim to the caller.",
-        )
-
-    def test__tx_ring__dispatch_propagates_exception_when_inline(self) -> None:
-        """
-        Ensure an exception raised by the callable on the inline (no
-        worker) path propagates directly to the caller.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        def run() -> TxStatus:
-            raise ValueError("boom-inline")
-
-        with self.assertRaises(ValueError) as ctx:
-            self._ring.dispatch(run)
-
-        self.assertEqual(
-            str(ctx.exception),
-            "boom-inline",
-            msg="Inline dispatch must propagate the callable's exception unchanged.",
-        )
-
-    def test__tx_ring__loop_executes_request_and_drains_reenqueued_frame(self) -> None:
-        """
-        Ensure the worker loop, on popping a '_TxRequest', executes
-        its callable (which itself enqueues the built frame back onto
-        the same deque) and continues the inner drain to write that
-        frame in the same pass — proving the queue carries both
-        request and built-frame item kinds.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        def _make_ethernet() -> MagicMock:
-            pkt = MagicMock(spec=EthernetAssembler)
-            pkt.__len__.return_value = 64
-            pkt.assemble.side_effect = lambda buffers: buffers.append(as_buffer(b"x" * 64))
-            return pkt
-
-        executed: list[bool] = []
-
-        def run() -> TxStatus:
-            executed.append(True)
-            self._ring.enqueue(_make_ethernet())
-            return TxStatus.PASSED__ETHERNET__TO_TX_RING
-
-        request = tx_ring_module._TxRequest(run)
-        self._ring._tx_deque.append(request)
-        os.eventfd_write(self._ring._tx_event_fd, 1)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        self.assertEqual(
-            executed,
-            [True],
-            msg="The worker loop must execute the _TxRequest callable exactly once.",
-        )
-        self.assertEqual(
-            request.result(),
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="The executed request must expose the callable's TxStatus result.",
-        )
-        mock_writev.assert_called_once()
-        self.assertEqual(
-            len(self._ring._tx_deque),
-            0,
-            msg="The re-enqueued built frame must be drained in the same loop pass.",
-        )
-
-
-class TestTxRingDispatchAsync(_TxRingFixture):
-    """
-    The 'TxRing.dispatch_async' fire-and-forget tests (Phase 4b). The
-    caller enqueues the marshaled '_phtx_*' call and returns
-    immediately without blocking for the worker's result; the worker
-    still runs it on its own thread (single-writer preserved).
-    """
-
-    def test__tx_ring__dispatch_async_runs_inline_when_no_worker(self) -> None:
-        """
-        Ensure 'dispatch_async' runs the callable inline on the
-        calling thread when no worker is live, returning None — the
-        unit-test / boot path with no worker to hand off to.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ran_on: list[threading.Thread] = []
-
-        def run() -> TxStatus:
-            ran_on.append(threading.current_thread())
-            return TxStatus.PASSED__ETHERNET__TO_TX_RING
-
-        self._ring.dispatch_async(run)
-
-        self.assertEqual(
-            ran_on,
-            [threading.current_thread()],
-            msg="With no worker, dispatch_async must run the callable on the calling thread.",
-        )
-
-    def test__tx_ring__dispatch_async_marshals_to_worker_without_blocking(self) -> None:
-        """
-        Ensure 'dispatch_async' from a non-worker thread hands the
-        callable to the worker thread for execution and returns None
-        immediately rather than waiting for a result.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = TxRing(fd=self._write_fd, mtu=1500)
-        ring.start()
-        self.addCleanup(ring.stop)
-
-        ran_on: list[threading.Thread] = []
-        done = threading.Event()
-
-        def run() -> TxStatus:
-            ran_on.append(threading.current_thread())
-            done.set()
-            return TxStatus.PASSED__IP6__TO_TX_RING
-
-        ring.dispatch_async(run)
-
-        self.assertTrue(
-            done.wait(timeout=2.0),
-            msg="The worker must eventually execute the fire-and-forget callable.",
-        )
-        self.assertEqual(
-            ran_on,
-            [ring._thread],
-            msg="dispatch_async must execute the callable on the worker thread.",
-        )
-
-    def test__tx_ring__dispatch_async_swallows_exception(self) -> None:
-        """
-        Ensure an exception raised by a fire-and-forget callable is
-        swallowed (logged, not propagated) — there is no caller
-        blocked to receive it, and a raise must not kill the TX loop.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        def run() -> TxStatus:
-            raise ValueError("boom-async")
-
-        # Must not raise (inline path, no worker) — the call returning
-        # at all is the assertion; a propagated exception fails the test.
-        self._ring.dispatch_async(run)
-
-
-class TestTxRingRawFrame(_TxRingFixture):
-    """
-    The 'TxRing.enqueue_raw_frame' / verbatim-frame TX tests.
-    """
-
-    def test__tx_ring__enqueue_raw_frame_appends(self) -> None:
-        """
-        Ensure 'enqueue_raw_frame' places the verbatim frame bytes on
-        the internal deque (the AF_PACKET egress primitive that skips
-        the assembler / IP layers).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06payload"
-        self._ring.enqueue_raw_frame(frame)
-
-        self.assertEqual(
-            list(self._ring._tx_deque),
-            [frame],
-            msg="enqueue_raw_frame() must place the verbatim frame on the TX ring.",
-        )
-
-    def test__tx_ring__enqueue_raw_frame_drops_when_full(self) -> None:
-        """
-        Ensure 'enqueue_raw_frame' silently drops the frame when the
-        deque is already at capacity.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = TxRing(fd=self._write_fd, mtu=1500, queue_max_size=1)
-        self.addCleanup(ring._stop)
-        ring.enqueue_raw_frame(b"first-frame")
-
-        ring.enqueue_raw_frame(b"second-frame")  # must not raise
-
-        self.assertEqual(
-            len(ring._tx_deque),
-            1,
-            msg="enqueue_raw_frame() on a full TX ring must drop the new frame.",
-        )
-
-    def test__tx_ring__loop_writes_raw_frame_verbatim(self) -> None:
-        """
-        Ensure the subsystem loop writes a queued raw frame to the TX fd
-        verbatim via 'os.writev', without prepending any ethertype
-        framing prefix.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        frame = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06payload"
-        self._ring.enqueue_raw_frame(frame)
-
-        with patch("pmd_pytcp.runtime.tx_ring.os.writev") as mock_writev:
-            self._ring._subsystem_loop()
-
-        mock_writev.assert_called_once()
-        fd_arg, buffers_arg = mock_writev.call_args.args
-        self.assertEqual(fd_arg, self._write_fd, msg="os.writev must target the TX ring fd.")
-        self.assertEqual(
-            b"".join(bytes(b) for b in buffers_arg),
-            frame,
-            msg="A raw frame must be written verbatim, with no framing prefix added.",
-        )
-
-
-class TestTxRingTeardownRobustness(_TxRingFixture):
-    """
-    The 'TxRing' teardown-race tests. 'dispatch' must never park a
-    producer forever on a request the worker exited without
-    servicing — the producer may hold its TCP session's FSM lock,
-    and a producer wedged on 'request.wait()' then wedges every
-    later 'tcp_fsm()' entry (including 'close()' from an application
-    thread). '_stop' must likewise service any marshaled requests
-    the worker left behind on the deque.
-    """
-
-    def test__tx_ring__dispatch_falls_back_inline_when_worker_exits_unserviced(self) -> None:
-        """
-        Ensure a 'dispatch' that marshaled its request to a live
-        worker falls back to inline execution when that worker exits
-        without servicing it (the 'stack.stop()' teardown race:
-        alive at the 'is_alive()' check, gone before the drain).
-        The request must also be reclaimed from the deque so a
-        worker restart cannot execute it a second time.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        release = threading.Event()
-        fake_worker = threading.Thread(target=release.wait)
-        fake_worker.start()
-        self.addCleanup(fake_worker.join)
-        self.addCleanup(release.set)
-        # A "worker" that is alive at dispatch's entry check but
-        # exits (via 'release') without ever draining the deque.
-        self._ring._thread = fake_worker
-        threading.Timer(0.05, release.set).start()
-
-        ran_on: list[threading.Thread] = []
-
-        def run() -> TxStatus:
-            ran_on.append(threading.current_thread())
-            return TxStatus.PASSED__ETHERNET__TO_TX_RING
-
-        result = self._ring.dispatch(run)
-
-        self.assertEqual(
-            result,
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="dispatch must return the callable's TxStatus after the inline fallback.",
-        )
-        self.assertEqual(
-            ran_on,
-            [threading.current_thread()],
-            msg="The unserviced request must run inline on the calling thread.",
-        )
-        self.assertEqual(
-            len(self._ring._tx_deque),
-            0,
-            msg="The unserviced request must be reclaimed from the deque (no double execution).",
-        )
-
-    def test__tx_ring__stop_services_leftover_marshaled_requests(self) -> None:
-        """
-        Ensure '_stop' executes any marshaled '_TxRequest' the worker
-        left on the deque (enqueued between the worker's last drain
-        and its exit), setting the blocking request's event so no
-        producer stays parked across stack teardown.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        executed: list[int] = []
-
-        def run() -> TxStatus:
-            executed.append(1)
-            return TxStatus.PASSED__IP6__TO_TX_RING
-
-        request = tx_ring_module._TxRequest(run)
-        self._ring._tx_deque.append(request)
-
-        self._ring._stop()
-
-        self.assertEqual(
-            executed,
-            [1],
-            msg="_stop must execute a leftover marshaled request exactly once.",
-        )
-        self.assertTrue(
-            request.wait(timeout=0),
-            msg="_stop must set the leftover request's event so its producer unblocks.",
-        )
-        self.assertEqual(
-            request.result(),
-            TxStatus.PASSED__IP6__TO_TX_RING,
-            msg="The leftover request's result must be handed back to the producer.",
-        )
-        self.assertEqual(
-            len(self._ring._tx_deque),
-            0,
-            msg="_stop must leave the deque drained.",
-        )
-
-    def test__tx_ring__dispatch_reclaims_request_on_closed_eventfd(self) -> None:
-        """
-        Ensure the closed-eventfd fallback ('eventfd_write' raising
-        'OSError' mid-stop) removes the already-appended request from
-        the deque before running inline, so a worker restart cannot
-        execute it a second time.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        release = threading.Event()
-        fake_worker = threading.Thread(target=release.wait)
-        fake_worker.start()
-        self.addCleanup(fake_worker.join)
-        self.addCleanup(release.set)
-        self._ring._thread = fake_worker
-
-        with patch(
-            "pmd_pytcp.runtime.tx_ring.io_backend.eventfd_write",
-            side_effect=OSError("eventfd closed"),
-        ):
-            result = self._ring.dispatch(lambda: TxStatus.PASSED__ETHERNET__TO_TX_RING)
-
-        self.assertEqual(
-            result,
-            TxStatus.PASSED__ETHERNET__TO_TX_RING,
-            msg="dispatch must run inline and return the TxStatus when the eventfd is closed.",
-        )
-        self.assertEqual(
-            len(self._ring._tx_deque),
-            0,
-            msg="The request must be reclaimed from the deque on the closed-eventfd fallback.",
-        )
-
-    def test__tx_ring__dispatch_async_reclaims_request_on_closed_eventfd(self) -> None:
-        """
-        Ensure the fire-and-forget path's closed-eventfd fallback
-        also reclaims the request from the deque before running it
-        inline, mirroring the blocking path (no double execution on
-        a worker restart).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        release = threading.Event()
-        fake_worker = threading.Thread(target=release.wait)
-        fake_worker.start()
-        self.addCleanup(fake_worker.join)
-        self.addCleanup(release.set)
-        self._ring._thread = fake_worker
-
-        executed: list[int] = []
-
-        def run() -> TxStatus:
-            executed.append(1)
-            return TxStatus.PASSED__ETHERNET__TO_TX_RING
-
-        with patch(
-            "pmd_pytcp.runtime.tx_ring.io_backend.eventfd_write",
-            side_effect=OSError("eventfd closed"),
-        ):
-            self._ring.dispatch_async(run)
-
-        self.assertEqual(
-            executed,
-            [1],
-            msg="dispatch_async must run the request inline exactly once on the closed-eventfd fallback.",
-        )
-        self.assertEqual(
-            len(self._ring._tx_deque),
-            0,
-            msg="The request must be reclaimed from the deque on the closed-eventfd fallback.",
-        )
-
-    def test__tx_ring__loop_survives_select_oserror(self) -> None:
-        """
-        Ensure the TX loop's 'select' on the eventfd raising
-        'OSError' (the eventfd closed under a still-running worker —
-        a '_stop'/loop race; WinError 10038 on Windows) returns
-        cleanly instead of killing the worker thread with an
-        unhandled exception.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with (
-            patch(
-                "pmd_pytcp.runtime.tx_ring.select.select",
-                side_effect=OSError(10038, "An operation was attempted on something that is not a socket"),
-            ),
-            patch("pmd_pytcp.runtime.tx_ring.time.sleep") as mock_sleep,
-        ):
-            # Must not propagate the OSError.
-            self._ring._subsystem_loop()
-
-        mock_sleep.assert_called_once()

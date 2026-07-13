@@ -57,6 +57,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing import cast
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock, patch
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -80,7 +81,6 @@ from pmd_pytcp.tests.lib.network_testcase import (
     STACK__MAC_ADDRESS,
     NetworkTestCase,
 )
-from pmd_pytcp._compat import as_buffer
 
 __all__ = (
     "ArpTestCase",
@@ -101,7 +101,7 @@ __all__ = (
 )
 
 
-class ArpTestCase(NetworkTestCase):
+class ArpTestCase(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     Base case for ARP integration tests.
     """
@@ -176,7 +176,7 @@ class ArpTestCase(NetworkTestCase):
         'dt' seconds.
         """
 
-        self._monotonic_t += as_buffer(dt)
+        self._monotonic_t += dt
 
     # -- frame helpers ----------------------------------------------------
 
@@ -282,7 +282,7 @@ class ArpTestCase(NetworkTestCase):
 
     # -- DAD flow driver --------------------------------------------------
 
-    def _drive_dad(
+    async def _drive_dad(
         self,
         *,
         probe_success: bool = True,
@@ -304,4 +304,4 @@ class ArpTestCase(NetworkTestCase):
             address=address,
             conflict_mac=conflict_mac,
         )
-        self._packet_handler._create_stack_ip4_addressing()
+        await self._packet_handler._create_stack_ip4_addressing()

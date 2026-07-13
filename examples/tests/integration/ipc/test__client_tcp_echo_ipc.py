@@ -29,35 +29,37 @@
 """
 End-to-end test for the out-of-process TCP echo example client.
 
-Runs 'examples/client__tcp_echo_ipc.py' (which uses 'pytcp.client' and
+Runs 'examples/client__tcp_echo_ipc.py' (which uses 'pmd_pytcp.client' and
 never boots the stack) against a live daemon, driving the connect
 handshake and the echo round trip on the TAP wire — the Phase-5
 user-visible payoff: a socket example that is a separate-process client
 of the stack.
 
-The example's CLI blocks (connect, then recv) on a background thread
-while the main thread drives the wire.
+The example's CLI is a blocking 'asyncio.run' entry point, so it runs on
+a background thread with its own event loop; the test drives the TAP wire
+on the stack's loop, yielding between pokes so the daemon (and the
+client thread's loop) make progress.
 
 examples/tests/integration/ipc/test__client_tcp_echo_ipc.py
 
 ver 3.0.7
 """
 
+import asyncio
 import os
 import tempfile
 import threading
-import time
 from typing import override
 
 from click.testing import CliRunner, Result
 
 from examples.client__tcp_echo_ipc import cli
 from examples.lib.payload import payload
-from pytcp import stack
-from pytcp.ipc.ipc__server import IpcServer
-from pytcp.tests.lib.network_testcase import HOST_A__IP4_ADDRESS, STACK__IP4_HOST
-from pytcp.tests.lib.tcp_segment_factory import build_tcp4
-from pytcp.tests.lib.tcp_testcase import TcpTestCase
+from pmd_pytcp import stack
+from pmd_pytcp.ipc.ipc__server import IpcServer
+from pmd_pytcp.tests.lib.network_testcase import HOST_A__IP4_ADDRESS, STACK__IP4_HOST
+from pmd_pytcp.tests.lib.tcp_segment_factory import build_tcp4
+from pmd_pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 _REMOTE_PORT: int = 7
 _LOCAL_ISS: int = 3000
@@ -97,20 +99,30 @@ class TestExampleTcpEchoIpc(TcpTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mocked TCP runtime (via 'TcpTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Build the mocked TCP runtime (via 'TcpTestCase', sync 'setUp' runs
+        first through the MRO) then stand up an 'IpcServer' on a temp
+        AF_UNIX path against it. The server needs the running loop, hence
+        the async flavour.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
-        self._tmp_dir = tempfile.mkdtemp(prefix="pytcp-ipc-")
+        self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
-        self._socket_path = os.path.join(self._tmp_dir, "pytcp.sock")
+        self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -123,27 +135,29 @@ class TestExampleTcpEchoIpc(TcpTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _wait_for_tx(self, *, want_payload: bool) -> int:
+    async def _wait_for_tx(self, *, want_payload: bool) -> int:
         """
-        Block (nudging the virtual clock) until the stack emits a segment
-        to the peer port — a SYN ('want_payload' False) or a data segment
-        ('want_payload' True) — and return its source (ephemeral) port.
+        Yield to the loop (nudging the virtual clock) until the stack
+        emits a segment to the peer port — a SYN ('want_payload' False)
+        or a data segment ('want_payload' True) — and return its source
+        (ephemeral) port. Awaiting lets the daemon's connection task (and
+        the client thread's own loop) make progress between pokes.
         """
 
-        deadline = time.monotonic() + _DEADLINE__SEC
-        while time.monotonic() < deadline:
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
+        while asyncio.get_running_loop().time() < deadline:
             for frame in list(self._frames_tx):
                 probe = self._parse_tx(frame)
                 if probe.dport == _REMOTE_PORT and bool(probe.payload) == want_payload:
                     return probe.sport
             self._advance(ms=1)
-            time.sleep(0.005)
+            await asyncio.sleep(0.005)
         raise AssertionError("Expected outbound segment never appeared.")
 
-    def test__example_tcp_echo_ipc__out_of_process_round_trip(self) -> None:
+    async def test__example_tcp_echo_ipc__out_of_process_round_trip(self) -> None:
         """
         Ensure the example client — a separate-process consumer using
-        'pytcp.client' with no stack boot — connects through the daemon
+        'pmd_pytcp.client' with no stack boot — connects through the daemon
         and completes an echo round trip with a peer on the wire,
         returning a clean exit.
 
@@ -179,7 +193,7 @@ class TestExampleTcpEchoIpc(TcpTestCase):
 
         # Connect handshake: the client's blocking connect emits a SYN
         # from an ephemeral port; complete it with a synthetic SYN-ACK.
-        local_port = self._wait_for_tx(want_payload=False)
+        local_port = await self._wait_for_tx(want_payload=False)
         self._drive_rx(
             frame=build_tcp4(
                 src_ip=HOST_A__IP4_ADDRESS,
@@ -195,7 +209,7 @@ class TestExampleTcpEchoIpc(TcpTestCase):
 
         # The client now send()s the message; observe it on the wire and
         # echo it straight back so the client's recv() unblocks.
-        self._wait_for_tx(want_payload=True)
+        await self._wait_for_tx(want_payload=True)
         self._drive_rx(
             frame=build_tcp4(
                 src_ip=HOST_A__IP4_ADDRESS,
@@ -210,7 +224,15 @@ class TestExampleTcpEchoIpc(TcpTestCase):
             )
         )
 
-        client_thread.join(timeout=_DEADLINE__SEC)
+        # The client's teardown (close over IPC, then the CLI's own loop
+        # winding down) is serviced by the daemon on THIS loop, so keep
+        # yielding — and nudging the virtual clock — until the client
+        # thread exits rather than blocking the loop on a thread join.
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
+        while client_thread.is_alive() and asyncio.get_running_loop().time() < deadline:
+            self._advance(ms=1)
+            await asyncio.sleep(0.005)
+
         self.assertFalse(client_thread.is_alive(), msg="The example client must finish after the echo round trip.")
 
         self.assertEqual(

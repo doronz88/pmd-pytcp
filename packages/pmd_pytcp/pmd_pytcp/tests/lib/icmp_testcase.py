@@ -43,6 +43,7 @@ from __future__ import annotations
 
 from pmd_pytcp._compat import dataclass
 from typing import Any, cast
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import _patch, patch
 
 from pmd_net_addr import Ip4Address, Ip6Address, MacAddress
@@ -158,7 +159,7 @@ class Icmp6Probe:
     message: Icmp6Message
 
 
-class IcmpTestCase(NetworkTestCase):
+class IcmpTestCase(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     Base class for ICMP-focused integration tests. Adds a deterministic
     'FakeTimer' replacement for 'stack.timer' on top of the parent

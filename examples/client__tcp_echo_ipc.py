@@ -29,12 +29,12 @@ This module contains an out-of-process TCP echo client. Unlike
 'client__tcp_echo.py' (a subsystem co-resident with the stack), this
 example does not boot the stack at all: it connects to a running PyTCP
 daemon over its AF_UNIX control socket and opens a TCP socket through
-'pytcp.client', exactly the way a normal process talks to the kernel.
+'pmd_pytcp.client', exactly the way a normal process talks to the kernel.
 
 Start the daemon first (it owns the TAP interface):
 
     sudo make tap7 && sudo make bridge
-    make daemon            # examples/stack.py --ipc-socket /tmp/pytcp.sock
+    make daemon            # examples/stack.py --ipc-socket /tmp/pmd_pytcp.sock
 
 then run this client against a remote echo server:
 
@@ -45,22 +45,22 @@ examples/client__tcp_echo_ipc.py
 ver 3.0.7
 """
 
-import time
+import asyncio
 from typing import cast
 
 import click
 
 from examples.lib.payload import payload
-from net_addr import ClickTypeIpAddress, Ip4Address, Ip6Address
-from pytcp.client import ClientTcpSocket, connect
-from pytcp.socket import AddressFamily, SocketType
+from pmd_net_addr import ClickTypeIpAddress, Ip4Address, Ip6Address
+from pmd_pytcp.client import ClientTcpSocket, connect
+from pmd_pytcp.socket import AddressFamily, SocketType
 
 
 @click.command()
 @click.option(
     "--ipc-socket",
     "ipc_socket",
-    default="/tmp/pytcp.sock",
+    default="/tmp/pmd_pytcp.sock",
     show_default=True,
     help="AF_UNIX control socket the PyTCP daemon listens on.",
 )
@@ -116,26 +116,52 @@ def cli(
     PyTCP daemon, without booting the stack in this process.
     """
 
+    asyncio.run(
+        _echo(
+            ipc_socket=ipc_socket,
+            message_count=message_count,
+            message_delay=message_delay,
+            message_size=message_size,
+            remote_ip_address=remote_ip_address,
+            remote_port=remote_port,
+        )
+    )
+
+
+async def _echo(
+    *,
+    ipc_socket: str,
+    message_count: int,
+    message_delay: float,
+    message_size: int,
+    remote_ip_address: Ip6Address | Ip4Address,
+    remote_port: int,
+) -> None:
+    """
+    Run the echo round trips over the daemon's control socket — the
+    consumer library is asyncio-native ('docs/refactor/pure_asyncio.md').
+    """
+
     family = AddressFamily.INET6 if isinstance(remote_ip_address, Ip6Address) else AddressFamily.INET4
     message = payload(length=message_size)
 
-    with connect(socket_path=ipc_socket) as client:
-        sock = cast(ClientTcpSocket, client.socket(family, SocketType.STREAM))
-        sock.connect((str(remote_ip_address), remote_port))
+    async with await connect(socket_path=ipc_socket) as client:
+        sock = cast(ClientTcpSocket, await client.socket(family, SocketType.STREAM))
+        await sock.connect((str(remote_ip_address), remote_port))
         click.echo(f"Connected to {remote_ip_address}, port {remote_port} (via daemon {ipc_socket}).")
 
         try:
             for index in range(message_count):
-                sock.send(message)
+                await sock.send(message)
                 click.echo(f"Sent {len(message)} bytes ({index + 1}/{message_count}).")
-                echo = sock.recv(len(message))
+                echo = await sock.recv(len(message))
                 if not echo:
                     click.echo("Remote closed the connection.")
                     break
                 click.echo(f"Received {len(echo)} bytes back.")
-                time.sleep(message_delay)
+                await asyncio.sleep(message_delay)
         finally:
-            sock.close()
+            await sock.close()
             click.echo("Closed the connection.")
 
 

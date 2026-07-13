@@ -186,7 +186,7 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
             msg="use_tempaddr=0 must NOT regenerate temp addresses.",
         )
 
-    def test__icmp6__nd__temp_addr_regen__creates_second_entry(self) -> None:
+    async def test__icmp6__nd__temp_addr_regen__creates_second_entry(self) -> None:
         """
         Ensure regen mints a new temp entry alongside the
         existing one when the existing entry is approaching
@@ -208,6 +208,7 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
         with sysctl_module.override("icmp6.default.use_tempaddr", 1):
             with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._icmp6_regen_temp_addresses()
+                await self._settle_dad_tasks()
 
         entries = self._packet_handler._icmp6_temp_addresses
         # Two entries for the same prefix now.
@@ -295,7 +296,7 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
             msg="Regen must not pile up entries when a fresh sibling already exists.",
         )
 
-    def test__icmp6__nd__temp_addr_regen__multiple_prefixes_independent(self) -> None:
+    async def test__icmp6__nd__temp_addr_regen__multiple_prefixes_independent(self) -> None:
         """
         Ensure regen handles each prefix independently — a
         prefix that needs regen gets one, a prefix that
@@ -321,6 +322,7 @@ class TestIcmp6Nd__TempAddrRegen__Regenerates(NdTestCase):
         with sysctl_module.override("icmp6.default.use_tempaddr", 1):
             with sysctl_module.override("icmp6.default.dad_transmits", 0):
                 self._packet_handler._icmp6_regen_temp_addresses()
+                await self._settle_dad_tasks()
 
         # PREFIX_A got a regen (now 2 entries).
         a_entries = [t for t in self._packet_handler._icmp6_temp_addresses if t.prefix == PREFIX_A]

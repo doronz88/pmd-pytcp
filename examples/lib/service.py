@@ -25,19 +25,23 @@
 """
 This module contains the 'user space' generic service base class used in examples.
 
+A service is one asyncio task ('_task__service') on the stack's event
+loop ('docs/refactor/pure_asyncio.md'); the socket API it drives is the
+async surface ('await sock.recv/recvfrom/accept', sync 'bind'/'listen').
+
 examples/lib/service.py
 
 ver 3.0.7
 """
 
-import threading
 from abc import abstractmethod
 from collections.abc import Callable
 from typing import override
 
 from examples.lib.subsystem import Subsystem
-from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, IpAddress
-from pytcp.socket import socket
+from pmd_net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, IpAddress
+from pmd_pytcp._compat import wait_event
+from pmd_pytcp.socket import socket
 
 # Delay between failed service-socket bind attempts. A static
 # local address is not owned by the stack until RFC 5227 ACD (or
@@ -56,29 +60,28 @@ class Service(Subsystem):
     _local_ip_address: IpAddress
     _local_port: int
 
-    _event__stop_subsystem: threading.Event
-
     @override
     def start(self) -> None:
         """
-        Start the service.
+        Start the service (spawns the service task; requires a running
+        loop).
         """
 
         self._log("Starting the service.")
 
         self._event__stop_subsystem.clear()
 
-        threading.Thread(target=self._thread__service).start()
+        self._spawn(self._task__service())
 
     @override
     def stop(self) -> None:
         """
-        Stop the service thread.
+        Stop the service task.
         """
 
         self._log("Stopping the service.")
 
-        self._event__stop_subsystem.set()
+        super().stop()
 
     def _get_service_socket(self) -> socket | None:
         """
@@ -100,7 +103,7 @@ class Service(Subsystem):
 
         return service_socket
 
-    def _acquire_service_socket(self) -> socket | None:
+    async def _acquire_service_socket(self) -> socket | None:
         """
         Create and bind the service socket, retrying until the
         bind succeeds or the subsystem is stopped. The configured
@@ -113,20 +116,20 @@ class Service(Subsystem):
         while not self._event__stop_subsystem.is_set():
             if service_socket := self._get_service_socket():
                 return service_socket
-            self._event__stop_subsystem.wait(timeout=SERVICE_SOCKET_RETRY__SEC)
+            await wait_event(self._event__stop_subsystem, SERVICE_SOCKET_RETRY__SEC)
 
         return None
 
     @abstractmethod
-    def _thread__service(self) -> None:
+    async def _task__service(self) -> None:
         """
-        Service thread.
+        Service task.
         """
 
         raise NotImplementedError
 
     @abstractmethod
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         Service logic handler.
         """

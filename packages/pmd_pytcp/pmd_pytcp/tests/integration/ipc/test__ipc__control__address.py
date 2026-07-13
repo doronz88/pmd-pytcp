@@ -42,7 +42,7 @@ class TestIpcControlAddress(IpcControlTestCase):
     The out-of-process address control-mirror tests.
     """
 
-    def test__ipc__control__address_list_matches_in_process(self) -> None:
+    async def test__ipc__control__address_list_matches_in_process(self) -> None:
         """
         Ensure an out-of-process list_ifaddrs returns the same interface
         addresses the in-process API reports, so Ip4IfAddr / Ip6IfAddr
@@ -51,15 +51,15 @@ class TestIpcControlAddress(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.address.interface(self._ifindex).list_ifaddrs(),
+            await client.address.interface(self._ifindex).list_ifaddrs(),
             stack.address.interface(self._ifindex).list_ifaddrs(),
             msg="A client list_ifaddrs must match the in-process interface addresses.",
         )
 
-    def test__ipc__control__address_list_family_filter_matches_in_process(self) -> None:
+    async def test__ipc__control__address_list_family_filter_matches_in_process(self) -> None:
         """
         Ensure an out-of-process list_ifaddrs filtered by address family
         matches the in-process family-filtered result.
@@ -67,10 +67,10 @@ class TestIpcControlAddress(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.address.interface(self._ifindex).list_ifaddrs(family=AddressFamily.INET4),
+            await client.address.interface(self._ifindex).list_ifaddrs(family=AddressFamily.INET4),
             stack.address.interface(self._ifindex).list_ifaddrs(family=AddressFamily.INET4),
             msg="A client family-filtered list_ifaddrs must match the in-process result.",
         )

@@ -34,11 +34,11 @@ peer simulated on the TAP wire, and exchanges data over its real
 descriptor — the full data plane (control RPC + SCM_RIGHTS data channel +
 bridge pump) against the live stack.
 
-The client's blocking 'connect()' is served on the daemon dispatch thread
-(which blocks in 'TcpSession.connect'), so the test issues 'connect()' on
-a background thread and drives the synthetic SYN-ACK from the main thread;
-the two are different threads, so the handshake completes without
-deadlock.
+The client's 'connect()' coroutine is served on the daemon dispatch task
+(which awaits the handshake in 'TcpSession.connect'), so the test spawns
+'connect()' as a task and drives the synthetic SYN-ACK on the same loop;
+the two cooperate without deadlock because the wire poke yields to the
+daemon task between injections.
 
 pmd_pytcp/tests/integration/ipc/test__ipc__echo.py
 
@@ -47,10 +47,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-import threading
-import time
 from typing import cast
 from typing_extensions import override
 
@@ -101,20 +100,30 @@ class TestIpcEcho(TcpTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mocked TCP runtime (via 'TcpTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Build the mocked TCP runtime (via 'TcpTestCase', sync 'setUp' runs
+        first through the MRO) then stand up an 'IpcServer' on a temp
+        AF_UNIX path against it. The server needs the running loop, hence
+        the async flavour.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -127,51 +136,46 @@ class TestIpcEcho(TcpTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 
-    def _wait_for_local_syn(self) -> None:
+    async def _wait_for_local_syn(self) -> None:
         """
-        Block until the daemon has emitted the active-open SYN from the
-        bound local port (so the session is in SYN-SENT and will accept
-        the synthetic SYN-ACK), nudging the virtual clock as it waits.
+        Yield to the loop until the daemon has emitted the active-open
+        SYN from the bound local port (so the session is in SYN-SENT and
+        will accept the synthetic SYN-ACK), nudging the virtual clock as
+        it waits.
         """
 
-        deadline = time.monotonic() + _DEADLINE__SEC
-        while time.monotonic() < deadline:
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
+        while asyncio.get_running_loop().time() < deadline:
             for frame in list(self._frames_tx):
                 probe = self._parse_tx(frame)
                 if probe.sport == _LOCAL_PORT and "SYN" in probe.flags and "ACK" not in probe.flags:
                     return
             self._advance(ms=1)
-            time.sleep(0.005)
+            await asyncio.sleep(0.005)
         raise AssertionError("Daemon did not emit the active-open SYN.")
 
-    def _drive_handshake(self, sock: ClientTcpSocket) -> None:
+    async def _drive_handshake(self, sock: ClientTcpSocket) -> None:
         """
-        Drive 'sock' to ESTABLISHED: issue the blocking connect on a
-        background thread, wait for the local SYN, inject the synthetic
-        SYN-ACK, and join the connect thread.
+        Drive 'sock' to ESTABLISHED: spawn the connect coroutine as a
+        task, wait for the local SYN, inject the synthetic SYN-ACK, and
+        await the connect task.
         """
 
         self._force_iss(_ISS)
-        sock.bind(("0.0.0.0", _LOCAL_PORT))
+        await sock.bind(("0.0.0.0", _LOCAL_PORT))
 
-        connect_thread = threading.Thread(
-            target=sock.connect,
-            args=((str(HOST_A__IP4_ADDRESS), _REMOTE_PORT),),
-            name="echo-connect",
-        )
-        connect_thread.start()
-        self.addCleanup(connect_thread.join)
+        connect_task = asyncio.ensure_future(sock.connect((str(HOST_A__IP4_ADDRESS), _REMOTE_PORT)))
 
-        self._wait_for_local_syn()
+        await self._wait_for_local_syn()
         self._drive_rx(
             frame=build_tcp4(
                 src_ip=HOST_A__IP4_ADDRESS,
@@ -184,11 +188,7 @@ class TestIpcEcho(TcpTestCase):
                 win=_PEER_WIN,
             )
         )
-        connect_thread.join(timeout=_DEADLINE__SEC)
-        self.assertFalse(
-            connect_thread.is_alive(),
-            msg="The client connect() must return once the SYN-ACK is driven.",
-        )
+        await asyncio.wait_for(connect_task, timeout=_DEADLINE__SEC)
 
     def _drive_peer_data(self, *, seq: int, payload: bytes) -> None:
         """
@@ -210,7 +210,7 @@ class TestIpcEcho(TcpTestCase):
             )
         )
 
-    def test__echo__client_receives_peer_data(self) -> None:
+    async def test__echo__client_receives_peer_data(self) -> None:
         """
         Ensure data a peer sends on the wire is delivered to the
         out-of-process client over its real data-channel descriptor.
@@ -219,21 +219,20 @@ class TestIpcEcho(TcpTestCase):
         user).
         """
 
-        client = self._connect()
-        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
-        self.addCleanup(sock.close)
-        sock.settimeout(_DEADLINE__SEC)
+        client = await self._connect()
+        sock = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
+        self.addAsyncCleanup(sock.close)
 
-        self._drive_handshake(sock)
+        await self._drive_handshake(sock)
         self._drive_peer_data(seq=_PEER_ISS + 1, payload=b"ping")
 
         self.assertEqual(
-            sock.recv(64),
+            await asyncio.wait_for(sock.recv(64), timeout=_DEADLINE__SEC),
             b"ping",
             msg="The client must receive peer data over its real data-channel fd.",
         )
 
-    def test__echo__client_data_reaches_the_wire(self) -> None:
+    async def test__echo__client_data_reaches_the_wire(self) -> None:
         """
         Ensure data the out-of-process client writes to its descriptor is
         carried by the stack onto the wire as a TCP data segment.
@@ -241,17 +240,16 @@ class TestIpcEcho(TcpTestCase):
         Reference: RFC 9293 §3.10 (SEND call — user data to the network).
         """
 
-        client = self._connect()
-        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
-        self.addCleanup(sock.close)
-        sock.settimeout(_DEADLINE__SEC)
+        client = await self._connect()
+        sock = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
+        self.addAsyncCleanup(sock.close)
 
-        self._drive_handshake(sock)
-        sock.send(b"pong")
+        await self._drive_handshake(sock)
+        await sock.send(b"pong")
 
-        deadline = time.monotonic() + _DEADLINE__SEC
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
         seen_payload = b""
-        while time.monotonic() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             for frame in list(self._frames_tx):
                 probe = self._parse_tx(frame)
                 if probe.sport == _LOCAL_PORT and probe.payload:
@@ -260,7 +258,7 @@ class TestIpcEcho(TcpTestCase):
             if seen_payload:
                 break
             self._advance(ms=10)
-            time.sleep(0.01)
+            await asyncio.sleep(0.01)
 
         self.assertEqual(
             seen_payload,

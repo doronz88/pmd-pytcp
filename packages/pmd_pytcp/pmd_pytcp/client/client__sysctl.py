@@ -49,44 +49,44 @@ class ClientSysctl(_ClientApiProxy):
 
     _api_name = "sysctl"
 
-    def get(self, key: str) -> Any:
+    async def get(self, key: str) -> Any:
         """
         Get the current value of the sysctl knob 'key'.
         """
 
-        return self._call("get", {"key": key})
+        return await self._call("get", {"key": key})
 
-    def set(self, key: str, value: Any) -> None:
+    async def set(self, key: str, value: Any) -> None:
         """
         Set the sysctl knob 'key' to 'value'.
         """
 
-        self._call("set", {"key": key, "value": value})
+        await self._call("set", {"key": key, "value": value})
 
-    def list_keys(self) -> list[str]:
+    async def list_keys(self) -> list[str]:
         """
         List every registered sysctl key.
         """
 
-        return cast(list[str], self._call("list_keys", {}))
+        return cast(list[str], await self._call("list_keys", {}))
 
-    def describe(self, key: str) -> str:
+    async def describe(self, key: str) -> str:
         """
         Describe the sysctl knob 'key'.
         """
 
-        return cast(str, self._call("describe", {"key": key}))
+        return cast(str, await self._call("describe", {"key": key}))
 
-    def snapshot(self) -> dict[str, Any]:
+    async def snapshot(self) -> dict[str, Any]:
         """
         Return a snapshot of every sysctl key and its current value.
         """
 
-        return cast(dict[str, Any], self._call("snapshot", {}))
+        return cast(dict[str, Any], await self._call("snapshot", {}))
 
-    def reset_to_defaults(self) -> None:
+    async def reset_to_defaults(self) -> None:
         """
         Reset every sysctl knob to its registered default.
         """
 
-        self._call("reset_to_defaults", {})
+        await self._call("reset_to_defaults", {})

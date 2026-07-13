@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import cast
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
 from pmd_net_addr import MacAddress
@@ -88,7 +88,7 @@ class TestIp4LinkLocalState(TestCase):
         )
 
 
-class TestIp4LinkLocalInit(TestCase):
+class TestIp4LinkLocalInit(IsolatedAsyncioTestCase):
     """
     The 'Ip4LinkLocal' INIT-state tests — Phase 1 covers
     candidate selection only; subsequent phases add the
@@ -185,7 +185,7 @@ class TestIp4LinkLocalInit(TestCase):
             msg="Two clients with the same MAC must pick the same first candidate.",
         )
 
-    def test__ip4_link_local__subsystem_loop_dispatches_on_state(self) -> None:
+    async def test__ip4_link_local__subsystem_loop_dispatches_on_state(self) -> None:
         """
         Ensure '_subsystem_loop' delegates to '_do_init' when
         the state is INIT — Phase 1's only wired dispatch
@@ -197,7 +197,7 @@ class TestIp4LinkLocalInit(TestCase):
 
         # Hop straight into INIT (default) and run one loop
         # tick — assert the state advanced to CLAIMING.
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(
             self._client._state,
@@ -205,7 +205,7 @@ class TestIp4LinkLocalInit(TestCase):
             msg="One INIT-state subsystem-loop tick must advance to CLAIMING.",
         )
 
-    def test__ip4_link_local__halted_state_is_inert(self) -> None:
+    async def test__ip4_link_local__halted_state_is_inert(self) -> None:
         """
         Ensure '_subsystem_loop' is a no-op when the state is
         HALTED — the client stays HALTED until something else
@@ -216,7 +216,7 @@ class TestIp4LinkLocalInit(TestCase):
 
         self._client._state = Ip4LinkLocalState.HALTED
 
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(
             self._client._state,

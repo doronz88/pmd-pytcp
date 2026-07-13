@@ -51,7 +51,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
+import asyncio
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr
 from pmd_net_proto import (
@@ -181,7 +181,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__optimistic_dad__sync_state_valid_after_success(self) -> None:
+    async def test__icmp6__nd__optimistic_dad__sync_state_valid_after_success(self) -> None:
         """
         Ensure the post-DAD state for a successful synchronous
         claim is VALID.
@@ -191,7 +191,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
 
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
             self.assertTrue(
-                self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE),
+                await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE),
                 msg="Without a conflict, sync DAD must succeed.",
             )
 
@@ -201,7 +201,7 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
             msg="Successful synchronous DAD must mark the address VALID.",
         )
 
-    def test__icmp6__nd__optimistic_dad__sync_state_cleared_after_conflict(self) -> None:
+    async def test__icmp6__nd__optimistic_dad__sync_state_cleared_after_conflict(self) -> None:
         """
         Ensure a synchronous DAD failure clears the per-address
         state entry (the candidate is rejected, not parked in
@@ -218,9 +218,9 @@ class TestIcmp6Nd__OptimisticDad__SyncDad__StateLifecycle(NdTestCase):
             )
 
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-            threading.Timer(0.005, _trigger_conflict).start()
+            asyncio.get_running_loop().call_later(0.005, _trigger_conflict)
             self.assertFalse(
-                self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE),
+                await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE),
                 msg="Released conflict event must mark sync DAD as failed.",
             )
 
@@ -246,7 +246,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__optimistic_dad__optimistic_in_ip6_host_during_wait(self) -> None:
+    async def test__icmp6__nd__optimistic_dad__optimistic_in_ip6_host_during_wait(self) -> None:
         """
         Ensure the candidate is in '_ip6_ifaddr' and marked
         OPTIMISTIC while the DAD wait is still running.
@@ -268,8 +268,8 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
 
         with sysctl_module.override("icmp6.default.optimistic_dad", 1):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                threading.Timer(0.010, _trigger_conflict).start()
-                self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
+                asyncio.get_running_loop().call_later(0.010, _trigger_conflict)
+                await self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
 
         self.assertIn(
             _CANDIDATE,
@@ -282,7 +282,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
             msg="State during wait must be OPTIMISTIC.",
         )
 
-    def test__icmp6__nd__optimistic_dad__valid_and_assigned_after_success(self) -> None:
+    async def test__icmp6__nd__optimistic_dad__valid_and_assigned_after_success(self) -> None:
         """
         Ensure a successful Optimistic DAD claim transitions
         the state from OPTIMISTIC to VALID and leaves the
@@ -294,7 +294,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
 
         with sysctl_module.override("icmp6.default.optimistic_dad", 1):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
-                self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
+                await self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
 
         self.assertEqual(
             self._packet_handler.get_icmp6_dad_state(address=_CANDIDATE),
@@ -307,7 +307,7 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
             msg="Successful Optimistic DAD must keep the address in _ip6_ifaddr.",
         )
 
-    def test__icmp6__nd__optimistic_dad__removed_on_conflict(self) -> None:
+    async def test__icmp6__nd__optimistic_dad__removed_on_conflict(self) -> None:
         """
         Ensure a failed Optimistic DAD claim removes the
         pre-claimed address from '_ip6_ifaddr' and clears the
@@ -326,8 +326,8 @@ class TestIcmp6Nd__OptimisticDad__OptimisticPath__PreClaim(NdTestCase):
 
         with sysctl_module.override("icmp6.default.optimistic_dad", 1):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                threading.Timer(0.005, _trigger_conflict).start()
-                self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
+                asyncio.get_running_loop().call_later(0.005, _trigger_conflict)
+                await self._packet_handler._claim_ip6_address_optimistic(ip6_host=_CANDIDATE_HOST)
 
         self.assertNotIn(
             _CANDIDATE,
@@ -445,7 +445,7 @@ class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__optimistic_dad__off_no_pre_claim(self) -> None:
+    async def test__icmp6__nd__optimistic_dad__off_no_pre_claim(self) -> None:
         """
         Ensure the candidate is NOT in '_ip6_ifaddr' while
         synchronous DAD is in flight when the sysctl is off.
@@ -466,8 +466,8 @@ class TestIcmp6Nd__OptimisticDad__SysctlOff__NoPreClaim(NdTestCase):
             )
 
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-            threading.Timer(0.010, _trigger_conflict).start()
-            self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
+            asyncio.get_running_loop().call_later(0.010, _trigger_conflict)
+            await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertNotIn(
             _CANDIDATE,

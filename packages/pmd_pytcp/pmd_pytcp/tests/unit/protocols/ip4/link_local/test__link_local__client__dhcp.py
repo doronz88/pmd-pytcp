@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from typing import cast
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from pmd_net_addr import MacAddress
@@ -50,7 +50,7 @@ from pmd_pytcp.stack import sysctl as sysctl_module
 from pmd_pytcp.stack.address import AddressApi
 
 
-class TestIp4LinkLocalDhcpCoordination(TestCase):
+class TestIp4LinkLocalDhcpCoordination(IsolatedAsyncioTestCase):
     """
     The 'Ip4LinkLocal' DHCPv4 coordination tests — initial-
     state selection, halt-on-bind, fallback-timer kick.
@@ -141,7 +141,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
             msg="With fallback enabled the client must start in HALTED.",
         )
 
-    def test__ip4_link_local__dhcp_bound_halts_bound_state(self) -> None:
+    async def test__ip4_link_local__dhcp_bound_halts_bound_state(self) -> None:
         """
         Ensure that when DHCP transitions to BOUND while the
         link-local subsystem is BOUND the link-local address
@@ -165,12 +165,12 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         candidate = client._candidate
         assert candidate is not None
         cast(MagicMock, self._acd).claim.return_value = AcdResult(success=True, address=candidate.address)
-        client._do_claiming()
+        await client._do_claiming()
         assert client._state is Ip4LinkLocalState.BOUND
 
         # Now flip DHCP to BOUND and drive a subsystem-loop tick.
         self._dhcp_bound = True
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         # Verify the release path: ACD release, remove, halted.
         cast(MagicMock, self._acd).release.assert_called_once()
@@ -185,7 +185,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
             msg="DHCP-bind release must clear the candidate.",
         )
 
-    def test__ip4_link_local__dhcp_unbound_kicks_after_timeout(self) -> None:
+    async def test__ip4_link_local__dhcp_unbound_kicks_after_timeout(self) -> None:
         """
         Ensure that after DHCP has been unbound continuously
         for 'dhcp_fallback_timeout_ms' the FSM transitions
@@ -202,7 +202,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         assert client._state is Ip4LinkLocalState.HALTED
 
         # Tick 1: starts the fallback timer; stays HALTED (no time elapsed).
-        client._subsystem_loop()
+        await client._subsystem_loop()
         self.assertEqual(
             client._state,
             Ip4LinkLocalState.HALTED,
@@ -211,7 +211,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
 
         # Fast-forward past the timeout (5 s) and tick again.
         self._mock_time.return_value = 1010.0  # 10 s elapsed
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         # The reconciler should have transitioned HALTED -> INIT
         # and then the dispatch picked a candidate (state -> CLAIMING).
@@ -223,7 +223,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
             msg="After fallback timeout the client must leave HALTED.",
         )
 
-    def test__ip4_link_local__dhcp_unbound_before_timeout_stays_halted(self) -> None:
+    async def test__ip4_link_local__dhcp_unbound_before_timeout_stays_halted(self) -> None:
         """
         Ensure that ticks BEFORE the fallback window has
         elapsed keep the FSM HALTED — link-local does not
@@ -239,10 +239,10 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         client = self._build_client()
 
         # Tick at t=1000: starts timer.
-        client._subsystem_loop()
+        await client._subsystem_loop()
         # Tick at t=1003 (3s elapsed; window is 5s) — still HALTED.
         self._mock_time.return_value = 1003.0
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertEqual(
             client._state,
@@ -250,7 +250,7 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
             msg="Within the fallback window the client must stay HALTED.",
         )
 
-    def test__ip4_link_local__dhcp_bind_during_timer_resets(self) -> None:
+    async def test__ip4_link_local__dhcp_bind_during_timer_resets(self) -> None:
         """
         Ensure that a DHCP bind during the fallback window
         cancels the fallback timer — the FSM stays HALTED and
@@ -267,13 +267,13 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         client = self._build_client()
 
         # Tick 1: starts timer.
-        client._subsystem_loop()
+        await client._subsystem_loop()
         self.assertEqual(client._state, Ip4LinkLocalState.HALTED)
 
         # Flip DHCP to BOUND mid-window.
         self._dhcp_bound = True
         self._mock_time.return_value = 1002.0
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         # Now flip back to unbound at t=1003. The fallback
         # timer should restart from t=1003 (not t=1000) so a
@@ -281,9 +281,9 @@ class TestIp4LinkLocalDhcpCoordination(TestCase):
         # window is 5 s) is still HALTED.
         self._dhcp_bound = False
         self._mock_time.return_value = 1003.0
-        client._subsystem_loop()
+        await client._subsystem_loop()
         self._mock_time.return_value = 1006.0
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertEqual(
             client._state,

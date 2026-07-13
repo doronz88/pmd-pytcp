@@ -279,15 +279,10 @@ class NetworkTestCase(TestCase):
         # Mock the TxRing so we can record the assembled frames.
         mock_TxRing = create_autospec(TxRing, spec_set=True)
         mock_TxRing.enqueue.side_effect = _mock_enqueue
-        # 'dispatch' is the ring-handoff marshaling boundary; with no
-        # real worker thread under test, run the marshaled '_phtx_*'
-        # callable inline so frames land in the mocked 'enqueue' above
-        # and the caller still sees the real 'TxStatus'.
-        mock_TxRing.dispatch.side_effect = lambda run: run()
-        # Phase 4b fire-and-forget marshaling boundary — run the
-        # callable inline (discard the result) so async sends still
-        # land frames in the mocked 'enqueue' under test.
-        mock_TxRing.dispatch_async.side_effect = lambda run: run()
+        # The old 'dispatch' / 'dispatch_async' ring-handoff
+        # marshaling boundary is gone — the '_phtx_*' pipeline runs
+        # inline on the one stack loop, so frames land in the mocked
+        # 'enqueue' above with no further plumbing.
 
         # Mock the ArpCache so we can get predictable responses.
         def _mock_arp_find_entry(*, ip4_address: Ip4Address) -> MacAddress | None:
@@ -467,8 +462,6 @@ class NetworkTestCase(TestCase):
 
         mock_tx_ring = create_autospec(TxRing, spec_set=True)
         mock_tx_ring.enqueue.side_effect = _enqueue
-        mock_tx_ring.dispatch.side_effect = lambda run: run()
-        mock_tx_ring.dispatch_async.side_effect = lambda run: run()
 
         # RX is injected directly via 'drive_rx' (calling '_phrx_ethernet'),
         # never read off this ring — but a real interface owns one, and

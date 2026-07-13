@@ -35,14 +35,11 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
-from typing_extensions import override
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp import stack
 from pmd_pytcp.lib.plpmtud import PmtuSearch
-from typing import TypeVar
 
 
 class TestPmtuCache(TestCase):
@@ -116,140 +113,59 @@ class TestPmtuCache(TestCase):
             stack.pmtu_cache.pop(ip, None)
 
 
-class _TrackingLock:
+class TestPmtuCacheAccessors(TestCase):
     """
-    A lock that counts how many times it was entered (and its current
-    hold depth) so a test can assert an operation acquired it.
-    """
-
-    def __init__(self) -> None:
-        """
-        Wrap a real lock and start at zero entries / hold depth.
-        """
-
-        self._lock = threading.Lock()
-        self.entries = 0
-        self.depth = 0
-
-    def __enter__(self) -> "_TrackingLock":
-        """
-        Acquire the underlying lock and record the entry.
-        """
-
-        self._lock.acquire()
-        self.entries += 1
-        self.depth += 1
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        """
-        Record the shallower hold and release the underlying lock.
-        """
-
-        self.depth -= 1
-        self._lock.release()
-
-
-K = TypeVar("K")
-V = TypeVar("V")
-class _LockAssertingDict(dict[K, V]):
-    """
-    A dict that records, on every structural mutation, whether the
-    tracking lock was held at the moment of the write.
+    The 'stack' Path-MTU accessors — 'current_pmtu' reads the maps and
+    'record_classical_pmtu' / 'record_pmtu_engine' write them. On the
+    pure-asyncio runtime the whole stack runs on one event loop, so the
+    former shared pmtu lock is gone; these tests pin the read/write
+    behaviour of the accessors (see 'docs/refactor/pure_asyncio.md').
     """
 
-    def __init__(self, lock: _TrackingLock, observed: list[bool], /) -> None:
-        """
-        Start empty and remember where to record observations.
-        """
-
-        super().__init__()
-        self._lock = lock
-        self._observed = observed
-
-    @override
-    def __setitem__(self, key: K, value: V) -> None:
-        """
-        Record the lock-held state, then insert / replace the key.
-        """
-
-        self._observed.append(self._lock.depth > 0)
-        super().__setitem__(key, value)
-
-
-class TestPmtuCacheLocking(TestCase):
-    """
-    The 'stack' Path-MTU cache thread-safety tests — the 'pmtu_cache'
-    and 'pmtu_state' maps are written by the RX (ICMP) thread and the
-    application / TX (UDP / TCP) threads and read by 'current_pmtu', so
-    every access must hold the shared lock for the maps not to tear on a
-    free-threaded build.
-    """
-
-    @override
     def setUp(self) -> None:
         """
-        Snapshot the pmtu maps and the lock so the instrumentation each
-        test installs is fully restored afterwards.
+        Snapshot the pmtu maps so each test's mutations are restored.
         """
 
         self._cache_prior = stack.pmtu_cache
         self._state_prior = stack.pmtu_state
-        self._lock_prior = getattr(stack, "_pmtu_lock", None)
 
-    @override
     def tearDown(self) -> None:
         """
-        Restore the original pmtu maps and lock.
+        Restore the original pmtu maps.
         """
 
-        setattr(stack, "pmtu_cache", self._cache_prior)
-        setattr(stack, "pmtu_state", self._state_prior)
-        if self._lock_prior is not None:
-            setattr(stack, "_pmtu_lock", self._lock_prior)
+        stack.pmtu_cache = self._cache_prior
+        stack.pmtu_state = self._state_prior
 
-    def test__pmtu__current_pmtu_reads_under_lock(self) -> None:
+    def test__pmtu__current_pmtu_reads_classical_cache(self) -> None:
         """
-        Ensure 'current_pmtu' reads the Path-MTU maps while holding the
-        shared pmtu lock, so a concurrent ICMP / TX write cannot tear the
-        map under the reader on a free-threaded build.
+        Ensure 'current_pmtu' returns the cached classical next-hop MTU.
 
         Reference: RFC 8201 §5.2 (a host caches and reads PMTU per destination).
         """
 
-        tracking = _TrackingLock()
         destination = Ip4Address("10.0.1.42")
-        setattr(stack, "_pmtu_lock", tracking)
-        setattr(stack, "pmtu_cache", {destination: 1400})
-        setattr(stack, "pmtu_state", {})
-
-        result = stack.current_pmtu(destination)
+        stack.pmtu_cache = {destination: 1400}
+        stack.pmtu_state = {}
 
         self.assertEqual(
-            result,
+            stack.current_pmtu(destination),
             1400,
             msg="current_pmtu must return the cached classical next-hop MTU.",
         )
-        self.assertGreater(
-            tracking.entries,
-            0,
-            msg="current_pmtu must acquire the shared pmtu lock while reading the maps.",
-        )
 
-    def test__pmtu__record_classical_writes_under_lock(self) -> None:
+    def test__pmtu__record_classical_writes_cache(self) -> None:
         """
         Ensure recording a classical per-destination next-hop MTU mutates
-        the 'pmtu_cache' map while holding the shared pmtu lock.
+        the 'pmtu_cache' map.
 
         Reference: RFC 1191 §3 (Path MTU Discovery per-destination cache).
         """
 
-        tracking = _TrackingLock()
-        observed: list[bool] = []
         destination = Ip4Address("10.0.1.43")
-        setattr(stack, "_pmtu_lock", tracking)
-        setattr(stack, "pmtu_cache", _LockAssertingDict[object, object](tracking, observed))
-        setattr(stack, "pmtu_state", {})
+        stack.pmtu_cache = {}
+        stack.pmtu_state = {}
 
         stack.record_classical_pmtu(destination, 1380)
 
@@ -258,26 +174,19 @@ class TestPmtuCacheLocking(TestCase):
             1380,
             msg="record_classical_pmtu must store the next-hop MTU.",
         )
-        self.assertTrue(
-            observed and all(observed),
-            msg="record_classical_pmtu must mutate pmtu_cache while holding the shared pmtu lock.",
-        )
 
-    def test__pmtu__record_engine_writes_under_lock(self) -> None:
+    def test__pmtu__record_engine_writes_state(self) -> None:
         """
         Ensure recording a PLPMTUD engine for a destination mutates the
-        'pmtu_state' map while holding the shared pmtu lock.
+        'pmtu_state' map.
 
         Reference: RFC 8899 §5.2 (PLPMTUD maintains per-path search state).
         """
 
-        tracking = _TrackingLock()
-        observed: list[bool] = []
         destination = Ip4Address("10.0.1.44")
         engine: PmtuSearch[Ip4Address] = PmtuSearch(address=destination, interface_mtu=1500)
-        setattr(stack, "_pmtu_lock", tracking)
-        setattr(stack, "pmtu_cache", {})
-        setattr(stack, "pmtu_state", _LockAssertingDict[object, object](tracking, observed))
+        stack.pmtu_cache = {}
+        stack.pmtu_state = {}
 
         stack.record_pmtu_engine(destination, engine)
 
@@ -285,8 +194,4 @@ class TestPmtuCacheLocking(TestCase):
             stack.pmtu_state[destination],
             engine,
             msg="record_pmtu_engine must store the engine for the destination.",
-        )
-        self.assertTrue(
-            observed and all(observed),
-            msg="record_pmtu_engine must mutate pmtu_state while holding the shared pmtu lock.",
         )

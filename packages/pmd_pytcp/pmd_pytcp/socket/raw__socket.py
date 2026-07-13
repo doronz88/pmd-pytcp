@@ -32,9 +32,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
-import threading
 from collections.abc import Iterable
 from typing import cast
 from typing_extensions import override
@@ -55,6 +55,7 @@ from pmd_pytcp.socket import (
     SOL_SOCKET,
     AddressFamily,
     SocketType,
+    _sem_acquire,
     gaierror,
     socket,
 )
@@ -92,7 +93,7 @@ class RawSocket(socket):
         self._ip_proto = protocol
         self._address_family = family
         self._packet_rx_md: list[RawMetadata] = []
-        self._packet_rx_md_ready = threading.Semaphore(0)
+        self._packet_rx_md_ready = asyncio.Semaphore(0)
 
         if self._address_family == AddressFamily.INET6:
             self._local_ip_address = Ip6Address()
@@ -221,7 +222,7 @@ class RawSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Bound")
 
     @override
-    def connect(self, address: tuple[str, int]) -> None:
+    async def connect(self, address: tuple[str, int]) -> None:
         """
         Connect local socket to remote socket.
         """
@@ -249,7 +250,7 @@ class RawSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
 
     @override
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send the data to connected remote host.
         """
@@ -300,7 +301,7 @@ class RawSocket(socket):
         return sent_data_len
 
     @override
-    def sendto(self, data: bytes, address: tuple[str, int]) -> int:
+    async def sendto(self, data: bytes, address: tuple[str, int]) -> int:
         """
         Send the data to remote host.
         """
@@ -347,7 +348,7 @@ class RawSocket(socket):
         return sent_data_len
 
     @override
-    def sendmsg(
+    async def sendmsg(
         self,
         buffers: Iterable[bytes | bytearray | memoryview],
         ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
@@ -369,11 +370,11 @@ class RawSocket(socket):
         payload = b"".join(bytes(buffer) for buffer in buffers)
 
         if address is not None:
-            return self.sendto(payload, address)
-        return self.send(payload)
+            return await self.sendto(payload, address)
+        return await self.send(payload)
 
     @override
-    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
+    async def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
         """
@@ -381,9 +382,9 @@ class RawSocket(socket):
         # SO_RCVTIMEO supplies the default if no per-call timeout.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
             data_rx = self._packet_rx_md.pop(0).raw__data
@@ -391,10 +392,6 @@ class RawSocket(socket):
             # 'bufsize' bytes and silently discards the remainder.
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            if not self._packet_rx_md:
-                self._drain_readable()
-                if self._packet_rx_md:
-                    self._signal_readable()
             __debug__ and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -406,7 +403,7 @@ class RawSocket(socket):
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
     @override
-    def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
+    async def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
         """
@@ -414,19 +411,15 @@ class RawSocket(socket):
         # SO_RCVTIMEO supplies the default if no per-call timeout.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
             data_rx = packet_rx_md.raw__data
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            if not self._packet_rx_md:
-                self._drain_readable()
-                if self._packet_rx_md:
-                    self._signal_readable()
             __debug__ and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -444,7 +437,7 @@ class RawSocket(socket):
         raise TimeoutError("RAW Socket - Receive operation timed out.")
 
     @override
-    def recvmsg(
+    async def recvmsg(
         self,
         bufsize: int | None = None,
         ancbufsize: int = 0,
@@ -459,7 +452,7 @@ class RawSocket(socket):
         and 'flags' are accepted for signature parity and ignored.
         """
 
-        data, address = self.recvfrom(bufsize=bufsize, timeout=timeout)
+        data, address = await self.recvfrom(bufsize=bufsize, timeout=timeout)
         return (data, [], 0, address)
 
     @override
@@ -480,9 +473,7 @@ class RawSocket(socket):
         already been closed.
         """
 
-        with self._lock__io:
-            if self._closed:
-                return
-            self._packet_rx_md.append(packet_rx_md)
-            self._packet_rx_md_ready.release()
-        self._signal_readable()
+        if self._closed:
+            return
+        self._packet_rx_md.append(packet_rx_md)
+        self._packet_rx_md_ready.release()

@@ -231,7 +231,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             msg="'_snd_mss' must be clamped to peer's advertised MSS once the handshake completes (RFC 6691).",
         )
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "The connect-event semaphore must be released once the "
                 "session reaches ESTABLISHED so a blocked 'connect()' "
@@ -344,7 +344,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
         # The connect-event semaphore must release on ESTABLISHED so
         # a blocked 'connect()' caller unblocks.
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "The connect-event semaphore must be released once "
                 "the session reaches ESTABLISHED, even when the "
@@ -419,7 +419,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "The connect-event semaphore must be released when the "
                 "session is reset so a blocked 'connect()' caller "
@@ -519,7 +519,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertFalse(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "The connect-event semaphore must NOT be released by "
                 "a bare RST in SYN_SENT - the connection has not been "
@@ -629,7 +629,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertFalse(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "The connect-event semaphore must not yet be released "
                 "while the session is still validly retransmitting "
@@ -934,7 +934,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertFalse(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "The connect-event semaphore must not be released by "
                 "a rejected SYN+ACK - 'connect()' must keep blocking "
@@ -970,7 +970,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
         )
         # Step 2: connect-event semaphore is NOT yet released.
         self.assertFalse(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "Setup precondition: connect-event semaphore must "
                 "not be released while the handshake is still in "
@@ -1009,7 +1009,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
         )
         # Step 4: connect-event semaphore is STILL not released.
         self.assertFalse(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "Setup precondition: connect-event semaphore must "
                 "still not be released in SYN_RCVD - the handshake "
@@ -1068,7 +1068,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "On RST in SYN_RCVD, the connect-event semaphore "
                 "MUST be released so the blocked active-open caller "
@@ -1312,7 +1312,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
         )
         # Spec: connect-event semaphore released.
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "On simultaneous-open completion, "
                 "'_event__connect' MUST be released so the "
@@ -1346,7 +1346,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             msg="Setup precondition: state must be SYN_SENT.",
         )
         self.assertFalse(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "Setup precondition: connect-event semaphore must "
                 "not be released while the handshake is in progress."
@@ -1377,7 +1377,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "On CLOSE in SYN_SENT, '_event__connect' MUST be "
                 "released so the blocked CONNECT caller unblocks. "
@@ -1444,7 +1444,7 @@ class TestTcpActiveOpen__Handshake(TcpTestCase):
             ),
         )
         self.assertTrue(
-            session._event__connect.acquire(timeout=0),
+            not session._event__connect.locked(),
             msg=(
                 "On CLOSE in SYN_RCVD, '_event__connect' MUST be "
                 "released so the blocked CONNECT caller unblocks. "

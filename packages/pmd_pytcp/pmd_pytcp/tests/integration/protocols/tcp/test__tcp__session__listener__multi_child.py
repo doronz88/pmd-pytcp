@@ -71,6 +71,8 @@ from pmd_pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
 )
 from pmd_pytcp.tests.lib.tcp_segment_factory import build_tcp4
+from unittest import IsolatedAsyncioTestCase
+
 from pmd_pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 # Deterministic addressing.
@@ -89,7 +91,7 @@ PEER__WIN: int = 64240
 PEER__MSS: int = 1460
 
 
-class TestTcpListener__MultiChild(TcpTestCase):
+class TestTcpListener__MultiChild(TcpTestCase, IsolatedAsyncioTestCase):
     """
     Integration tests for the multi-child accept queue (FIFO order
     and unbounded backlog).
@@ -374,7 +376,7 @@ class TestTcpListener__MultiChild(TcpTestCase):
             msg="The listening socket must remain in LISTEN after the over-backlog SYN.",
         )
 
-    def test__listener__backlog_cap_drained_by_accept_allows_next_syn(self) -> None:
+    async def test__listener__backlog_cap_drained_by_accept_allows_next_syn(self) -> None:
         """
         Ensure that once the application drains the accept
         queue via 'accept()', the freed slot makes room for a
@@ -438,7 +440,7 @@ class TestTcpListener__MultiChild(TcpTestCase):
         )
 
         # Application drains the queue via 'accept()'.
-        accepted_socket, _ = listen_sock.accept(timeout=0.001)
+        accepted_socket, _ = await listen_sock.accept(timeout=0.001)
         self.assertEqual(
             len(listen_sock._tcp_accept),
             0,

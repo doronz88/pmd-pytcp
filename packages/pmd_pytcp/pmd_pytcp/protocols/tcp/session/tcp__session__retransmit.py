@@ -171,7 +171,6 @@ class TcpRetransmitter:
             }:
                 session._connection_error = ConnError.TIMEOUT
                 session._event__rx_buffer.set()
-                session._socket._signal_readable()
             # If in SYN_SENT state inform CONNECT syscall that the
             # connection related event happened.
             if session._state is FsmState.SYN_SENT:

@@ -23,7 +23,16 @@
 
 
 """
-This module contains tests for the heap-based 'Timer' subsystem.
+This module contains tests for the loop-native 'Timer' — the
+pure-asyncio rewrite over 'loop.call_at' ('docs/refactor/
+pure_asyncio.md'): no worker, no heap, no lock. The public surface
+('call_later' / 'call_periodic' / 'cancel' / 'now_ms' / 'start' /
+'stop') is unchanged from the threaded design.
+
+The firing tests drive the loop deterministically: the fire wrapper
+'Timer._fire(handle, deadline)' is invoked directly where scheduling
+mechanics are under test, and short real delays are used only where
+the loop integration itself is the subject.
 
 pmd_pytcp/tests/unit/runtime/test__runtime__timer.py
 
@@ -32,120 +41,38 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import sys
-import threading
-import time
-from typing import Any
-from typing_extensions import override
-from unittest import TestCase, skipUnless
-from unittest.mock import MagicMock, call, create_autospec, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import MagicMock, patch
 
-from pmd_pytcp.runtime.timer import Timer, TimerHandle, _HeapEntry
+import asyncio
+
+from pmd_pytcp.runtime.timer import Timer, TimerHandle
 
 
-class _ClockControlledTimerTestCase(TestCase):
+class _TimerTestCase(IsolatedAsyncioTestCase):
     """
-    Shared fixture: a 'Timer' with a patched monotonic clock and a
-    manual single-pass loop driver, no worker thread.
+    Shared fixture: a started 'Timer' with logging suppressed.
     """
 
-    @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Suppress subsystem / timer logging, patch 'time.monotonic_ns'
-        to a controllable virtual clock, and build a fresh 'Timer'.
+        Suppress timer logging and build + start a fresh 'Timer' on
+        the test loop.
         """
 
-        self._subsystem_log_patch = patch("pmd_pytcp.runtime.subsystem.log")
-        self._subsystem_log = self._subsystem_log_patch.start()
-        self.addCleanup(self._subsystem_log_patch.stop)
         self._timer_log_patch = patch("pmd_pytcp.runtime.timer.log")
         self._timer_log = self._timer_log_patch.start()
         self.addCleanup(self._timer_log_patch.stop)
 
-        self._now_ns = 1_000_000_000_000  # 1 s -> now_ms == 1_000_000
-        self._monotonic_patch = patch(
-            "pmd_pytcp.runtime.timer.time.monotonic_ns",
-            side_effect=lambda: self._now_ns,
-        )
-        self._monotonic_patch.start()
-        self.addCleanup(self._monotonic_patch.stop)
-
         self._timer = Timer()
-        self._base_ms = self._timer.now_ms
+        self._timer.start()
 
-    def _advance(self, ms: int) -> None:
+    async def asyncTearDown(self) -> None:
         """
-        Advance the virtual clock by 'ms' milliseconds.
-        """
-
-        self._now_ns += ms * 1_000_000
-
-    def _drive_loop(self) -> None:
-        """
-        Run exactly one drain-and-dispatch pass of '_subsystem_loop'
-        without spawning the worker thread or blocking on a wait.
+        Stop the timer so no armed loop entry survives the test.
         """
 
-        self._timer._event__stop_subsystem.set()
-        self._timer._subsystem_loop()
-        self._timer._event__stop_subsystem.clear()
-
-
-class _LifecycleTimerTestCase(TestCase):
-    """
-    Shared fixture: a 'Timer' with a real worker thread, logging
-    suppressed, with guaranteed thread teardown.
-    """
-
-    @override
-    def setUp(self) -> None:
-        """
-        Suppress logging and build a fresh 'Timer'.
-        """
-
-        self._subsystem_log_patch = patch("pmd_pytcp.runtime.subsystem.log")
-        self._subsystem_log_patch.start()
-        self.addCleanup(self._subsystem_log_patch.stop)
-        self._timer_log_patch = patch("pmd_pytcp.runtime.timer.log")
-        self._timer_log_patch.start()
-        self.addCleanup(self._timer_log_patch.stop)
-
-        self._timer = Timer()
-
-    @override
-    def tearDown(self) -> None:
-        """
-        Stop the timer and drain any lingering worker thread.
-        """
-
-        self._timer._event__stop_subsystem.set()
-        self._timer._wakeup.set()
-        if self._timer._thread is not None:
-            self._timer._thread.join(timeout=2.0)
-
-
-class _Counter:
-    """
-    Thread-safe call counter used as a real (non-mock) callback for
-    the concurrency tests.
-    """
-
-    def __init__(self) -> None:
-        """
-        Initialize the counter at zero.
-        """
-
-        self._lock = threading.Lock()
-        self.count = 0
-
-    def __call__(self, *args: Any, **kwargs: Any) -> None:
-        """
-        Increment the counter under the lock.
-        """
-
-        with self._lock:
-            self.count += 1
+        self._timer.stop()
 
 
 class TestTimerNowMs(TestCase):
@@ -153,657 +80,452 @@ class TestTimerNowMs(TestCase):
     The 'Timer.now_ms' property tests.
     """
 
+    def setUp(self) -> None:
+        """
+        Suppress timer logging and build a fresh 'Timer' (no loop
+        needed — 'now_ms' is a pure clock read).
+        """
+
+        self._timer_log_patch = patch("pmd_pytcp.runtime.timer.log")
+        self._timer_log_patch.start()
+        self.addCleanup(self._timer_log_patch.stop)
+
+        self._timer = Timer()
+
     def test__timer__now_ms_returns_int(self) -> None:
         """
         Ensure 'now_ms' returns an int (milliseconds since the
-        monotonic-clock epoch), the type the RFC 6298 RTO
-        sampling code in 'TcpSession' expects.
+        monotonic-clock epoch), the type the RFC 6298 RTO sampling
+        code stores per segment.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 6298 §2 (RTT measurement).
         """
 
-        with patch("pmd_pytcp.runtime.subsystem.log"):
-            timer = Timer()
-
         self.assertIsInstance(
-            timer.now_ms,
+            self._timer.now_ms,
             int,
-            msg="Timer.now_ms must return an int (milliseconds).",
+            msg="now_ms must return an int millisecond count.",
         )
 
     def test__timer__now_ms_is_monotonic(self) -> None:
         """
-        Ensure two successive 'now_ms' reads return values that
-        never decrease — backed by 'time.monotonic_ns()' so the
-        property is wall-clock-adjustment safe.
+        Ensure successive 'now_ms' reads never go backwards — the
+        property is backed by 'time.monotonic_ns' so wall-clock
+        adjustments cannot skew RTT samples.
 
-        Reference: PyTCP test infrastructure (no RFC clause).
+        Reference: RFC 6298 §2 (RTT measurement).
         """
 
-        with patch("pmd_pytcp.runtime.subsystem.log"):
-            timer = Timer()
-
-        t0 = timer.now_ms
-        t1 = timer.now_ms
+        first = self._timer.now_ms
+        second = self._timer.now_ms
         self.assertGreaterEqual(
-            t1,
-            t0,
-            msg=f"Timer.now_ms must be monotonic; got t0={t0}, t1={t1}.",
+            second,
+            first,
+            msg="now_ms must be monotonically non-decreasing.",
         )
 
-    def test__timer__now_ms_uses_monotonic_ns(self) -> None:
+    def test__timer__now_ms_derives_from_monotonic_ns(self) -> None:
         """
-        Ensure 'now_ms' divides 'time.monotonic_ns()' by 1_000_000
-        — the documented backing primitive. Pinned via patching
-        so a future regression that switched to 'time.time_ns()'
-        (wall-clock, jump-prone) is caught.
+        Ensure 'now_ms' is exactly 'time.monotonic_ns() // 1_000_000'
+        so every consumer sees the same millisecond epoch.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with patch("pmd_pytcp.runtime.subsystem.log"):
-            timer = Timer()
-
-        with patch("pmd_pytcp.runtime.timer.time.monotonic_ns", return_value=42_123_456_789):
+        with patch(
+            "pmd_pytcp.runtime.timer.time.monotonic_ns",
+            return_value=1_234_567_890_123,
+        ):
             self.assertEqual(
-                timer.now_ms,
-                42_123,
-                msg="now_ms must divide monotonic_ns() by 1_000_000.",
+                self._timer.now_ms,
+                1_234_567,
+                msg="now_ms must be monotonic_ns floored to milliseconds.",
             )
 
 
-class TestTimerHandle(TestCase):
+class TestTimerRegistrationGuards(_TimerTestCase):
     """
-    The 'TimerHandle' dataclass invariant tests.
+    The 'call_later' / 'call_periodic' argument-guard tests.
     """
 
-    @staticmethod
-    def _make() -> TimerHandle:
+    async def test__timer__call_later_rejects_negative_delay(self) -> None:
         """
-        Build a minimal one-shot handle.
-        """
-
-        return TimerHandle(
-            method=MagicMock(),
-            args=(),
-            kwargs={},
-            deadline_ms=0,
-            seq=0,
-        )
-
-    @skipUnless(sys.version_info >= (3, 10), "dataclass slots are dropped by the Python 3.9 back-compat shim")
-    def test__timer_handle__has_slots(self) -> None:
-        """
-        Ensure 'TimerHandle' is slot-based so an accidental
-        attribute assignment fails loudly instead of silently
-        shadowing scheduler state.
+        Ensure 'call_later' asserts on a negative delay — a negative
+        deadline is always a caller bug, not a "fire immediately"
+        request.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        handle = self._make()
-        self.assertTrue(
-            hasattr(TimerHandle, "__slots__"),
-            msg="TimerHandle must declare __slots__.",
-        )
-        with self.assertRaises(AttributeError):
-            handle.foo = 1  # type: ignore[attr-defined]
+        with self.assertRaises(AssertionError):
+            self._timer.call_later(-1, MagicMock())
 
-    def test__timer_handle__cancelled_starts_false(self) -> None:
+    async def test__timer__call_periodic_rejects_zero_period(self) -> None:
         """
-        Ensure a freshly constructed handle is not cancelled.
+        Ensure 'call_periodic' asserts on a zero period — a 0 ms
+        period would spin the loop re-arming itself forever.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with self.assertRaises(AssertionError):
+            self._timer.call_periodic(0, MagicMock())
+
+    async def test__timer__call_later_returns_tracked_handle(self) -> None:
+        """
+        Ensure 'call_later' returns a 'TimerHandle' and tracks it on
+        the live-handle set so 'stop()' can tear it down.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_later(1_000, MagicMock())
+
+        self.assertIsInstance(
+            handle,
+            TimerHandle,
+            msg="call_later must return a TimerHandle.",
+        )
+        self.assertIn(
+            handle,
+            self._timer._handles,
+            msg="A scheduled handle must be tracked for stop() teardown.",
+        )
+        self.assertIsNone(
+            handle.period_ms,
+            msg="A call_later handle must not carry a period.",
+        )
+
+    async def test__timer__call_periodic_handle_carries_period(self) -> None:
+        """
+        Ensure 'call_periodic' stamps the period onto the handle —
+        the fire wrapper re-arms from it.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_periodic(250, MagicMock())
+
+        self.assertEqual(
+            handle.period_ms,
+            250,
+            msg="A call_periodic handle must carry its period.",
+        )
+
+
+class TestTimerOneShotFire(_TimerTestCase):
+    """
+    The one-shot 'call_later' firing tests.
+    """
+
+    async def test__timer__call_later_fires_after_delay(self) -> None:
+        """
+        Ensure a one-shot registration fires exactly once after its
+        delay elapses on the real loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        callback = MagicMock()
+        self._timer.call_later(10, callback)
+
+        await asyncio.sleep(0.05)
+
+        callback.assert_called_once_with()
+
+    async def test__timer__call_later_passes_args_and_kwargs(self) -> None:
+        """
+        Ensure positional and keyword arguments registered with the
+        entry are forwarded verbatim to the callback.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        callback = MagicMock()
+        handle = self._timer.call_later(10, callback, 1, "two", key="value")
+
+        self._timer._fire(handle, 0.0)
+
+        callback.assert_called_once_with(1, "two", key="value")
+
+    async def test__timer__one_shot_untracked_after_fire(self) -> None:
+        """
+        Ensure a fired one-shot handle leaves the live-handle set so
+        the set cannot grow without bound over a long-lived stack.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_later(10, MagicMock())
+
+        self._timer._fire(handle, 0.0)
+
+        self.assertNotIn(
+            handle,
+            self._timer._handles,
+            msg="A fired one-shot handle must be untracked.",
+        )
+
+    async def test__timer__handler_exception_logged_and_swallowed(self) -> None:
+        """
+        Ensure a raising callback is logged and swallowed — one bad
+        handler must not unwind the loop callback and take other
+        timers down with it (same policy as the threaded worker).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        def _boom() -> None:
+            raise RuntimeError("boom")
+
+        handle = self._timer.call_later(10, _boom)
+
+        self._timer._fire(handle, 0.0)  # must not raise
+
+        logged = " ".join(str(call_args) for call_args in self._timer_log.call_args_list)
+        self.assertIn(
+            "Handler raised",
+            logged,
+            msg="A raising handler must be logged on the 'timer' channel.",
+        )
+
+
+class TestTimerPeriodicFire(_TimerTestCase):
+    """
+    The periodic 'call_periodic' firing tests.
+    """
+
+    async def test__timer__call_periodic_fires_repeatedly(self) -> None:
+        """
+        Ensure a periodic registration keeps firing every period on
+        the real loop until cancelled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        callback = MagicMock()
+        handle = self._timer.call_periodic(10, callback)
+
+        await asyncio.sleep(0.06)
+        self._timer.cancel(handle)
+
+        self.assertGreaterEqual(
+            callback.call_count,
+            2,
+            msg="A periodic entry must fire repeatedly until cancelled.",
+        )
+
+    async def test__timer__periodic_rearms_at_absolute_deadline(self) -> None:
+        """
+        Ensure the fire wrapper re-arms a periodic entry by advancing
+        the ABSOLUTE deadline by exactly one period ('deadline +
+        period'), not by 'now + period' — the interval-based re-arm
+        is what keeps a slow callback from drifting the cadence.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_periodic(100, MagicMock())
+        loop = asyncio.get_running_loop()
+
+        deadline = loop.time()  # pretend this fire was due exactly now
+        self._timer._fire(handle, deadline)
+
+        assert handle._loop_handle is not None
+        self.assertAlmostEqual(
+            handle._loop_handle.when(),
+            deadline + 0.1,
+            places=6,
+            msg="The periodic re-arm must land at deadline + period (drift-free).",
+        )
+
+    async def test__timer__periodic_stays_tracked_after_fire(self) -> None:
+        """
+        Ensure a periodic handle remains on the live-handle set after
+        a fire so 'stop()' can still tear it down.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_periodic(100, MagicMock())
+
+        self._timer._fire(handle, asyncio.get_running_loop().time())
+
+        self.assertIn(
+            handle,
+            self._timer._handles,
+            msg="A live periodic handle must stay tracked across fires.",
+        )
+        self._timer.cancel(handle)
+
+    async def test__timer__periodic_survives_handler_exception(self) -> None:
+        """
+        Ensure a raising periodic callback is re-armed anyway — the
+        exception policy (log + swallow) must not silently kill the
+        periodic train.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        def _boom() -> None:
+            raise RuntimeError("boom")
+
+        handle = self._timer.call_periodic(100, _boom)
+
+        self._timer._fire(handle, asyncio.get_running_loop().time())
+
+        self.assertIn(
+            handle,
+            self._timer._handles,
+            msg="A periodic entry must survive its handler raising.",
+        )
+        self._timer.cancel(handle)
+
+
+class TestTimerCancel(_TimerTestCase):
+    """
+    The 'Timer.cancel' tests.
+    """
+
+    async def test__timer__cancel_prevents_fire(self) -> None:
+        """
+        Ensure a cancelled one-shot entry never fires even after its
+        delay elapses.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        callback = MagicMock()
+        handle = self._timer.call_later(10, callback)
+
+        self._timer.cancel(handle)
+        await asyncio.sleep(0.05)
+
+        callback.assert_not_called()
+
+    async def test__timer__cancel_untracks_handle(self) -> None:
+        """
+        Ensure 'cancel' removes the handle from the live-handle set
+        and marks it cancelled.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_later(1_000, MagicMock())
+
+        self._timer.cancel(handle)
+
+        self.assertTrue(
+            handle.cancelled,
+            msg="cancel() must mark the handle cancelled.",
+        )
+        self.assertNotIn(
+            handle,
+            self._timer._handles,
+            msg="cancel() must untrack the handle.",
+        )
+
+    async def test__timer__cancel_is_idempotent(self) -> None:
+        """
+        Ensure double-cancel and cancel-after-fire are silent no-ops.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        handle = self._timer.call_later(10, MagicMock())
+        self._timer.cancel(handle)
+        self._timer.cancel(handle)  # must not raise
+
+        fired = self._timer.call_later(10, MagicMock())
+        self._timer._fire(fired, 0.0)
+        self._timer.cancel(fired)  # must not raise
+
+    async def test__timer__cancelled_periodic_not_rearmed_by_late_fire(self) -> None:
+        """
+        Ensure a fire that races a cancellation (the loop callback was
+        already queued when 'cancel' ran) neither invokes the callback
+        nor re-arms the periodic entry — the 'cancelled' flag is the
+        tombstone the fire wrapper honours.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        callback = MagicMock()
+        handle = self._timer.call_periodic(100, callback)
+        self._timer.cancel(handle)
+
+        self._timer._fire(handle, asyncio.get_running_loop().time())
+
+        callback.assert_not_called()
+        self.assertNotIn(
+            handle,
+            self._timer._handles,
+            msg="A cancelled handle must not be re-tracked by a late fire.",
+        )
+
+
+class TestTimerLifecycle(_TimerTestCase):
+    """
+    The 'Timer.start()' / 'Timer.stop()' lifecycle tests.
+    """
+
+    async def test__timer__start_binds_running_loop(self) -> None:
+        """
+        Ensure 'start()' binds the timer to the caller's running loop
+        so later registrations from sync call sites schedule on it.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertIs(
-            self._make().cancelled,
-            False,
-            msg="A new TimerHandle must start with cancelled=False.",
+            self._timer._loop,
+            asyncio.get_running_loop(),
+            msg="start() must bind the running loop.",
         )
 
-    def test__timer_handle__period_ms_none_means_one_shot(self) -> None:
+    async def test__timer__stop_cancels_outstanding_handles(self) -> None:
         """
-        Ensure 'period_ms' defaults to None, the one-shot marker
-        the worker uses to decide whether to re-arm an entry.
+        Ensure 'stop()' cancels every outstanding entry — a stopped
+        stack must not fire stale callbacks (the TCP RTO / delayed-ACK
+        handlers would touch torn-down state).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self.assertIsNone(
-            self._make().period_ms,
-            msg="TimerHandle.period_ms must default to None (one-shot).",
-        )
+        callbacks = [MagicMock() for _ in range(3)]
+        handles = [self._timer.call_later(10, callback) for callback in callbacks]
+        periodic = self._timer.call_periodic(10, MagicMock())
 
-
-class TestTimerCoreApi(_ClockControlledTimerTestCase):
-    """
-    The 'Timer.call_later' / 'call_periodic' / 'cancel' core tests.
-    """
-
-    def test__timer__call_later_returns_handle(self) -> None:
-        """
-        Ensure 'call_later' returns a one-shot 'TimerHandle' whose
-        absolute deadline is 'now_ms + delay_ms'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        handle = self._timer.call_later(100, MagicMock())
-        self.assertIsInstance(handle, TimerHandle, msg="call_later must return a TimerHandle.")
-        self.assertIs(handle.cancelled, False, msg="A new handle must not be cancelled.")
-        self.assertIsNone(handle.period_ms, msg="call_later must produce a one-shot handle.")
-        self.assertEqual(
-            handle.deadline_ms,
-            self._base_ms + 100,
-            msg="call_later deadline must be now_ms + delay_ms.",
-        )
-
-    def test__timer__call_periodic_returns_handle(self) -> None:
-        """
-        Ensure 'call_periodic' returns a periodic 'TimerHandle'
-        whose first deadline is 'now_ms + period_ms'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        handle = self._timer.call_periodic(50, MagicMock())
-        self.assertEqual(handle.period_ms, 50, msg="call_periodic must record period_ms.")
-        self.assertIs(handle.cancelled, False, msg="A new handle must not be cancelled.")
-        self.assertEqual(
-            handle.deadline_ms,
-            self._base_ms + 50,
-            msg="call_periodic first deadline must be now_ms + period_ms.",
-        )
-
-    def test__timer__call_later_zero_delay_fires_immediately(self) -> None:
-        """
-        Ensure 'call_later(0, ...)' fires on the very next loop
-        pass with no clock advance.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        self._timer.call_later(0, method)
-        self._drive_loop()
-        method.assert_called_once_with()
-
-    def test__timer__call_later_in_the_past_fires_immediately(self) -> None:
-        """
-        Ensure an entry whose deadline is already in the past
-        fires on the next loop pass.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        handle = TimerHandle(
-            method=method,
-            args=(),
-            kwargs={},
-            deadline_ms=self._base_ms - 500,
-            seq=self._timer._next_seq(),
-        )
-        self._timer._heap.append(_HeapEntry(handle.deadline_ms, handle.seq, handle))
-        self._drive_loop()
-        method.assert_called_once_with()
-
-    def test__timer__cancel_prevents_firing(self) -> None:
-        """
-        Ensure cancelling a handle before its deadline stops the
-        callback from ever running.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        handle = self._timer.call_later(100, method)
-        self._timer.cancel(handle)
-        self._advance(200)
-        self._drive_loop()
-        method.assert_not_called()
-
-    def test__timer__cancel_is_idempotent(self) -> None:
-        """
-        Ensure cancelling the same handle twice raises nothing and
-        leaves it cancelled.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        handle = self._timer.call_later(100, MagicMock())
-        self._timer.cancel(handle)
-        self._timer.cancel(handle)
-        self.assertIs(handle.cancelled, True, msg="Double cancel must leave cancelled=True.")
-
-    def test__timer__cancel_after_fire_is_noop(self) -> None:
-        """
-        Ensure cancelling a handle whose one-shot already fired is
-        a harmless no-op and does not double-fire.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        handle = self._timer.call_later(5, method)
-        self._advance(5)
-        self._drive_loop()
-        self._timer.cancel(handle)
-        self.assertIs(handle.cancelled, True, msg="cancel must still set the flag post-fire.")
-        method.assert_called_once_with()
-
-    def test__timer__call_periodic_fires_repeatedly(self) -> None:
-        """
-        Ensure a periodic entry fires once per elapsed period as
-        the clock advances across multiple loop passes.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        self._timer.call_periodic(50, method)
-        for _ in range(4):
-            self._advance(50)
-            self._drive_loop()
-        self.assertEqual(
-            method.call_count,
-            4,
-            msg="A 50 ms periodic must fire 4 times across 4 x 50 ms advances.",
-        )
-
-    def test__timer__call_periodic_reschedules_at_absolute_deadline(self) -> None:
-        """
-        Ensure a periodic entry re-arms by advancing its deadline
-        by exactly 'period_ms' so it does not drift when the loop
-        wakes late.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        handle = self._timer.call_periodic(50, method)
-
-        self._advance(60)  # past the first (base+50) deadline
-        self._drive_loop()
-        self._advance(50)  # now at base+110
-        self._drive_loop()
-
-        self.assertEqual(method.call_count, 2, msg="Two periods elapsed -> two fires.")
-        self.assertEqual(
-            handle.deadline_ms,
-            self._base_ms + 150,
-            msg="Periodic deadline must progress 50/100/150 (no drift), not 50/110/160.",
-        )
-
-    def test__timer__cancel_periodic_stops_reschedule(self) -> None:
-        """
-        Ensure cancelling a periodic handle stops further
-        re-arming after the in-flight cycle.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        handle = self._timer.call_periodic(50, method)
-        self._advance(50)
-        self._drive_loop()
-        self._timer.cancel(handle)
-        for _ in range(4):
-            self._advance(50)
-            self._drive_loop()
-        self.assertEqual(
-            method.call_count,
-            1,
-            msg="A cancelled periodic must not fire again after the cancel.",
-        )
-
-    def test__timer__same_deadline_fires_in_registration_order(self) -> None:
-        """
-        Ensure entries sharing one deadline fire in registration
-        order, fixed by the monotonic seq tiebreaker.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        manager = MagicMock()
-        self._timer.call_later(50, manager.m1)
-        self._timer.call_later(50, manager.m2)
-        self._timer.call_later(50, manager.m3)
-        self._advance(50)
-        self._drive_loop()
-        self.assertEqual(
-            manager.mock_calls,
-            [call.m1(), call.m2(), call.m3()],
-            msg="Same-deadline entries must fire in registration order.",
-        )
-
-    def test__timer__multiple_deadlines_fire_in_deadline_order(self) -> None:
-        """
-        Ensure entries with distinct deadlines fire earliest
-        first regardless of registration order.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        manager = MagicMock()
-        self._timer.call_later(100, manager.late)
-        self._timer.call_later(50, manager.early)
-        self._timer.call_later(75, manager.mid)
-        self._advance(100)
-        self._drive_loop()
-        self.assertEqual(
-            manager.mock_calls,
-            [call.early(), call.mid(), call.late()],
-            msg="Entries must fire in ascending deadline order.",
-        )
-
-    def test__timer__callback_invokes_call_later_reentrantly(self) -> None:
-        """
-        Ensure a callback may register a new entry from inside its
-        own invocation and that entry fires on a later pass.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        inner = MagicMock()
-
-        def outer() -> None:
-            self._timer.call_later(50, inner)
-
-        self._timer.call_later(0, outer)
-        self._drive_loop()
-        inner.assert_not_called()
-        self._advance(50)
-        self._drive_loop()
-        inner.assert_called_once_with()
-
-    def test__timer__callback_exception_isolated(self) -> None:
-        """
-        Ensure one callback raising does not prevent a sibling
-        callback at the same deadline from running, and the loop
-        logs the failure instead of crashing.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        bad = MagicMock(__name__="bad", side_effect=RuntimeError("boom"))
-        good = MagicMock(__name__="good")
-        self._timer.call_later(50, bad)
-        self._timer.call_later(50, good)
-        self._advance(50)
-        self._drive_loop()
-        bad.assert_called_once_with()
-        good.assert_called_once_with()
-        self.assertTrue(
-            any(
-                c.args and c.args[0] == "timer" and "Handler raised" in c.args[1]
-                for c in self._timer_log.call_args_list
-            ),
-            msg="A raising handler must be logged on the 'timer' channel.",
-        )
-
-    def test__timer__handle_reuse_across_periodics(self) -> None:
-        """
-        Ensure a periodic uses one stable handle object whose
-        deadline advances each cycle (not a fresh handle per
-        cycle).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        handle = self._timer.call_periodic(50, method)
-        for _ in range(3):
-            self._advance(50)
-            self._drive_loop()
-        self.assertEqual(method.call_count, 3, msg="Three periods elapsed -> three fires.")
-        self.assertEqual(
-            handle.deadline_ms,
-            self._base_ms + 200,
-            msg="The single handle's deadline must progress 50/100/150/200.",
-        )
-
-
-class TestTimerLoopPort(_ClockControlledTimerTestCase):
-    """
-    The ported '_subsystem_loop' behavior tests (via the heap core).
-    """
-
-    def test__timer__loop_ticks_registered_tasks(self) -> None:
-        """
-        Ensure a periodic method registered via the core API fires
-        when its deadline is reached on a loop pass.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        self._timer.call_periodic(5, method)
-        self._advance(5)
-        self._drive_loop()
-        method.assert_called_once_with()
-
-    def test__timer__loop_purges_finished_tasks(self) -> None:
-        """
-        Ensure a one-shot entry leaves the heap empty once it has
-        fired (no re-arm).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        method = MagicMock()
-        self._timer.call_later(5, method)
-        self._advance(5)
-        self._drive_loop()
-        self.assertEqual(
-            self._timer._heap,
-            [],
-            msg="A fired one-shot must not remain on the heap.",
-        )
-
-
-class TestTimerWorkerLoop(_LifecycleTimerTestCase):
-    """
-    The 'Timer' worker-thread + wakeup-semantics tests.
-    """
-
-    def test__timer__worker_blocks_on_empty_heap(self) -> None:
-        """
-        Ensure the worker idles on an empty heap without firing
-        anything or leaving the wakeup event set.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.start()
-        time.sleep(0.1)
-        self.assertTrue(self._timer._thread is not None and self._timer._thread.is_alive())
-        self.assertEqual(self._timer._heap, [], msg="An idle worker must keep the heap empty.")
-        self.assertFalse(self._timer._wakeup.is_set(), msg="An idle worker must not leave wakeup set.")
         self._timer.stop()
+        await asyncio.sleep(0.05)
 
-    def test__timer__register_wakes_worker(self) -> None:
-        """
-        Ensure registering an entry on an idle worker wakes it and
-        the callback fires near its deadline.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.start()
-        time.sleep(0.05)
-        counter = _Counter()
-        self._timer.call_later(10, counter)
-        deadline = time.monotonic() + 1.0
-        while counter.count == 0 and time.monotonic() < deadline:
-            time.sleep(0.005)
-        self._timer.stop()
-        self.assertEqual(counter.count, 1, msg="A registered one-shot must fire on the worker.")
-
-    def test__timer__cancel_wakes_worker_if_top(self) -> None:
-        """
-        Ensure cancelling the top-of-heap entry prevents its
-        callback from running on the worker.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.start()
-        counter = _Counter()
-        handle = self._timer.call_later(50, counter)
-        self._timer.cancel(handle)
-        time.sleep(0.2)
-        self._timer.stop()
-        self.assertEqual(counter.count, 0, msg="A cancelled top entry must not fire.")
-
-    def test__timer__idle_wakeup_ceiling(self) -> None:
-        """
-        Ensure the worker bounds its idle wait at
-        '_IDLE_WAKEUP__SEC' when the heap is empty.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        timer = self._timer
-        fake_event = create_autospec(threading.Event, spec_set=True)
-        fake_event.wait.side_effect = lambda timeout=None: timer._event__stop_subsystem.set()
-        timer._wakeup = fake_event
-        with patch("pmd_pytcp.runtime.timer._IDLE_WAKEUP__SEC", 0.05):
-            timer._subsystem_loop()
-        fake_event.wait.assert_called_once_with(timeout=0.05)
-
-    def test__timer__stop_breaks_out_of_wait(self) -> None:
-        """
-        Ensure 'stop()' wakes a worker blocked on the idle wait so
-        teardown returns promptly.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.start()
-        time.sleep(0.05)
-        t0 = time.monotonic()
-        self._timer.stop()
-        elapsed = time.monotonic() - t0
-        self.assertLess(elapsed, 2.0, msg="stop() must not block on the idle wait.")
-        self.assertFalse(
-            self._timer._thread is not None and self._timer._thread.is_alive(),
-            msg="The worker thread must be dead after stop().",
-        )
-
-    def test__timer__simultaneous_register_during_dispatch(self) -> None:
-        """
-        Ensure an entry registered from inside a callback is not
-        dispatched in the same batch but fires on the next pass.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer._event__stop_subsystem.set()
-        inner = MagicMock()
-
-        def outer() -> None:
-            self._timer.call_later(0, inner)
-
-        self._timer.call_later(0, outer)
-        self._timer._subsystem_loop()
-        inner.assert_not_called()
-        self._timer._subsystem_loop()
-        inner.assert_called_once_with()
-
-
-class TestTimerThreadSafety(_LifecycleTimerTestCase):
-    """
-    The 'Timer' concurrency / locking tests.
-    """
-
-    def test__timer__concurrent_register_no_loss(self) -> None:
-        """
-        Ensure registrations from many threads while the worker
-        runs are never dropped.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.start()
-        counter = _Counter()
-
-        def register() -> None:
-            self._timer.call_later(0, counter)
-
-        threads = [threading.Thread(target=register) for _ in range(100)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        deadline = time.monotonic() + 2.0
-        while counter.count < 100 and time.monotonic() < deadline:
-            time.sleep(0.005)
-        self._timer.stop()
-        self.assertEqual(counter.count, 100, msg="Every concurrent registration must fire exactly once.")
-
-    def test__timer__concurrent_cancel_no_double_fire(self) -> None:
-        """
-        Ensure many threads cancelling one periodic handle stop it
-        cleanly with no exception and no further fires.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._timer.start()
-        counter = _Counter()
-        handle = self._timer.call_periodic(1, counter)
-        time.sleep(0.05)
-
-        threads = [threading.Thread(target=lambda: self._timer.cancel(handle)) for _ in range(10)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        time.sleep(0.05)
-        settled = counter.count
-        time.sleep(0.1)
-        self._timer.stop()
+        for callback in callbacks:
+            callback.assert_not_called()
+        for handle in [*handles, periodic]:
+            self.assertTrue(
+                handle.cancelled,
+                msg="stop() must mark every outstanding handle cancelled.",
+            )
         self.assertEqual(
-            counter.count,
-            settled,
-            msg="A cancelled periodic must stop firing across all cancel threads.",
+            len(self._timer._handles),
+            0,
+            msg="stop() must clear the live-handle set.",
         )
 
-    def test__timer__lock_held_during_heap_mutation_not_callback(self) -> None:
+    async def test__timer__schedule_before_start_uses_running_loop(self) -> None:
         """
-        Ensure the heap lock is released during callback
-        invocation so another thread can register concurrently.
+        Ensure a registration made before 'start()' (boot-time
+        subsystem construction) still schedules — '_get_loop' falls
+        back to the currently running loop.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._timer.start()
-        in_callback = threading.Event()
+        timer = Timer()
+        callback = MagicMock()
+        timer.call_later(10, callback)
 
-        def slow() -> None:
-            in_callback.set()
-            time.sleep(0.05)
+        await asyncio.sleep(0.05)
 
-        self._timer.call_later(0, slow)
-        self.assertTrue(in_callback.wait(timeout=1.0), msg="The slow callback must start.")
-
-        second = _Counter()
-        t0 = time.monotonic()
-        self._timer.call_later(0, second)
-        register_elapsed = time.monotonic() - t0
-
-        deadline = time.monotonic() + 1.0
-        while second.count == 0 and time.monotonic() < deadline:
-            time.sleep(0.005)
-        self._timer.stop()
-
-        self.assertLess(
-            register_elapsed,
-            0.04,
-            msg="call_later must not block behind an in-flight callback (lock released).",
-        )
-        self.assertEqual(second.count, 1, msg="The concurrently-registered entry must fire.")
+        callback.assert_called_once_with()
+        timer.stop()

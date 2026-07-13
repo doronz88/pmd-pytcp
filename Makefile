@@ -1,8 +1,8 @@
 VENV := venv
 ROOT_PATH:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-PYTCP_PATH := packages/pytcp/pytcp
-NET_ADDR_PATH := packages/net_addr/net_addr
-NET_PROTO_PATH := packages/net_proto/net_proto
+PYTCP_PATH := packages/pmd_pytcp/pmd_pytcp
+NET_ADDR_PATH := packages/pmd_net_addr/pmd_net_addr
+NET_PROTO_PATH := packages/pmd_net_proto/pmd_net_proto
 EXAMPLES_PATH := examples
 PYTCP_FILES := $(shell find ${PYTCP_PATH} -name '*.py')
 NET_ADDR_FILES := $(shell find ${NET_ADDR_PATH} -name '*.py')
@@ -15,9 +15,9 @@ ROOT_FILES := tests_runner.py
 # '-p' package mode.
 LINT_FILES := $(PYTCP_FILES) $(NET_ADDR_FILES) $(NET_PROTO_FILES) $(EXAMPLES_FILES) $(ROOT_FILES)
 # mypy '-p' takes import names, not paths. net_addr now lives at
-# packages/net_addr/net_addr (resolved via its editable install in
+# packages/pmd_net_addr/pmd_net_addr (resolved via its editable install in
 # the 'venv' target), so its name is decoupled from its path here.
-MYPY_PACKAGES := pytcp net_addr net_proto examples
+MYPY_PACKAGES := pmd_pytcp pmd_net_addr pmd_net_proto examples
 
 # If any recipe fails, delete its target file. Without this a
 # failed (or interrupted) 'venv' build leaves a half-populated
@@ -41,9 +41,9 @@ $(VENV)/bin/activate: requirements.txt requirements_dev.txt
 	@./$(VENV)/bin/python -m pip install --upgrade pip
 	@./$(VENV)/bin/pip install -r requirements.txt
 	@./$(VENV)/bin/pip install -r requirements_dev.txt
-	@./$(VENV)/bin/pip install -e packages/net_addr --config-settings editable_mode=compat
-	@./$(VENV)/bin/pip install -e packages/net_proto --config-settings editable_mode=compat
-	@./$(VENV)/bin/pip install -e packages/pytcp --config-settings editable_mode=compat
+	@./$(VENV)/bin/pip install -e packages/pmd_net_addr --config-settings editable_mode=compat
+	@./$(VENV)/bin/pip install -e packages/pmd_net_proto --config-settings editable_mode=compat
+	@./$(VENV)/bin/pip install -e packages/pmd_pytcp --config-settings editable_mode=compat
 	@touch $(VENV)/bin/activate
 
 venv: $(VENV)/bin/activate
@@ -105,15 +105,15 @@ lint: venv
 
 test__pytcp__integration: venv
 	@echo '<<< UNITTEST PYTCP INTEGRATION'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/pytcp/pytcp/tests/integration' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/pmd_pytcp/pmd_pytcp/tests/integration' -name 'test__*.py')
 
 test__net_addr__unit: venv
 	@echo '<<< UNITTEST NET_ADDR UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/pmd_net_addr/pmd_net_addr/tests/unit' -name 'test__*.py')
 
 test__net_proto__unit: venv
 	@echo '<<< UNITTEST NET_PROTO UNIT'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_proto/net_proto/tests/unit' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/pmd_net_proto/pmd_net_proto/tests/unit' -name 'test__*.py')
 
 test__examples__unit: venv
 	@echo '<<< UNITTEST EXAMPLES UNIT'
@@ -121,7 +121,7 @@ test__examples__unit: venv
 
 test: venv
 	@echo '<<< UNITTEST ALL'
-	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/net_addr/net_addr/tests' 'packages/net_proto/net_proto/tests' 'packages/pytcp/pytcp/tests' 'examples/tests' -name 'test__*.py')
+	@PYTHONPATH=$(ROOT_PATH) ./$(VENV)/bin/python tests_runner.py $(shell find 'packages/pmd_net_addr/pmd_net_addr/tests' 'packages/pmd_net_proto/pmd_net_proto/tests' 'packages/pmd_pytcp/pmd_pytcp/tests' 'examples/tests' -name 'test__*.py')
 
 validate: lint test
 
@@ -166,35 +166,35 @@ bridge:
 	@brctl addbr br0
 
 install: venv
-	@./$(VENV)/bin/pip install -e packages/pytcp
+	@./$(VENV)/bin/pip install -e packages/pmd_pytcp
 
 package: venv
-	@./$(VENV)/bin/python -m build packages/pytcp
+	@./$(VENV)/bin/python -m build packages/pmd_pytcp
 
 dist: package
 
 pypi: dist
-	@./$(VENV)/bin/twine check packages/pytcp/dist/*
-	@./$(VENV)/bin/twine upload packages/pytcp/dist/*
+	@./$(VENV)/bin/twine check packages/pmd_pytcp/dist/*
+	@./$(VENV)/bin/twine upload packages/pmd_pytcp/dist/*
 
 # Build + validate the standalone PyTCP-net_addr dist. Publishing
 # is via the OIDC publish.yml workflow on a GitHub Release (no
 # local twine upload), mirroring the umbrella PyTCP flow.
 build__net_addr: venv
-	@./$(VENV)/bin/python -m build packages/net_addr
-	@./$(VENV)/bin/twine check packages/net_addr/dist/*
+	@./$(VENV)/bin/python -m build packages/pmd_net_addr
+	@./$(VENV)/bin/twine check packages/pmd_net_addr/dist/*
 
 # Build + validate the standalone PyTCP-net_proto dist. Publishing
 # is via the OIDC publish.yml workflow on a GitHub Release.
 build__net_proto: venv
-	@./$(VENV)/bin/python -m build packages/net_proto
-	@./$(VENV)/bin/twine check packages/net_proto/dist/*
+	@./$(VENV)/bin/python -m build packages/pmd_net_proto
+	@./$(VENV)/bin/twine check packages/pmd_net_proto/dist/*
 
 # Build + validate the PyTCP dist (the dissolved umbrella: the
 # pytcp package depending on PyTCP-net_proto + PyTCP-net_addr).
 build__pytcp: venv
-	@./$(VENV)/bin/python -m build packages/pytcp
-	@./$(VENV)/bin/twine check packages/pytcp/dist/*
+	@./$(VENV)/bin/python -m build packages/pmd_pytcp
+	@./$(VENV)/bin/twine check packages/pmd_pytcp/dist/*
 
 tun3:
 	@ip tuntap add name tun3 mode tun

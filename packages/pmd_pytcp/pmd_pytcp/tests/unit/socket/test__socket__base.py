@@ -33,11 +33,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import errno
-import fcntl
-import select
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
@@ -1015,7 +1012,7 @@ class TestSocketGetSockName(TestCase):
         )
 
 
-class TestSocketPlaceholders(TestCase):
+class TestSocketPlaceholders(IsolatedAsyncioTestCase):
     """
     The 'socket' BSD API placeholder tests.
     """
@@ -1038,7 +1035,7 @@ class TestSocketPlaceholders(TestCase):
         with self.assertRaises(NotImplementedError):
             self._socket.bind(("10.0.0.1", 1024))
 
-    def test__socket__connect_raises_not_implemented(self) -> None:
+    async def test__socket__connect_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'connect' placeholder raises
         'NotImplementedError'.
@@ -1047,9 +1044,9 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.connect(("10.0.0.2", 2048))
+            await self._socket.connect(("10.0.0.2", 2048))
 
-    def test__socket__send_raises_not_implemented(self) -> None:
+    async def test__socket__send_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'send' placeholder raises
         'NotImplementedError'.
@@ -1058,9 +1055,9 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.send(b"data")
+            await self._socket.send(b"data")
 
-    def test__socket__recv_raises_not_implemented(self) -> None:
+    async def test__socket__recv_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'recv' placeholder raises
         'NotImplementedError'.
@@ -1069,9 +1066,9 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.recv()
+            await self._socket.recv()
 
-    def test__socket__recv_mv_raises_not_implemented(self) -> None:
+    async def test__socket__recv_mv_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'recv__mv' placeholder raises
         'NotImplementedError'.
@@ -1080,7 +1077,7 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.recv__mv()
+            await self._socket.recv__mv()
 
     def test__socket__close_raises_not_implemented(self) -> None:
         """
@@ -1104,7 +1101,7 @@ class TestSocketPlaceholders(TestCase):
         with self.assertRaises(NotImplementedError):
             self._socket.listen()
 
-    def test__socket__accept_raises_not_implemented(self) -> None:
+    async def test__socket__accept_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'accept' placeholder raises
         'NotImplementedError'.
@@ -1113,9 +1110,9 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.accept()
+            await self._socket.accept()
 
-    def test__socket__sendto_raises_not_implemented(self) -> None:
+    async def test__socket__sendto_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'sendto' placeholder raises
         'NotImplementedError'.
@@ -1124,9 +1121,9 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.sendto(b"data", ("10.0.0.2", 2048))
+            await self._socket.sendto(b"data", ("10.0.0.2", 2048))
 
-    def test__socket__recvfrom_raises_not_implemented(self) -> None:
+    async def test__socket__recvfrom_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'recvfrom' placeholder raises
         'NotImplementedError'.
@@ -1135,9 +1132,9 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.recvfrom()
+            await self._socket.recvfrom()
 
-    def test__socket__recvfrom_mv_raises_not_implemented(self) -> None:
+    async def test__socket__recvfrom_mv_raises_not_implemented(self) -> None:
         """
         Ensure the base-class 'recvfrom__mv' placeholder raises
         'NotImplementedError'.
@@ -1146,423 +1143,5 @@ class TestSocketPlaceholders(TestCase):
         """
 
         with self.assertRaises(NotImplementedError):
-            self._socket.recvfrom__mv()
+            await self._socket.recvfrom__mv()
 
-
-class _FdSocket(socket):
-    """
-    Minimal concrete 'socket' subclass that calls 'super().__init__()'
-    to exercise the base-class file-descriptor backing without the
-    full Tcp/Udp/Raw runtime — used by the fileno / signal / drain
-    tests below.
-    """
-
-    def __init__(self) -> None:
-        """
-        Allocate the base-class IO runtime and leave every other
-        attribute unset; the fileno-side surface is independent of
-        the address tuple.
-        """
-
-        super().__init__()
-
-
-class TestSocketFileno(TestCase):
-    """
-    The 'socket.fileno' / read-readiness signal-and-drain tests.
-    """
-
-    def setUp(self) -> None:
-        """
-        Allocate a fresh '_FdSocket' and register cleanup so its OS
-        file descriptor never leaks between tests.
-        """
-
-        self._socket = _FdSocket()
-        self.addCleanup(self._socket._close_io_runtime)
-
-    def test__socket__fileno_returns_non_negative_int(self) -> None:
-        """
-        Ensure 'fileno()' returns a non-negative integer file
-        descriptor that 'select.select' / 'selectors.DefaultSelector'
-        can consume, matching POSIX socket FD semantics.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-
-        self.assertIsInstance(
-            fd,
-            int,
-            msg="socket.fileno() must return an int matching the POSIX FD shape.",
-        )
-        self.assertGreaterEqual(
-            fd,
-            0,
-            msg="socket.fileno() must return a non-negative file descriptor.",
-        )
-
-    def test__socket__fileno_is_unique_per_socket_instance(self) -> None:
-        """
-        Ensure two distinct sockets each get their own OS file
-        descriptor — the eventfd backing 'fileno()' must not be
-        shared across instances.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        other = _FdSocket()
-        self.addCleanup(other._close_io_runtime)
-
-        self.assertNotEqual(
-            self._socket.fileno(),
-            other.fileno(),
-            msg="Each socket instance must get its own backing fd.",
-        )
-
-    def test__socket__fileno_initially_not_select_ready(self) -> None:
-        """
-        Ensure a freshly-constructed socket is not reported readable
-        by 'select.select' before any data-arrived signal has been
-        delivered. A spurious initial-ready bit would loop async
-        frameworks immediately.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="A fresh socket must not be reported readable by select.select.",
-        )
-
-    def test__socket__signal_readable_makes_fileno_select_ready(self) -> None:
-        """
-        Ensure '_signal_readable()' flips the eventfd into the
-        readable state so a subsequent 'select.select' returns
-        the fd as ready.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._signal_readable()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="_signal_readable() must mark the fd as select-readable.",
-        )
-
-    def test__socket__drain_readable_clears_select_ready(self) -> None:
-        """
-        Ensure '_drain_readable()' returns the eventfd to the
-        not-readable state after a prior signal — selector callers
-        rely on this transition to stop firing once the queue empties.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._signal_readable()
-        self._socket._drain_readable()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="_drain_readable() must return the fd to the not-readable state.",
-        )
-
-    def test__socket__drain_readable_is_idempotent(self) -> None:
-        """
-        Ensure '_drain_readable()' is safe to call when the eventfd
-        is already drained — the per-call 'EAGAIN' from a zero
-        counter must be swallowed silently so consumers don't have to
-        track ready-state themselves.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._drain_readable()
-        self._socket._drain_readable()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="Repeated _drain_readable() on an empty eventfd must remain a no-op.",
-        )
-
-    def test__socket__signal_then_drain_round_trip(self) -> None:
-        """
-        Ensure a signal-then-drain cycle returns to the not-ready
-        state and a fresh signal flips it readable again — the round
-        trip is the core selector-integration contract.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._signal_readable()
-        self._socket._drain_readable()
-        self._socket._signal_readable()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="signal -> drain -> signal must leave the fd select-readable.",
-        )
-
-    def test__socket__close_io_runtime_closes_underlying_fd(self) -> None:
-        """
-        Ensure '_close_io_runtime()' closes the OS-level eventfd so
-        the descriptor is no longer valid for further syscalls. The
-        BSD socket lifecycle requires 'close()' to release the
-        kernel resource.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-        self._socket._close_io_runtime()
-
-        with self.assertRaises(OSError) as context:
-            fcntl.fcntl(fd, fcntl.F_GETFD)
-
-        self.assertEqual(
-            context.exception.errno,
-            errno.EBADF,
-            msg="After _close_io_runtime() the fd must be closed (EBADF on syscall).",
-        )
-
-    def test__socket__close_io_runtime_is_idempotent(self) -> None:
-        """
-        Ensure repeated '_close_io_runtime()' calls do not raise —
-        the cleanup helper is invoked from teardown paths that may
-        also fire from explicit 'close()', and double-close on a
-        recycled fd would be a real bug.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._close_io_runtime()
-        self._socket._close_io_runtime()
-
-    def test__socket__signal_after_close_is_noop(self) -> None:
-        """
-        Ensure '_signal_readable()' on a closed socket does not raise.
-        A stack-thread producer racing with an application close()
-        must never crash the producer.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._close_io_runtime()
-        self._socket._signal_readable()
-
-    def test__socket__drain_after_close_is_noop(self) -> None:
-        """
-        Ensure '_drain_readable()' on a closed socket does not raise —
-        symmetric with the signal-after-close guarantee.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket._close_io_runtime()
-        self._socket._drain_readable()
-
-
-class TestSocketBlocking(TestCase):
-    """
-    The 'socket.setblocking' / 'socket.getblocking' tests.
-    """
-
-    def setUp(self) -> None:
-        """
-        Build a fresh '_FdSocket' for the blocking-flag matrix and
-        register cleanup of its eventfd.
-        """
-
-        self._socket = _FdSocket()
-        self.addCleanup(self._socket._close_io_runtime)
-
-    def test__socket__getblocking_default_is_true(self) -> None:
-        """
-        Ensure a freshly-constructed socket reports 'getblocking() ==
-        True', matching POSIX 'socket(2)' which returns sockets in
-        blocking mode by default.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self.assertTrue(
-            self._socket.getblocking(),
-            msg="A fresh socket must default to blocking mode (POSIX socket(2)).",
-        )
-
-    def test__socket__setblocking_false_then_getblocking_returns_false(self) -> None:
-        """
-        Ensure 'setblocking(False)' flips the flag so 'getblocking()'
-        reports 'False' on a subsequent call.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.setblocking(False)
-
-        self.assertFalse(
-            self._socket.getblocking(),
-            msg="setblocking(False) must make getblocking() return False.",
-        )
-
-    def test__socket__setblocking_true_then_getblocking_returns_true(self) -> None:
-        """
-        Ensure 'setblocking(True)' restores the default after a prior
-        'setblocking(False)' so apps can toggle modes.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.setblocking(False)
-        self._socket.setblocking(True)
-
-        self.assertTrue(
-            self._socket.getblocking(),
-            msg="setblocking(True) after False must restore blocking mode.",
-        )
-
-    def test__socket__setblocking_round_trips_through_getblocking(self) -> None:
-        """
-        Ensure repeated 'setblocking' / 'getblocking' calls preserve
-        the most recently set value, with no stale state between
-        toggles.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        for value in (False, True, False, True, False):
-            self._socket.setblocking(value)
-            self.assertEqual(
-                self._socket.getblocking(),
-                value,
-                msg=f"setblocking({value}) must round-trip through getblocking().",
-            )
-
-
-class TestSocketDnsHelpers(TestCase):
-    """
-    The 'pmd_pytcp.socket' DNS-helper re-export tests.
-    """
-
-    def test__socket__getaddrinfo_is_stdlib_re_export(self) -> None:
-        """
-        Ensure 'pmd_pytcp.socket.getaddrinfo' is the same callable as
-        CPython's stdlib 'socket.getaddrinfo' so apps calling
-        'pmd_pytcp.socket.getaddrinfo(...)' get real DNS resolution.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        import socket as _stdlib
-
-        from pmd_pytcp import socket as pytcp_socket
-
-        self.assertIs(
-            pytcp_socket.getaddrinfo,
-            _stdlib.getaddrinfo,
-            msg="pmd_pytcp.socket.getaddrinfo must be the stdlib getaddrinfo callable.",
-        )
-
-    def test__socket__gethostbyname_is_stdlib_re_export(self) -> None:
-        """
-        Ensure 'pmd_pytcp.socket.gethostbyname' is the stdlib symbol.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        import socket as _stdlib
-
-        from pmd_pytcp import socket as pytcp_socket
-
-        self.assertIs(
-            pytcp_socket.gethostbyname,
-            _stdlib.gethostbyname,
-            msg="pmd_pytcp.socket.gethostbyname must be the stdlib gethostbyname callable.",
-        )
-
-    def test__socket__getnameinfo_is_stdlib_re_export(self) -> None:
-        """
-        Ensure 'pmd_pytcp.socket.getnameinfo' is the stdlib symbol.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        import socket as _stdlib
-
-        from pmd_pytcp import socket as pytcp_socket
-
-        self.assertIs(
-            pytcp_socket.getnameinfo,
-            _stdlib.getnameinfo,
-            msg="pmd_pytcp.socket.getnameinfo must be the stdlib getnameinfo callable.",
-        )
-
-
-class TestSocketInaddrConstants(TestCase):
-    """
-    The 'pmd_pytcp.socket' INADDR_* constant tests.
-    """
-
-    def test__socket__inaddr_any_is_zero(self) -> None:
-        """
-        Ensure 'INADDR_ANY' equals 0, matching '<arpa/inet.h>'
-        and CPython's stdlib 'socket.INADDR_ANY'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        from pmd_pytcp.socket import INADDR_ANY
-
-        self.assertEqual(
-            INADDR_ANY,
-            0,
-            msg="INADDR_ANY must equal 0 per <arpa/inet.h>.",
-        )
-
-    def test__socket__inaddr_loopback_is_127_0_0_1(self) -> None:
-        """
-        Ensure 'INADDR_LOOPBACK' equals 0x7f000001 (127.0.0.1).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        from pmd_pytcp.socket import INADDR_LOOPBACK
-
-        self.assertEqual(
-            INADDR_LOOPBACK,
-            0x7F000001,
-            msg="INADDR_LOOPBACK must equal 0x7f000001 (127.0.0.1).",
-        )
-
-    def test__socket__inaddr_broadcast_is_all_ones(self) -> None:
-        """
-        Ensure 'INADDR_BROADCAST' equals 0xffffffff
-        (255.255.255.255).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        from pmd_pytcp.socket import INADDR_BROADCAST
-
-        self.assertEqual(
-            INADDR_BROADCAST,
-            0xFFFFFFFF,
-            msg="INADDR_BROADCAST must equal 0xffffffff (255.255.255.255).",
-        )

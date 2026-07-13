@@ -27,10 +27,12 @@ This module contains the 'ClientStack' — the client-side mirror of the
 'pmd_pytcp.stack' control surface.
 
 'ClientStack' owns one IPC control connection to the daemon and exposes
-a per-plane proxy ('.sysctl', and — as later Phase-1 commits land —
-'.route' / '.link' / '.address' / '.neighbor' / '.membership'). Each
-proxy mirrors the in-process API's method signatures and marshals calls
-across the boundary. 'connect()' is the entry point.
+a per-plane proxy ('.sysctl' / '.route' / '.link' / '.address' /
+'.neighbor' / '.membership'). Each proxy mirrors the in-process API's
+method signatures and marshals calls across the boundary — as
+coroutines under the pure-asyncio runtime
+('docs/refactor/pure_asyncio.md'). 'await connect(...)' is the entry
+point; 'ClientStack' is also an async context manager.
 
 pmd_pytcp/client/client_stack.py
 
@@ -39,7 +41,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import time
+import asyncio
 from types import TracebackType
 from typing_extensions import Self
 
@@ -67,7 +69,9 @@ class ClientStack:
 
     def __init__(self, *, socket_path: str) -> None:
         """
-        Open an IPC control connection and build the per-plane proxies.
+        Build the (not yet connected) IPC control connection and the
+        per-plane proxies — 'await open()' (or the module-level
+        'await connect(...)') establishes the connection.
         """
 
         self._client = IpcClient(socket_path=socket_path)
@@ -78,7 +82,15 @@ class ClientStack:
         self.neighbor = ClientNeighbor(self._client)
         self.membership = ClientMembership(self._client)
 
-    def socket(
+    async def open(self) -> Self:
+        """
+        Open the IPC control connection to the daemon.
+        """
+
+        await self._client.open()
+        return self
+
+    async def socket(
         self,
         family: AddressFamily = AddressFamily.INET4,
         type: SocketType = SocketType.STREAM,
@@ -91,24 +103,25 @@ class ClientStack:
         yields a 'ClientTcpSocket', DGRAM a 'ClientUdpSocket', RAW on an
         INET family a 'ClientRawSocket' (with an IANA next-header
         'protocol'), and RAW on the PACKET family a 'ClientPacketSocket'
-        (with an ethertype filter, default capture-all).
+        (with an ethertype filter, default capture-all). A coroutine —
+        opening is a daemon round trip.
         """
 
         if type == SocketType.STREAM:
-            return ClientTcpSocket(self._client, family=family)
+            return await ClientTcpSocket.open(self._client, family=family)
         elif type == SocketType.DGRAM:
-            return ClientUdpSocket(self._client, family=family)
+            return await ClientUdpSocket.open(self._client, family=family)
         elif type == SocketType.RAW:
             if family is AddressFamily.PACKET:
                 if isinstance(protocol, IpProto):
                     raise ValueError("An AF_PACKET socket takes an ethertype, not an IpProto.")
-                return ClientPacketSocket(
+                return await ClientPacketSocket.open(
                     self._client,
                     protocol=ETH_P_ALL if protocol is None else protocol,
                 )
             if not isinstance(protocol, IpProto):
                 raise ValueError("A raw IP socket requires an explicit IpProto next-header protocol.")
-            return ClientRawSocket(self._client, family=family, protocol=protocol)
+            return await ClientRawSocket.open(self._client, family=family, protocol=protocol)
 
         raise ValueError(f"Unsupported socket type {type!r}.")
 
@@ -119,14 +132,14 @@ class ClientStack:
 
         self._client.close()
 
-    def __enter__(self) -> Self:
+    async def __aenter__(self) -> Self:
         """
         Enter the client-stack context, returning the connected stack.
         """
 
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
@@ -139,30 +152,31 @@ class ClientStack:
         self.close()
 
 
-def connect(*, socket_path: str) -> ClientStack:
+async def connect(*, socket_path: str) -> ClientStack:
     """
     Connect to a PyTCP daemon and return a 'ClientStack' mirror.
     """
 
-    return ClientStack(socket_path=socket_path)
+    return await ClientStack(socket_path=socket_path).open()
 
 
-def wait_for_daemon(*, socket_path: str, timeout: float = 5.0) -> None:
+async def wait_for_daemon(*, socket_path: str, timeout: float = 5.0) -> None:
     """
-    Block until the daemon's control socket accepts a connection, so a
+    Wait until the daemon's control socket accepts a connection, so a
     client that races the daemon's startup can wait for readiness before
     'connect()'. Raises 'IpcConnectionError' if the daemon does not become
     ready within 'timeout' seconds.
     """
 
-    deadline = time.monotonic() + timeout
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     while True:
         try:
-            IpcClient(socket_path=socket_path).close()
+            (await IpcClient(socket_path=socket_path).open()).close()
             return
         except OSError:
-            if time.monotonic() >= deadline:
+            if loop.time() >= deadline:
                 raise IpcConnectionError(
                     f"PyTCP daemon did not become ready on {socket_path!r} within {timeout}s.",
                 ) from None
-            time.sleep(IPC__CLIENT__READINESS_POLL__SEC)
+            await asyncio.sleep(IPC__CLIENT__READINESS_POLL__SEC)

@@ -32,9 +32,13 @@ daemon's SOCK_DGRAM socketpair (boundary-preserving), with each datagram
 framed by its peer address (see 'ipc__dgram_frame') so 'sendto' /
 'recvfrom' carry the address; and control methods (bind / connect /
 setsockopt / getsockopt / getsockname / getpeername / close) marshalled
-over the SOCKET_CALL op keyed by the daemon-assigned handle. The two
-differ only in how they open: a UDP socket by type, a raw socket by type
-plus an IANA next-header protocol.
+over the SOCKET_CALL op keyed by the daemon-assigned handle. Under the
+pure-asyncio runtime ('docs/refactor/pure_asyncio.md') the waiting calls
+are coroutines with the same names and parameters, the data path driven
+by the loop's sock APIs; opening is 'await ClientUdpSocket.open(...)' /
+'await ClientRawSocket.open(...)' (the daemon round trip cannot happen
+in a constructor). The two differ only in how they open: a UDP socket by
+type, a raw socket by type plus an IANA next-header protocol.
 
 pmd_pytcp/client/client__datagram_socket.py
 
@@ -43,9 +47,12 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
+from typing_extensions import Self
 
 from pmd_net_proto.lib.enums import IpProto
+from pmd_pytcp.client.client__data_channel import _DataChannel
 from pmd_pytcp.ipc.ipc__client import IpcClient
 from pmd_pytcp.ipc.ipc__dgram_bridge import IPC__DGRAM_BRIDGE__CHUNK_SIZE
 from pmd_pytcp.ipc.ipc__dgram_frame import decode_dgram, encode_dgram
@@ -57,7 +64,7 @@ from pmd_pytcp.socket import AddressFamily, SocketType
 IPC__CLIENT_DGRAM__MAX_PAYLOAD: int = 65535
 
 
-class _ClientDatagramBase:
+class _ClientDatagramBase(_DataChannel):
     """
     Shared client-side datagram-socket plumbing (UDP and raw).
     """
@@ -72,61 +79,42 @@ class _ClientDatagramBase:
         self._client = client
         self._handle = handle
         self._family = family
-        self._data_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM, fileno=data_fd)
+        self._init_data_channel(socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM, fileno=data_fd))
 
-    def fileno(self) -> int:
-        """
-        Return the data-channel descriptor, selectable with select / poll
-        / epoll.
-        """
-
-        return self._data_socket.fileno()
-
-    def settimeout(self, timeout: float | None, /) -> None:
-        """
-        Set the data-channel timeout (seconds, or None for blocking).
-        Acts on the local descriptor only — no daemon round trip.
-        """
-
-        self._data_socket.settimeout(timeout)
-
-    def setblocking(self, flag: bool, /) -> None:
-        """
-        Set the data channel blocking or non-blocking. Acts on the local
-        descriptor only — no daemon round trip.
-        """
-
-        self._data_socket.setblocking(flag)
-
-    def sendto(self, data: bytes, address: tuple[str, int], /) -> int:
+    async def sendto(self, data: bytes, address: tuple[str, int], /) -> int:
         """
         Send 'data' as a datagram to 'address'.
         """
 
-        self._data_socket.send(encode_dgram(address, data))
+        await self._wait_data(
+            asyncio.get_running_loop().sock_sendall(self._data_socket, encode_dgram(address, data))
+        )
         return len(data)
 
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send 'data' as a datagram to the connected peer.
         """
 
-        self._data_socket.send(encode_dgram(None, data))
+        await self._wait_data(asyncio.get_running_loop().sock_sendall(self._data_socket, encode_dgram(None, data)))
         return len(data)
 
-    def recvfrom(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> tuple[bytes, tuple[str, int]]:
+    async def recvfrom(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> tuple[bytes, tuple[str, int]]:
         """
         Receive one datagram with the sender's '(host, port)' address,
         truncating the payload to 'bufsize'.
         """
 
-        address, _cmsg, payload = decode_dgram(self._data_socket.recv(IPC__DGRAM_BRIDGE__CHUNK_SIZE))
+        blob = await self._wait_data(
+            asyncio.get_running_loop().sock_recv(self._data_socket, IPC__DGRAM_BRIDGE__CHUNK_SIZE)
+        )
+        address, _cmsg, payload = decode_dgram(blob)
         # The daemon's RX pump always frames a received datagram with its
         # sender address, so a None address here is a protocol violation.
         assert address is not None, "A received datagram frame carried no sender address."
         return payload[:bufsize], address
 
-    def recvmsg(
+    async def recvmsg(
         self,
         bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD,
         ancbufsize: int = 0,
@@ -141,7 +129,10 @@ class _ClientDatagramBase:
         """
 
         _ = ancbufsize
-        address, cmsg, payload = decode_dgram(self._data_socket.recv(IPC__DGRAM_BRIDGE__CHUNK_SIZE))
+        blob = await self._wait_data(
+            asyncio.get_running_loop().sock_recv(self._data_socket, IPC__DGRAM_BRIDGE__CHUNK_SIZE)
+        )
+        address, cmsg, payload = decode_dgram(blob)
         assert address is not None, "A received datagram frame carried no sender address."
 
         out_address: tuple[str, int] | tuple[str, int, int, int] = (
@@ -149,45 +140,45 @@ class _ClientDatagramBase:
         )
         return payload[:bufsize], cmsg, 0, out_address
 
-    def recv(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> bytes:
+    async def recv(self, bufsize: int = IPC__CLIENT_DGRAM__MAX_PAYLOAD) -> bytes:
         """
         Receive one datagram's payload, truncated to 'bufsize'.
         """
 
-        return self.recvfrom(bufsize)[0]
+        return (await self.recvfrom(bufsize))[0]
 
-    def bind(self, address: tuple[str, int]) -> None:
+    async def bind(self, address: tuple[str, int]) -> None:
         """
         Bind the daemon socket to a local address.
         """
 
-        socket_call(self._client, method="bind", handle=self._handle, args={"address": address})
+        await socket_call(self._client, method="bind", handle=self._handle, args={"address": address})
 
-    def connect(self, address: tuple[str, int]) -> None:
+    async def connect(self, address: tuple[str, int]) -> None:
         """
         Set the daemon socket's default peer address.
         """
 
-        socket_call(self._client, method="connect", handle=self._handle, args={"address": address})
+        await socket_call(self._client, method="connect", handle=self._handle, args={"address": address})
 
-    def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
+    async def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
         """
         Set a socket option on the daemon socket.
         """
 
-        socket_call(
+        await socket_call(
             self._client,
             method="setsockopt",
             handle=self._handle,
             args={"level": level, "optname": optname, "value": value},
         )
 
-    def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
+    async def getsockopt(self, level: int | IpProto, optname: int, /) -> int | bytes:
         """
         Get a socket option from the daemon socket.
         """
 
-        result: int | bytes = socket_call(
+        result: int | bytes = await socket_call(
             self._client,
             method="getsockopt",
             handle=self._handle,
@@ -195,31 +186,31 @@ class _ClientDatagramBase:
         )
         return result
 
-    def getsockname(self) -> tuple[str, int]:
+    async def getsockname(self) -> tuple[str, int]:
         """
         Get the daemon socket's local address and port.
         """
 
-        result: tuple[str, int] = socket_call(self._client, method="getsockname", handle=self._handle, args={})
+        result: tuple[str, int] = await socket_call(self._client, method="getsockname", handle=self._handle, args={})
         return result
 
-    def getpeername(self) -> tuple[str, int]:
+    async def getpeername(self) -> tuple[str, int]:
         """
         Get the daemon socket's connected peer address and port.
         """
 
-        result: tuple[str, int] = socket_call(self._client, method="getpeername", handle=self._handle, args={})
+        result: tuple[str, int] = await socket_call(self._client, method="getpeername", handle=self._handle, args={})
         return result
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """
         Close the daemon socket and the local data-channel descriptor.
         """
 
         try:
-            socket_call(self._client, method="close", handle=self._handle, args={})
+            await socket_call(self._client, method="close", handle=self._handle, args={})
         finally:
-            self._data_socket.close()
+            self._close_data_channel()
 
 
 class ClientUdpSocket(_ClientDatagramBase):
@@ -227,14 +218,15 @@ class ClientUdpSocket(_ClientDatagramBase):
     A client-side UDP socket backed by a daemon socket over IPC.
     """
 
-    def __init__(self, client: IpcClient, /, *, family: AddressFamily = AddressFamily.INET4) -> None:
+    @classmethod
+    async def open(cls, client: IpcClient, /, *, family: AddressFamily = AddressFamily.INET4) -> Self:
         """
         Open a daemon-side UDP socket and adopt its passed SOCK_DGRAM
         data-channel descriptor.
         """
 
-        handle, data_fd = open_socket(client, family=family, type_=SocketType.DGRAM)
-        super().__init__(client, handle, data_fd, family)
+        handle, data_fd = await open_socket(client, family=family, type_=SocketType.DGRAM)
+        return cls(client, handle, data_fd, family)
 
 
 class ClientRawSocket(_ClientDatagramBase):
@@ -242,19 +234,20 @@ class ClientRawSocket(_ClientDatagramBase):
     A client-side raw IP socket backed by a daemon socket over IPC.
     """
 
-    def __init__(
-        self,
+    @classmethod
+    async def open(
+        cls,
         client: IpcClient,
         /,
         *,
         protocol: IpProto,
         family: AddressFamily = AddressFamily.INET4,
-    ) -> None:
+    ) -> Self:
         """
         Open a daemon-side raw socket for the given IANA next-header
         'protocol' and adopt its passed SOCK_DGRAM data-channel
         descriptor.
         """
 
-        handle, data_fd = open_socket(client, family=family, type_=SocketType.RAW, protocol=protocol)
-        super().__init__(client, handle, data_fd, family)
+        handle, data_fd = await open_socket(client, family=family, type_=SocketType.RAW, protocol=protocol)
+        return cls(client, handle, data_fd, family)

@@ -35,13 +35,11 @@ ver 3.0.7
 from __future__ import annotations
 
 import errno
-import fcntl
-import select
 import struct
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_net_proto.lib.enums import IpProto
@@ -82,7 +80,7 @@ def _make_packet_handler(
     )
 
 
-class _TcpSocketTestCase(TestCase):
+class _TcpSocketTestCase(IsolatedAsyncioTestCase):
     """
     Shared fixture that patches the module-level stack globals and the
     'TcpSession' constructor so no real FSM thread is spun up.
@@ -129,6 +127,10 @@ class _TcpSocketTestCase(TestCase):
         )
         self._session_cls = self._session_cls_patch.start()
         self._session_cls.return_value = MagicMock()
+        # 'connect' / 'receive' are awaited by the socket source, so the
+        # mocked session must expose them as coroutines.
+        self._session_cls.return_value.connect = AsyncMock()
+        self._session_cls.return_value.receive = AsyncMock()
 
     def tearDown(self) -> None:
         """
@@ -427,7 +429,7 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
     The 'TcpSocket.connect' tests.
     """
 
-    def test__tcp_socket__connect_creates_session_and_calls_connect(self) -> None:
+    async def test__tcp_socket__connect_creates_session_and_calls_connect(self) -> None:
         """
         Ensure connect() instantiates a 'TcpSession' with the
         resolved addresses and delegates to its 'connect()' method.
@@ -446,14 +448,14 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
                 return_value=40000,
             ),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self._session_cls.assert_called_once()
         self._session_cls.return_value.connect.assert_called_once_with()
         self.assertEqual(s.remote_ip_address, Ip4Address("10.0.0.5"), msg="connect() must set remote IP.")
         self.assertEqual(s.remote_port, 80, msg="connect() must set remote port.")
 
-    def test__tcp_socket__connect_translates_refused(self) -> None:
+    async def test__tcp_socket__connect_translates_refused(self) -> None:
         """
         Ensure a 'TcpSessionError("Connection refused")' raised by the
         session is translated into 'ConnectionRefusedError' with the
@@ -473,14 +475,14 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
             with self.assertRaises(ConnectionRefusedError) as context:
-                s.connect(("10.0.0.5", 80))
+                await s.connect(("10.0.0.5", 80))
         self.assertIn(
             "[Errno 111]",
             str(context.exception),
             msg="TcpSessionError('Connection refused') must translate to Errno 111.",
         )
 
-    def test__tcp_socket__connect_translates_timeout(self) -> None:
+    async def test__tcp_socket__connect_translates_timeout(self) -> None:
         """
         Ensure a 'TcpSessionError("Connection timeout")' raised by the
         session is translated into 'TimeoutError' with the Errno 110
@@ -500,14 +502,14 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
             with self.assertRaises(TimeoutError) as context:
-                s.connect(("10.0.0.5", 80))
+                await s.connect(("10.0.0.5", 80))
         self.assertIn(
             "[Errno 110]",
             str(context.exception),
             msg="TcpSessionError('Connection timeout') must translate to Errno 110.",
         )
 
-    def test__tcp_socket__connect_rejects_unspecified_remote(self) -> None:
+    async def test__tcp_socket__connect_rejects_unspecified_remote(self) -> None:
         """
         Ensure connecting to '0.0.0.0' raises 'ConnectionRefusedError'
         with the '[Errno 111]' message — unspecified remote is not a
@@ -518,9 +520,9 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
 
         s = TcpSocket(family=AddressFamily.INET4)
         with self.assertRaises(ConnectionRefusedError):
-            s.connect(("0.0.0.0", 80))
+            await s.connect(("0.0.0.0", 80))
 
-    def test__tcp_socket__connect_rejects_out_of_range_port(self) -> None:
+    async def test__tcp_socket__connect_rejects_out_of_range_port(self) -> None:
         """
         Ensure connect() raises 'OverflowError' for a port outside
         the 0-65535 range.
@@ -530,9 +532,9 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
 
         s = TcpSocket(family=AddressFamily.INET4)
         with self.assertRaises(OverflowError):
-            s.connect(("10.0.0.5", 70000))
+            await s.connect(("10.0.0.5", 70000))
 
-    def test__tcp_socket__connect_rejects_malformed_address(self) -> None:
+    async def test__tcp_socket__connect_rejects_malformed_address(self) -> None:
         """
         Ensure a malformed remote-address literal raises 'gaierror'.
 
@@ -541,7 +543,7 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
 
         s = TcpSocket(family=AddressFamily.INET4)
         with self.assertRaises(gaierror):
-            s.connect(("garbage", 80))
+            await s.connect(("garbage", 80))
 
 
 class TestTcpSocketListenAccept(_TcpSocketTestCase):
@@ -569,7 +571,7 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
         )
         self._session_cls.return_value.listen.assert_called_once_with()
 
-    def test__tcp_socket__accept_returns_socket_and_address(self) -> None:
+    async def test__tcp_socket__accept_returns_socket_and_address(self) -> None:
         """
         Ensure accept() returns a '(socket, (remote_ip_str, port))'
         tuple once the semaphore is signaled.
@@ -586,7 +588,7 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
         s._tcp_accept.append(child)
         s._event__tcp_session_established.release()
 
-        result_socket, result_addr = s.accept()
+        result_socket, result_addr = await s.accept()
 
         self.assertIs(
             result_socket,
@@ -599,7 +601,7 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
             msg="accept() must return (remote_ip_str, remote_port) as the address tuple.",
         )
 
-    def test__tcp_socket__accept_timeout_raises(self) -> None:
+    async def test__tcp_socket__accept_timeout_raises(self) -> None:
         """
         Ensure accept() raises 'TimeoutError' when the semaphore is
         not signaled within the supplied timeout window.
@@ -609,7 +611,7 @@ class TestTcpSocketListenAccept(_TcpSocketTestCase):
 
         s = TcpSocket(family=AddressFamily.INET4)
         with self.assertRaises(TimeoutError):
-            s.accept(timeout=0.01)
+            await s.accept(timeout=0.01)
 
 
 class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
@@ -635,7 +637,7 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         s._tcp_session = session
         return s, session
 
-    def test__tcp_socket__send_requires_destination(self) -> None:
+    async def test__tcp_socket__send_requires_destination(self) -> None:
         """
         Ensure send() on a socket with no remote IP raises
         'BrokenPipeError' (matching the CPython EPIPE shape) so the
@@ -647,9 +649,9 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         s = TcpSocket(family=AddressFamily.INET4)
         s._tcp_session = MagicMock()
         with self.assertRaises(BrokenPipeError):
-            s.send(b"data")
+            await s.send(b"data")
 
-    def test__tcp_socket__send_returns_bytes_sent(self) -> None:
+    async def test__tcp_socket__send_returns_bytes_sent(self) -> None:
         """
         Ensure send() delegates to the session's send() and returns
         the byte count the session reports.
@@ -661,13 +663,13 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         session.send.return_value = 5
 
         self.assertEqual(
-            s.send(b"hello"),
+            await s.send(b"hello"),
             5,
             msg="send() must return the byte count reported by the underlying TcpSession.",
         )
         session.send.assert_called_once_with(data=b"hello")
 
-    def test__tcp_socket__send_translates_session_error(self) -> None:
+    async def test__tcp_socket__send_translates_session_error(self) -> None:
         """
         Ensure a 'TcpSessionError' from the session surfaces as a
         'BrokenPipeError' with the Errno 32 message, matching the
@@ -680,14 +682,14 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         session.send.side_effect = TcpSessionError("boom")
 
         with self.assertRaises(BrokenPipeError) as context:
-            s.send(b"data")
+            await s.send(b"data")
         self.assertIn(
             "[Errno 32]",
             str(context.exception),
             msg="send() must translate TcpSessionError into BrokenPipeError with Errno 32.",
         )
 
-    def test__tcp_socket__recv_returns_session_data(self) -> None:
+    async def test__tcp_socket__recv_returns_session_data(self) -> None:
         """
         Ensure recv() delegates to 'TcpSession.receive()' and returns
         its byte payload verbatim.
@@ -696,15 +698,16 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         """
 
         s, session = self._connected_socket()
+        session.receive = AsyncMock()
         session.receive.return_value = b"payload"
 
         self.assertEqual(
-            s.recv(),
+            await s.recv(),
             b"payload",
             msg="recv() must return the bytes returned by TcpSession.receive().",
         )
 
-    def test__tcp_socket__recv_translates_timeout(self) -> None:
+    async def test__tcp_socket__recv_translates_timeout(self) -> None:
         """
         Ensure a 'TimeoutError' raised by the session is re-raised as
         a new 'TimeoutError' with the socket-level message.
@@ -713,10 +716,11 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         """
 
         s, session = self._connected_socket()
+        session.receive = AsyncMock()
         session.receive.side_effect = TimeoutError("session")
 
         with self.assertRaises(TimeoutError) as context:
-            s.recv(timeout=0.01)
+            await s.recv(timeout=0.01)
         self.assertIn(
             "TCP Socket",
             str(context.exception),
@@ -780,7 +784,7 @@ class TestTcpSocketSendmsg(_TcpSocketTestCase):
         s._tcp_session = session
         return s, session
 
-    def test__tcp_socket__sendmsg_concatenates_buffers(self) -> None:
+    async def test__tcp_socket__sendmsg_concatenates_buffers(self) -> None:
         """
         Ensure sendmsg() concatenates the scatter-gather 'buffers'
         iterable into one byte string, hands it to the session's
@@ -794,13 +798,13 @@ class TestTcpSocketSendmsg(_TcpSocketTestCase):
         session.send.return_value = 4
 
         self.assertEqual(
-            s.sendmsg([b"AB", b"CD"]),
+            await s.sendmsg([b"AB", b"CD"]),
             4,
             msg="sendmsg() must return the byte count reported by the session.",
         )
         session.send.assert_called_once_with(data=b"ABCD")
 
-    def test__tcp_socket__sendmsg_with_address_raises(self) -> None:
+    async def test__tcp_socket__sendmsg_with_address_raises(self) -> None:
         """
         Ensure sendmsg() with a non-None 'address' on a connected
         stream socket raises 'OSError(EISCONN)' — a destination
@@ -812,14 +816,14 @@ class TestTcpSocketSendmsg(_TcpSocketTestCase):
         s, _session = self._connected_socket()
 
         with self.assertRaises(OSError) as context:
-            s.sendmsg([b"x"], address=("10.0.0.9", 80))
+            await s.sendmsg([b"x"], address=("10.0.0.9", 80))
         self.assertEqual(
             context.exception.errno,
             errno.EISCONN,
             msg="sendmsg(address=...) on a connected TCP socket must raise EISCONN.",
         )
 
-    def test__tcp_socket__sendmsg_accepts_and_ignores_ancdata(self) -> None:
+    async def test__tcp_socket__sendmsg_accepts_and_ignores_ancdata(self) -> None:
         """
         Ensure sendmsg() accepts a well-formed ancillary-data list and
         silently ignores it (Phase-1 honours no send-side cmsg type).
@@ -831,12 +835,12 @@ class TestTcpSocketSendmsg(_TcpSocketTestCase):
         session.send.return_value = 1
 
         self.assertEqual(
-            s.sendmsg([b"x"], [(0, 0, b"\x00")]),
+            await s.sendmsg([b"x"], [(0, 0, b"\x00")]),
             1,
             msg="sendmsg() must accept a valid cmsg 3-tuple and send the payload regardless.",
         )
 
-    def test__tcp_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
+    async def test__tcp_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
         """
         Ensure sendmsg() rejects an ancillary-data entry that is not a
         3-tuple with a TypeError, matching the stdlib structural
@@ -849,7 +853,7 @@ class TestTcpSocketSendmsg(_TcpSocketTestCase):
 
         bad_ancdata: list[Any] = [(1, 2)]
         with self.assertRaises(TypeError):
-            s.sendmsg([b"x"], bad_ancdata)
+            await s.sendmsg([b"x"], bad_ancdata)
 
 
 class TestTcpSocketSoLinger(_TcpSocketTestCase):
@@ -1102,7 +1106,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         ):
             s.getsockopt(0xDEAD, SO_KEEPALIVE)
 
-    def test__tcp_socket__connect_propagates_so_keepalive_to_session(self) -> None:
+    async def test__tcp_socket__connect_propagates_so_keepalive_to_session(self) -> None:
         """
         Ensure 'setsockopt(SO_KEEPALIVE, 1)' followed by 'connect()'
         propagates the flag to the freshly-constructed TcpSession's
@@ -1128,7 +1132,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self.assertIs(
             self._session_cls.return_value._keepalive.enabled,
@@ -1139,7 +1143,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
         )
 
-    def test__tcp_socket__connect_propagates_default_disable_to_session(self) -> None:
+    async def test__tcp_socket__connect_propagates_default_disable_to_session(self) -> None:
         """
         Ensure connect() without setsockopt sets the new
         TcpSession's '_keepalive_enabled' to False explicitly
@@ -1157,7 +1161,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self.assertIs(
             self._session_cls.return_value._keepalive.enabled,
@@ -1264,7 +1268,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
         self.assertEqual(s.getsockopt(IPPROTO_TCP, TCP_KEEPINTVL), 0)
         self.assertEqual(s.getsockopt(IPPROTO_TCP, TCP_KEEPCNT), 0)
 
-    def test__tcp_socket__connect_propagates_keep_overrides_to_session(self) -> None:
+    async def test__tcp_socket__connect_propagates_keep_overrides_to_session(self) -> None:
         """
         Ensure setsockopt(IPPROTO_TCP, TCP_KEEP*, ...) followed by
         connect() propagates each override onto the freshly-
@@ -1286,7 +1290,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self.assertEqual(
             self._session_cls.return_value._keepalive.idle_override,
@@ -1304,7 +1308,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="connect() must propagate TCP_KEEPCNT override to session.",
         )
 
-    def test__tcp_socket__connect_with_data_pre_loads_session_tx_buffer(self) -> None:
+    async def test__tcp_socket__connect_with_data_pre_loads_session_tx_buffer(self) -> None:
         """
         Ensure 'TcpSocket.connect(remote, data=b"...")'
         accepts a 'data' kwarg and pre-loads the freshly-
@@ -1329,7 +1333,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80), data=early_data)
+            await s.connect(("10.0.0.5", 80), data=early_data)
 
         self._session_cls.return_value._tx.buffer.extend.assert_called_with(early_data)
 
@@ -1467,7 +1471,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="Non-zero TCP_NODELAY value must normalise to 1.",
         )
 
-    def test__tcp_socket__connect_propagates_tcp_nodelay_to_session(self) -> None:
+    async def test__tcp_socket__connect_propagates_tcp_nodelay_to_session(self) -> None:
         """
         Ensure setsockopt(TCP_NODELAY, 1) followed by connect()
         propagates the flag to the freshly-constructed
@@ -1485,7 +1489,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self.assertIs(
             self._session_cls.return_value._tcp_nodelay,
@@ -1552,7 +1556,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="setsockopt(TCP_USER_TIMEOUT, -1) must raise OSError(EINVAL).",
         )
 
-    def test__tcp_socket__connect_propagates_tcp_user_timeout_to_session(self) -> None:
+    async def test__tcp_socket__connect_propagates_tcp_user_timeout_to_session(self) -> None:
         """
         Ensure 'setsockopt(TCP_USER_TIMEOUT, 30000)' followed
         by 'connect()' propagates onto the freshly-constructed
@@ -1573,7 +1577,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self.assertEqual(
             self._session_cls.return_value._user_timeout_ms,
@@ -1688,7 +1692,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             msg="setsockopt(TCP_MAXSEG, 0) after an earlier clamp must clear the clamp.",
         )
 
-    def test__tcp_socket__connect_propagates_tcp_maxseg_to_session(self) -> None:
+    async def test__tcp_socket__connect_propagates_tcp_maxseg_to_session(self) -> None:
         """
         Ensure 'setsockopt(TCP_MAXSEG, 1200)' followed by
         'connect()' propagates onto the freshly-constructed
@@ -1709,7 +1713,7 @@ class TestTcpSocketOptions(_TcpSocketTestCase):
             ),
             patch("pmd_pytcp.socket.tcp__socket.pick_local_port", return_value=40000),
         ):
-            s.connect(("10.0.0.5", 80))
+            await s.connect(("10.0.0.5", 80))
 
         self.assertEqual(
             self._session_cls.return_value._maxseg_override,
@@ -2003,175 +2007,6 @@ class TestTcpSocketDualStackPresentation(_TcpSocketTestCase):
         )
 
 
-class TestTcpSocketFileno(_TcpSocketTestCase):
-    """
-    The 'TcpSocket.fileno' / read-readiness signal-and-drain tests.
-    """
-
-    def setUp(self) -> None:
-        """
-        Build a fresh TCP socket. 'tearDown' closes the eventfd
-        before the parent fixture stops the 'log' patch.
-        """
-
-        super().setUp()
-        self._socket = TcpSocket(family=AddressFamily.INET4)
-
-    def tearDown(self) -> None:
-        """
-        Release the socket's eventfd while the 'log' patch is still
-        active, then let the parent tear down the stack stubs.
-        '_close_io_runtime' rather than 'close()' here because the
-        socket has no session attached.
-        """
-
-        try:
-            self._socket._close_io_runtime()
-        except OSError:
-            pass
-        super().tearDown()
-
-    def test__tcp_socket__fileno_returns_non_negative_int(self) -> None:
-        """
-        Ensure 'fileno()' on a TCP socket returns a non-negative
-        integer file descriptor for selector consumption.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-
-        self.assertIsInstance(
-            fd,
-            int,
-            msg="TcpSocket.fileno() must return an int.",
-        )
-        self.assertGreaterEqual(
-            fd,
-            0,
-            msg="TcpSocket.fileno() must return a non-negative fd.",
-        )
-
-    def test__tcp_socket__fileno_initially_not_select_ready(self) -> None:
-        """
-        Ensure a freshly-constructed TCP socket reports as not
-        readable until either a child connection lands on the
-        accept queue or session data lands in the rx buffer.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="A fresh TcpSocket must not be select-readable.",
-        )
-
-    def test__tcp_socket__fileno_select_ready_after_accept_queue_appended(self) -> None:
-        """
-        Ensure a child socket landing on the listening socket's
-        accept queue (the listener-fork hook in
-        'tcp__fsm__syn_rcvd.py') makes the listening socket
-        select-readable so an event-loop accept-loop wakes.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        Reference: RFC 9293 §3.10.2 (OPEN passive / accept queue delivery).
-        """
-
-        child = MagicMock()
-        self._socket._tcp_accept.append(child)
-        self._socket._event__tcp_session_established.release()
-        self._socket._signal_readable()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="A child appended to the accept queue must mark the listening fd readable.",
-        )
-
-    def test__tcp_socket__accept_drains_fileno_when_last_child_consumed(self) -> None:
-        """
-        Ensure 'accept()' returns the listening fd to the
-        not-readable state once the last queued child has been
-        consumed — selector-driven accept loops rely on this.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        Reference: RFC 9293 §3.10.2 (OPEN passive / accept queue delivery).
-        """
-
-        child = MagicMock()
-        child.remote_ip_address = Ip4Address("10.0.0.5")
-        child.remote_port = 12345
-        self._socket._tcp_accept.append(child)
-        self._socket._event__tcp_session_established.release()
-        self._socket._signal_readable()
-
-        self._socket.accept()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="accept() consuming the last queued child must clear the readable bit.",
-        )
-
-    def test__tcp_socket__accept_keeps_fileno_ready_when_more_children_queued(self) -> None:
-        """
-        Ensure 'accept()' on a queue with more than one pending
-        child leaves the listening fd select-readable so the next
-        selector tick still wakes.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        first = MagicMock()
-        first.remote_ip_address = Ip4Address("10.0.0.5")
-        first.remote_port = 12345
-        second = MagicMock()
-        second.remote_ip_address = Ip4Address("10.0.0.6")
-        second.remote_port = 12346
-        self._socket._tcp_accept.extend([first, second])
-        self._socket._event__tcp_session_established.release()
-        self._socket._event__tcp_session_established.release()
-        self._socket._signal_readable()
-        self._socket._signal_readable()
-
-        self._socket.accept()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="accept() leaving children queued must keep the listening fd readable.",
-        )
-
-    def test__tcp_socket__close_io_runtime_closes_underlying_fd(self) -> None:
-        """
-        Ensure '_close_io_runtime()' tears down the eventfd backing
-        'fileno()' on a TCP socket.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-        self._socket._close_io_runtime()
-
-        with self.assertRaises(OSError) as context:
-            fcntl.fcntl(fd, fcntl.F_GETFD)
-
-        self.assertEqual(
-            context.exception.errno,
-            errno.EBADF,
-            msg="_close_io_runtime() must close the eventfd backing fileno() (EBADF).",
-        )
-
-
 class TestTcpSocketNonBlocking(_TcpSocketTestCase):
     """
     The 'TcpSocket.setblocking' non-blocking-recv / accept tests.
@@ -2187,18 +2022,7 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         self._socket = TcpSocket(family=AddressFamily.INET4)
         self._socket.setblocking(False)
 
-    def tearDown(self) -> None:
-        """
-        Close the eventfd before the parent tears down patches.
-        """
-
-        try:
-            self._socket._close_io_runtime()
-        except OSError:
-            pass
-        super().tearDown()
-
-    def test__tcp_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
+    async def test__tcp_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
         """
         Ensure 'recv()' on a non-blocking TCP socket with an empty
         rx buffer raises 'BlockingIOError(EAGAIN)' to match POSIX
@@ -2209,13 +2033,14 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         """
 
         session = MagicMock()
+        session.receive = AsyncMock()
         session.receive.side_effect = TimeoutError("no data ready")
         self._socket._tcp_session = session
         self._socket._remote_ip_address = Ip4Address("10.0.0.5")
         self._socket._remote_port = 80
 
         with self.assertRaises(BlockingIOError) as context:
-            self._socket.recv()
+            await self._socket.recv()
 
         self.assertEqual(
             context.exception.errno,
@@ -2223,7 +2048,7 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
             msg="Non-blocking recv() with no data must raise BlockingIOError(EAGAIN).",
         )
 
-    def test__tcp_socket__recv_passes_zero_timeout_when_non_blocking(self) -> None:
+    async def test__tcp_socket__recv_passes_zero_timeout_when_non_blocking(self) -> None:
         """
         Ensure 'recv()' on a non-blocking TCP socket forwards
         'timeout=0' to 'TcpSession.receive' so the session does not
@@ -2234,16 +2059,17 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         """
 
         session = MagicMock()
+        session.receive = AsyncMock()
         session.receive.return_value = b"data"
         self._socket._tcp_session = session
         self._socket._remote_ip_address = Ip4Address("10.0.0.5")
         self._socket._remote_port = 80
 
-        self._socket.recv()
+        await self._socket.recv()
 
         session.receive.assert_called_once_with(byte_count=None, timeout=0)
 
-    def test__tcp_socket__recv_per_call_timeout_overrides_non_blocking(self) -> None:
+    async def test__tcp_socket__recv_per_call_timeout_overrides_non_blocking(self) -> None:
         """
         Ensure an explicit 'timeout=' parameter takes precedence
         over the 'setblocking(False)' flag — per-call timeout wins,
@@ -2253,15 +2079,16 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         """
 
         session = MagicMock()
+        session.receive = AsyncMock()
         session.receive.side_effect = TimeoutError("session timeout")
         self._socket._tcp_session = session
         self._socket._remote_ip_address = Ip4Address("10.0.0.5")
         self._socket._remote_port = 80
 
         with self.assertRaises(TimeoutError):
-            self._socket.recv(timeout=0.01)
+            await self._socket.recv(timeout=0.01)
 
-    def test__tcp_socket__accept_raises_blocking_io_error_when_no_child(self) -> None:
+    async def test__tcp_socket__accept_raises_blocking_io_error_when_no_child(self) -> None:
         """
         Ensure 'accept()' on a non-blocking listening TCP socket
         with an empty accept queue raises 'BlockingIOError(EAGAIN)'.
@@ -2271,7 +2098,7 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         """
 
         with self.assertRaises(BlockingIOError) as context:
-            self._socket.accept()
+            await self._socket.accept()
 
         self.assertEqual(
             context.exception.errno,
@@ -2279,7 +2106,7 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
             msg="Non-blocking accept() with no child queued must raise BlockingIOError(EAGAIN).",
         )
 
-    def test__tcp_socket__accept_returns_child_when_non_blocking_and_queued(self) -> None:
+    async def test__tcp_socket__accept_returns_child_when_non_blocking_and_queued(self) -> None:
         """
         Ensure 'accept()' on a non-blocking socket returns the
         queued child immediately when one is available.
@@ -2292,9 +2119,8 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         child.remote_port = 12345
         self._socket._tcp_accept.append(child)
         self._socket._event__tcp_session_established.release()
-        self._socket._signal_readable()
 
-        result, _ = self._socket.accept()
+        result, _ = await self._socket.accept()
 
         self.assertIs(
             result,
@@ -2302,7 +2128,7 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
             msg="Non-blocking accept() with a queued child must return it.",
         )
 
-    def test__tcp_socket__accept_per_call_timeout_overrides_non_blocking(self) -> None:
+    async def test__tcp_socket__accept_per_call_timeout_overrides_non_blocking(self) -> None:
         """
         Ensure an explicit 'timeout=' on 'accept()' takes precedence
         over the 'setblocking(False)' flag and yields 'TimeoutError'
@@ -2312,7 +2138,7 @@ class TestTcpSocketNonBlocking(_TcpSocketTestCase):
         """
 
         with self.assertRaises(TimeoutError):
-            self._socket.accept(timeout=0.01)
+            await self._socket.accept(timeout=0.01)
 
 
 class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
@@ -2329,7 +2155,6 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(s._close_io_runtime)
         s.bind(("10.0.0.1", 8080))
 
         with self.assertRaises(OSError) as context:
@@ -2350,7 +2175,6 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(s._close_io_runtime)
 
         with self.assertRaises(OSError) as context:
             s.bind(("192.168.99.99", 0))
@@ -2370,11 +2194,9 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
         """
 
         first = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(first._close_io_runtime)
         first.bind(("10.0.0.1", 8080))
 
         second = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(second._close_io_runtime)
 
         with self.assertRaises(OSError) as context:
             second.bind(("10.0.0.1", 8080))
@@ -2385,7 +2207,7 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
             msg="address-in-use bind OSError must carry errno=EADDRINUSE.",
         )
 
-    def test__tcp_socket__send_no_destination_carries_epipe_errno(self) -> None:
+    async def test__tcp_socket__send_no_destination_carries_epipe_errno(self) -> None:
         """
         Ensure 'send()' on a socket with no remote IP raises
         'BrokenPipeError' with '.errno == errno.EPIPE'.
@@ -2394,11 +2216,10 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(s._close_io_runtime)
         s._tcp_session = MagicMock()
 
         with self.assertRaises(BrokenPipeError) as context:
-            s.send(b"data")
+            await s.send(b"data")
 
         self.assertEqual(
             context.exception.errno,
@@ -2417,7 +2238,6 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(s._close_io_runtime)
 
         with self.assertRaises(OSError) as context:
             s.setsockopt(0, 9999, 1)
@@ -2437,7 +2257,6 @@ class TestTcpSocketErrnoMapping(_TcpSocketTestCase):
         """
 
         s = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(s._close_io_runtime)
 
         with self.assertRaises(OSError) as context:
             s.getsockopt(0, 9999)
@@ -2454,7 +2273,7 @@ class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
     The 'TcpSocket.accept' child-inherits-parent-blocking tests.
     """
 
-    def test__tcp_socket__accept_child_inherits_parent_blocking_default(self) -> None:
+    async def test__tcp_socket__accept_child_inherits_parent_blocking_default(self) -> None:
         """
         Ensure a child socket popped by 'accept()' inherits the
         parent listening socket's default 'blocking=True' flag.
@@ -2463,24 +2282,21 @@ class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
         """
 
         parent = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(parent._close_io_runtime)
 
         child = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(child._close_io_runtime)
         child._remote_ip_address = Ip4Address("10.0.0.5")
         child._remote_port = 12345
         parent._tcp_accept.append(child)
         parent._event__tcp_session_established.release()
-        parent._signal_readable()
 
-        accepted, _ = parent.accept()
+        accepted, _ = await parent.accept()
 
         self.assertTrue(
             cast(TcpSocket, accepted).getblocking(),
             msg="accept() child must inherit the parent's blocking=True default.",
         )
 
-    def test__tcp_socket__recv_forwards_bufsize_as_byte_count_to_session(self) -> None:
+    async def test__tcp_socket__recv_forwards_bufsize_as_byte_count_to_session(self) -> None:
         """
         Ensure 'recv(bufsize)' on a TCP socket forwards the bufsize
         argument as 'byte_count' to 'TcpSession.receive', so the
@@ -2492,15 +2308,15 @@ class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
         """
 
         parent = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(parent._close_io_runtime)
 
         session = MagicMock()
+        session.receive = AsyncMock()
         session.receive.return_value = b"abcd"
         parent._tcp_session = session
         parent._remote_ip_address = Ip4Address("10.0.0.5")
         parent._remote_port = 80
 
-        result = parent.recv(bufsize=4)
+        result = await parent.recv(bufsize=4)
 
         self.assertEqual(
             result,
@@ -2509,7 +2325,7 @@ class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
         )
         session.receive.assert_called_once_with(byte_count=4, timeout=None)
 
-    def test__tcp_socket__accept_child_inherits_parent_blocking_false(self) -> None:
+    async def test__tcp_socket__accept_child_inherits_parent_blocking_false(self) -> None:
         """
         Ensure a child socket popped by 'accept()' inherits the
         parent listening socket's 'setblocking(False)' configuration
@@ -2520,18 +2336,15 @@ class TestTcpSocketAcceptInheritsBlocking(_TcpSocketTestCase):
         """
 
         parent = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(parent._close_io_runtime)
         parent.setblocking(False)
 
         child = TcpSocket(family=AddressFamily.INET4)
-        self.addCleanup(child._close_io_runtime)
         child._remote_ip_address = Ip4Address("10.0.0.5")
         child._remote_port = 12345
         parent._tcp_accept.append(child)
         parent._event__tcp_session_established.release()
-        parent._signal_readable()
 
-        accepted, _ = parent.accept()
+        accepted, _ = await parent.accept()
 
         self.assertFalse(
             cast(TcpSocket, accepted).getblocking(),

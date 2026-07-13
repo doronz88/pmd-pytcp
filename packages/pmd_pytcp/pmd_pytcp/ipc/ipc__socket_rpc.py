@@ -142,7 +142,7 @@ def raise_socket_error(body: Buffer, /) -> NoReturn:
     )
 
 
-def socket_call(
+async def socket_call(
     client: IpcClient,
     /,
     *,
@@ -156,7 +156,7 @@ def socket_call(
     failure.
     """
 
-    response = client.request(
+    response = await client.request(
         IpcOp.SOCKET_CALL,
         body=encode_socket_request(method=method, handle=handle, args=args),
     )
@@ -172,7 +172,7 @@ def socket_call(
     )
 
 
-def open_socket(
+async def open_socket(
     client: IpcClient,
     /,
     *,
@@ -194,7 +194,7 @@ def open_socket(
     if protocol is not None:
         args["protocol"] = protocol
 
-    response, fd = client.request_with_fd(
+    response, fd = await client.request_with_fd(
         IpcOp.SOCKET_CALL,
         body=encode_socket_request(method="socket", handle=None, args=args),
     )
@@ -215,7 +215,7 @@ def open_socket(
     )
 
 
-def accept_socket(client: IpcClient, /, *, handle: int) -> tuple[int, tuple[str, int], int]:
+async def accept_socket(client: IpcClient, /, *, handle: int) -> tuple[int, tuple[str, int], int]:
     """
     Issue the blocking fd-bearing 'accept' call on a listening socket and
     return '(child_handle, peer_address, data_fd)' for the accepted
@@ -226,7 +226,7 @@ def accept_socket(client: IpcClient, /, *, handle: int) -> tuple[int, tuple[str,
     and closes any stray passed descriptor before raising.
     """
 
-    response, fd = client.request_with_fd(
+    response, fd = await client.request_with_fd(
         IpcOp.SOCKET_CALL,
         body=encode_socket_request(method="accept", handle=handle, args={}),
         blocking=True,

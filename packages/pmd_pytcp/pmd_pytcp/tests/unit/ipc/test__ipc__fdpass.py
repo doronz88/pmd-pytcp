@@ -25,6 +25,12 @@
 """
 Tests for the IPC SCM_RIGHTS file-descriptor-passing primitive.
 
+The transport mirrors production: the sending (daemon) end is wrapped in
+an asyncio stream connection ('send_frame_with_fd' takes the
+'StreamWriter'), while the receiving (client) end stays a raw
+non-blocking socket ('recv_frame_with_fd' must capture SCM_RIGHTS
+ancillary data, which no 'StreamReader' may own).
+
 pmd_pytcp/tests/unit/ipc/test__ipc__fdpass.py
 
 ver 3.0.7
@@ -32,37 +38,54 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_pytcp.ipc.ipc__errors import IpcFrameError
 from pmd_pytcp.ipc.ipc__fdpass import recv_frame_with_fd, send_frame_with_fd
 from pmd_pytcp.ipc.ipc__frame import IPC__FRAME__MAX_PAYLOAD_LEN, send_frame
 
 
-class TestIpcFdPass(TestCase):
+class TestIpcFdPass(IsolatedAsyncioTestCase):
     """
     The IPC SCM_RIGHTS fd-passing round-trip tests.
     """
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
         Create a connected AF_UNIX stream socketpair as the control
-        channel and a pipe whose read end is the descriptor to pass.
+        channel — the sending end wrapped in an asyncio stream
+        connection, the receiving end a raw non-blocking socket — and a
+        pipe whose read end is the descriptor to pass.
         """
 
-        self._sock_a, self._sock_b = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.addCleanup(self._sock_a.close)
+        sock_a, self._sock_b = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._sock_b.setblocking(False)
         self.addCleanup(self._sock_b.close)
+
+        self._reader_a, self._writer_a = await asyncio.open_unix_connection(sock=sock_a)
+        self.addAsyncCleanup(self._close_writer)
 
         self._pipe_r, self._pipe_w = os.pipe()
         self.addCleanup(lambda: os.close(self._pipe_r))
         self.addCleanup(lambda: os.close(self._pipe_w))
 
-    def test__ipc__fdpass__payload_round_trip(self) -> None:
+    async def _close_writer(self) -> None:
+        """
+        Close the sending end's stream transport.
+        """
+
+        try:
+            self._writer_a.close()
+            await self._writer_a.wait_closed()
+        except (OSError, ConnectionError):
+            pass
+
+    async def test__ipc__fdpass__payload_round_trip(self) -> None:
         """
         Ensure the framed payload accompanying a passed descriptor is
         recovered intact on the peer end.
@@ -70,8 +93,8 @@ class TestIpcFdPass(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        send_frame_with_fd(self._sock_a, b"with-fd", self._pipe_r)
-        payload, received_fd = recv_frame_with_fd(self._sock_b)
+        await send_frame_with_fd(self._writer_a, b"with-fd", self._pipe_r)
+        payload, received_fd = await recv_frame_with_fd(self._sock_b)
         assert received_fd is not None
         self.addCleanup(lambda: os.close(received_fd))
 
@@ -81,7 +104,7 @@ class TestIpcFdPass(TestCase):
             msg="recv_frame_with_fd must recover the framed payload intact.",
         )
 
-    def test__ipc__fdpass__no_fd_returns_none(self) -> None:
+    async def test__ipc__fdpass__no_fd_returns_none(self) -> None:
         """
         Ensure a frame sent with no attached descriptor (a plain
         'send_frame') is received with a None fd rather than raising, so
@@ -90,8 +113,8 @@ class TestIpcFdPass(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        send_frame(self._sock_a, b"no-fd")
-        payload, received_fd = recv_frame_with_fd(self._sock_b)
+        await send_frame(self._writer_a, b"no-fd")
+        payload, received_fd = await recv_frame_with_fd(self._sock_b)
 
         self.assertEqual(
             (payload, received_fd),
@@ -99,7 +122,7 @@ class TestIpcFdPass(TestCase):
             msg="A frame with no attached descriptor must yield a None fd, not raise.",
         )
 
-    def test__ipc__fdpass__descriptor_is_working_duplicate(self) -> None:
+    async def test__ipc__fdpass__descriptor_is_working_duplicate(self) -> None:
         """
         Ensure the received descriptor is a real working duplicate of
         the sent one — a distinct fd number that reads the same open
@@ -108,8 +131,8 @@ class TestIpcFdPass(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        send_frame_with_fd(self._sock_a, b"", self._pipe_r)
-        _, received_fd = recv_frame_with_fd(self._sock_b)
+        await send_frame_with_fd(self._writer_a, b"", self._pipe_r)
+        _, received_fd = await recv_frame_with_fd(self._sock_b)
         assert received_fd is not None
         self.addCleanup(lambda: os.close(received_fd))
 
@@ -121,7 +144,7 @@ class TestIpcFdPass(TestCase):
             msg="The received fd must be a distinct, working duplicate of the sent fd.",
         )
 
-    def test__ipc__fdpass__sequential_passes(self) -> None:
+    async def test__ipc__fdpass__sequential_passes(self) -> None:
         """
         Ensure multiple descriptors passed back-to-back are each
         received as their own working duplicate.
@@ -131,8 +154,8 @@ class TestIpcFdPass(TestCase):
 
         results: list[bytes] = []
         for index in range(3):
-            send_frame_with_fd(self._sock_a, f"msg{index}".encode(), self._pipe_r)
-            payload, received_fd = recv_frame_with_fd(self._sock_b)
+            await send_frame_with_fd(self._writer_a, f"msg{index}".encode(), self._pipe_r)
+            payload, received_fd = await recv_frame_with_fd(self._sock_b)
             assert received_fd is not None
             os.write(self._pipe_w, b"x")
             results.append(payload + os.read(received_fd, 1))
@@ -144,7 +167,7 @@ class TestIpcFdPass(TestCase):
             msg="Each sequential fd-pass must deliver its payload and a working fd.",
         )
 
-    def test__ipc__fdpass__truncated_prefix_raises(self) -> None:
+    async def test__ipc__fdpass__truncated_prefix_raises(self) -> None:
         """
         Ensure a control stream closed before the full length prefix
         raises 'IpcFrameError' rather than yielding a partial frame.
@@ -152,12 +175,13 @@ class TestIpcFdPass(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._sock_a.close()
+        self._writer_a.close()
+        await self._writer_a.wait_closed()
 
         with self.assertRaises(IpcFrameError):
-            recv_frame_with_fd(self._sock_b)
+            await recv_frame_with_fd(self._sock_b)
 
-    def test__ipc__fdpass__oversize_payload_rejected(self) -> None:
+    async def test__ipc__fdpass__oversize_payload_rejected(self) -> None:
         """
         Ensure 'send_frame_with_fd' refuses a payload larger than the
         maximum frame size, mirroring the plain framing guard.
@@ -166,4 +190,4 @@ class TestIpcFdPass(TestCase):
         """
 
         with self.assertRaises(IpcFrameError):
-            send_frame_with_fd(self._sock_a, bytes(IPC__FRAME__MAX_PAYLOAD_LEN + 1), self._pipe_r)
+            await send_frame_with_fd(self._writer_a, bytes(IPC__FRAME__MAX_PAYLOAD_LEN + 1), self._pipe_r)

@@ -37,8 +37,8 @@ from __future__ import annotations
 import os
 import sys
 from typing import cast
-from unittest import TestCase, skipUnless
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest import IsolatedAsyncioTestCase, TestCase, skipUnless
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pmd_pytcp.stack as stack
 import pmd_pytcp.stack.lifecycle as lifecycle
@@ -583,9 +583,12 @@ class TestStackMockInit(TestCase):
         )
 
 
-class TestStackStopOrdering(TestCase):
+class TestStackStopOrdering(IsolatedAsyncioTestCase):
     """
-    The 'stack.stop()' subsystem teardown-order tests.
+    The 'stack.stop()' subsystem teardown-order tests. 'stack.stop()'
+    is a coroutine on the pure-asyncio runtime (it awaits each
+    subsystem's 'wait_stopped()' after signalling 'stop()'), so the
+    ordering is recorded from the synchronous 'stop()' side-effect.
     """
 
     def setUp(self) -> None:
@@ -606,6 +609,9 @@ class TestStackStopOrdering(TestCase):
         def _make_subsystem(name: str) -> MagicMock:
             m = MagicMock()
             m.stop.side_effect = lambda n=name: self._call_log.append(n)
+            # 'stack.stop()' awaits 'wait_stopped()' on each stopped
+            # subsystem — give the mock an awaitable one.
+            m.wait_stopped = AsyncMock()
             return m
 
         # 'start()' / 'stop()' iterate 'stack.interfaces' and reach each
@@ -635,7 +641,7 @@ class TestStackStopOrdering(TestCase):
             if value is not None:
                 setattr(stack, name, value)
 
-    def test__stack__stop_stops_timer_before_tx_ring(self) -> None:
+    async def test__stack__stop_stops_timer_before_tx_ring(self) -> None:
         """
         Ensure 'stack.stop()' stops the timer before the TX ring so
         timer-driven callbacks (TCP RTO, persist, keep-alive,
@@ -645,7 +651,7 @@ class TestStackStopOrdering(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stack.stop()
+        await stack.stop()
 
         timer_idx = self._call_log.index("timer")
         tx_ring_idx = self._call_log.index("tx_ring")
@@ -660,7 +666,7 @@ class TestStackStopOrdering(TestCase):
             ),
         )
 
-    def test__stack__stop_stops_packet_handler_first(self) -> None:
+    async def test__stack__stop_stops_packet_handler_first(self) -> None:
         """
         Ensure 'stack.stop()' stops the packet handler first so
         application-side TX producers exit before the rings tear
@@ -669,7 +675,7 @@ class TestStackStopOrdering(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stack.stop()
+        await stack.stop()
 
         self.assertEqual(
             self._call_log[0],
@@ -677,7 +683,7 @@ class TestStackStopOrdering(TestCase):
             msg=("packet_handler.stop() must be the first action in " f"stack.stop(). Got order: {self._call_log}"),
         )
 
-    def test__stack__stop_stops_rings_after_packet_handler(self) -> None:
+    async def test__stack__stop_stops_rings_after_packet_handler(self) -> None:
         """
         Ensure both rings are stopped after the packet handler exits
         — packet_handler is the producer; stopping it first means
@@ -687,7 +693,7 @@ class TestStackStopOrdering(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        stack.stop()
+        await stack.stop()
 
         ph_idx = self._call_log.index("packet_handler")
         rx_idx = self._call_log.index("rx_ring")
@@ -704,7 +710,7 @@ class TestStackStopOrdering(TestCase):
             msg=f"tx_ring must stop after packet_handler. Got: {self._call_log}",
         )
 
-    def test__stack__stop_sends_igmp_leave_before_packet_handler(self) -> None:
+    async def test__stack__stop_sends_igmp_leave_before_packet_handler(self) -> None:
         """
         Ensure 'stack.stop()' emits each interface's graceful IGMP Leave
         before stopping the packet handler, so the Leave egresses while
@@ -718,7 +724,7 @@ class TestStackStopOrdering(TestCase):
             "igmp_leave"
         )
 
-        stack.stop()
+        await stack.stop()
 
         self.assertIn(
             "igmp_leave",
@@ -1115,14 +1121,15 @@ class TestStackAddInterface(TestCase):
 
     def _cleanup(self) -> None:
         """
-        Close every constructed interface's ring eventfds and the pipe
-        fds, then restore the snapshotted module state.
+        Stop every constructed interface's rings (a no-op on the never-
+        started rings these tests build) and close the pipe fds, then
+        restore the snapshotted module state.
         """
 
         for iface in stack.interfaces.values():
             for ring in (iface._rx_ring, iface._tx_ring):
                 if ring is not None:
-                    ring._stop()
+                    ring.stop()
         for read_fd, write_fd in self._fds:
             for fd in (read_fd, write_fd):
                 try:

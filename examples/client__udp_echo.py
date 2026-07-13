@@ -34,7 +34,6 @@ examples/client__udp_echo.py
 ver 3.0.7
 """
 
-import threading
 from typing import Any, override
 
 import click
@@ -42,7 +41,8 @@ import click
 from examples.lib.client import Client
 from examples.lib.payload import payload
 from examples.stack import cli as stack_cli
-from net_addr import (
+from pmd_pytcp._compat import wait_event
+from pmd_net_addr import (
     ClickTypeIpAddress,
     Ip4Address,
     Ip6Address,
@@ -56,8 +56,6 @@ class UdpEchoClient(Client):
 
     _protocol_name = "UDP"
     _subsystem_name = f"{_protocol_name} Echo Client"
-
-    _event__stop_subsystem: threading.Event
 
     def __init__(
         self,
@@ -83,9 +81,9 @@ class UdpEchoClient(Client):
         super().__init__()
 
     @override
-    def _thread__sender(self) -> None:
+    async def _task__sender(self) -> None:
         """
-        Client thread used to send data.
+        Client task used to send data.
         """
 
         if client_socket := self._client_socket:
@@ -94,7 +92,7 @@ class UdpEchoClient(Client):
 
             while not self._event__stop_subsystem.is_set() and message_count:
                 try:
-                    client_socket.send(message_payload)
+                    await client_socket.send(message_payload)
                 except OSError as error:
                     self._log(f"The 'send()' method failed. Error: {error!r}.")
                     break
@@ -108,34 +106,34 @@ class UdpEchoClient(Client):
                 # until stopped; a positive count counts down to 0.
                 message_count -= 1
 
-                if self._event__stop_subsystem.wait(timeout=self._message_delay):
+                if await wait_event(self._event__stop_subsystem, self._message_delay):
                     break
 
             client_socket.close()
             self._log(f"Closed the connection to {self._remote_ip_address}, port {self._remote_port}.")
 
             self._event__stop_subsystem.set()
-            self._log("Stopped the sender thread.")
+            self._log("Stopped the sender task.")
 
     @override
-    def _thread__receiver(self) -> None:
+    async def _task__receiver(self) -> None:
         """
-        Client thread used to receive data.
+        Client task used to receive data.
         """
 
         if self._client_socket:
-            self._log("Started the receiver thread.")
+            self._log("Started the receiver task.")
 
             while not self._event__stop_subsystem.is_set():
                 try:
-                    if message_payload := self._client_socket.recv(
+                    if message_payload := await self._client_socket.recv(
                         timeout=1,
                     ):
                         self._log(f"Received {len(message_payload)} bytes from '{self._remote_ip_address}'.")
                 except TimeoutError:
                     pass
 
-            self._log("Stopped the receiver thread.")
+            self._log("Stopped the receiver task.")
 
 
 @click.command()

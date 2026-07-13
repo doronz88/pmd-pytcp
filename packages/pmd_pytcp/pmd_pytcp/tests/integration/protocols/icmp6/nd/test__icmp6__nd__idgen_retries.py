@@ -50,8 +50,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr
 from pmd_pytcp.stack import sysctl as sysctl_module
@@ -133,7 +132,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__idgen_retries__retry_until_success(self) -> None:
+    async def test__icmp6__nd__idgen_retries__retry_until_success(self) -> None:
         """
         Ensure the worker retries on DAD failure and accepts
         a candidate that DAD passes — the third call succeeds
@@ -164,12 +163,12 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             return ip6_unicast_candidate == regen2.address
 
         with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
-            with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
-                thread = self._packet_handler._claim_ip6_address_async(
+            with patch.object(self._packet_handler, "_perform_ip6_nd_dad", new=AsyncMock(side_effect=_mock_dad)):
+                task = self._packet_handler._claim_ip6_address_async(
                     ip6_host=original,
                     regenerate=_regenerate,
                 )
-                thread.join(timeout=5.0)
+                await task
 
         self.assertEqual(
             attempted,
@@ -188,7 +187,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             msg="Failed original candidate must NOT be in _ip6_ifaddr.",
         )
 
-    def test__icmp6__nd__idgen_retries__exhaustion_gives_up(self) -> None:
+    async def test__icmp6__nd__idgen_retries__exhaustion_gives_up(self) -> None:
         """
         Ensure that when DAD fails on every retry, the worker
         gives up after 'idgen_retries' attempts and returns
@@ -214,12 +213,12 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
 
         with sysctl_module.override("icmp6.default.idgen_retries", 3):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
-                with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
-                    thread = self._packet_handler._claim_ip6_address_async(
+                with patch.object(self._packet_handler, "_perform_ip6_nd_dad", new=AsyncMock(side_effect=_mock_dad)):
+                    task = self._packet_handler._claim_ip6_address_async(
                         ip6_host=original,
                         regenerate=_regenerate,
                     )
-                    thread.join(timeout=5.0)
+                    await task
 
         # Original + 3 retries = 4 attempts total.
         self.assertEqual(
@@ -234,7 +233,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             msg="With all attempts failing no address must be installed.",
         )
 
-    def test__icmp6__nd__idgen_retries__no_regenerate_no_retry(self) -> None:
+    async def test__icmp6__nd__idgen_retries__no_regenerate_no_retry(self) -> None:
         """
         Ensure '_claim_ip6_address_async' without a
         'regenerate' callback (legacy callers) does NOT retry
@@ -251,9 +250,9 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             return False
 
         with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
-            with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
-                thread = self._packet_handler._claim_ip6_address_async(ip6_host=original)
-                thread.join(timeout=5.0)
+            with patch.object(self._packet_handler, "_perform_ip6_nd_dad", new=AsyncMock(side_effect=_mock_dad)):
+                task = self._packet_handler._claim_ip6_address_async(ip6_host=original)
+                await task
 
         self.assertEqual(
             len(attempted),
@@ -261,7 +260,7 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
             msg=f"Without regenerate callback, no retry. Got attempts: {attempted!r}",
         )
 
-    def test__icmp6__nd__idgen_retries__zero_disables_retry(self) -> None:
+    async def test__icmp6__nd__idgen_retries__zero_disables_retry(self) -> None:
         """
         Ensure 'icmp6.idgen_retries=0' suppresses retries even
         when a regenerate callback is supplied.
@@ -283,12 +282,12 @@ class TestIcmp6Nd__IdgenRetries__WorkerRetryLoop(NdTestCase):
 
         with sysctl_module.override("icmp6.default.idgen_retries", 0):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
-                with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
-                    thread = self._packet_handler._claim_ip6_address_async(
+                with patch.object(self._packet_handler, "_perform_ip6_nd_dad", new=AsyncMock(side_effect=_mock_dad)):
+                    task = self._packet_handler._claim_ip6_address_async(
                         ip6_host=original,
                         regenerate=_regenerate,
                     )
-                    thread.join(timeout=5.0)
+                    await task
 
         self.assertEqual(
             len(attempted),
@@ -313,7 +312,7 @@ class TestIcmp6Nd__IdgenRetries__AcceptDadCompose(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__idgen_retries__accept_dad_two_fires_after_exhaustion(self) -> None:
+    async def test__icmp6__nd__idgen_retries__accept_dad_two_fires_after_exhaustion(self) -> None:
         """
         Ensure '_ip6_support' is flipped only after retries
         are exhausted — intermediate failures during retry
@@ -339,12 +338,12 @@ class TestIcmp6Nd__IdgenRetries__AcceptDadCompose(NdTestCase):
         with sysctl_module.override("icmp6.default.accept_dad", 2):
             with sysctl_module.override("icmp6.default.idgen_retries", 3):
                 with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
-                    with patch.object(self._packet_handler, "_perform_ip6_nd_dad", side_effect=_mock_dad):
-                        thread = self._packet_handler._claim_ip6_address_async(
+                    with patch.object(self._packet_handler, "_perform_ip6_nd_dad", new=AsyncMock(side_effect=_mock_dad)):
+                        task = self._packet_handler._claim_ip6_address_async(
                             ip6_host=original,
                             regenerate=_regenerate,
                         )
-                        thread.join(timeout=5.0)
+                        await task
 
         # During the 3 retries, _ip6_support stayed True.
         self.assertEqual(
@@ -361,8 +360,3 @@ class TestIcmp6Nd__IdgenRetries__AcceptDadCompose(NdTestCase):
             msg="accept_dad=2 + retry exhaustion must flip _ip6_support to False.",
         )
 
-
-# Suppress unused-import warning — 'threading' is used by the
-# §18b/§18c follow-on tests; this file keeps the import for
-# parity with the other DAD-test files in this directory.
-_ = threading

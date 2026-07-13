@@ -35,7 +35,7 @@ from __future__ import annotations
 import os
 import tempfile
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_pytcp import stack
 from pmd_pytcp.client import ClientStack, connect
@@ -68,13 +68,13 @@ def tearDownModule() -> None:
     stack.LOG__CHANNEL = _LOG__CHANNEL_PRIOR
 
 
-class TestIpcControlSysctl(TestCase):
+class TestIpcControlSysctl(IsolatedAsyncioTestCase):
     """
     The out-of-process sysctl control-mirror tests.
     """
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
         Stand up an 'IpcServer' on a temp AF_UNIX path and register its
         teardown plus the sysctl-registry restore.
@@ -86,8 +86,16 @@ class TestIpcControlSysctl(TestCase):
 
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client connection tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -100,16 +108,16 @@ class TestIpcControlSysctl(TestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 
-    def test__ipc__control__sysctl_get_matches_in_process(self) -> None:
+    async def test__ipc__control__sysctl_get_matches_in_process(self) -> None:
         """
         Ensure an out-of-process sysctl get returns the same value the
         in-process registry holds.
@@ -117,15 +125,15 @@ class TestIpcControlSysctl(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.sysctl.get(_SAMPLE_KEY),
+            await client.sysctl.get(_SAMPLE_KEY),
             sysctl_module.get(_SAMPLE_KEY),
             msg="A client sysctl get must match the in-process registry value.",
         )
 
-    def test__ipc__control__sysctl_list_keys_matches_in_process(self) -> None:
+    async def test__ipc__control__sysctl_list_keys_matches_in_process(self) -> None:
         """
         Ensure an out-of-process sysctl list_keys returns the same key
         set the in-process registry exposes.
@@ -133,15 +141,15 @@ class TestIpcControlSysctl(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.sysctl.list_keys(),
+            await client.sysctl.list_keys(),
             sysctl_module.list_keys(),
             msg="A client sysctl list_keys must match the in-process key set.",
         )
 
-    def test__ipc__control__sysctl_snapshot_matches_in_process(self) -> None:
+    async def test__ipc__control__sysctl_snapshot_matches_in_process(self) -> None:
         """
         Ensure an out-of-process sysctl snapshot equals the in-process
         snapshot, so every key/value round-trips across the boundary.
@@ -149,15 +157,15 @@ class TestIpcControlSysctl(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.sysctl.snapshot(),
+            await client.sysctl.snapshot(),
             sysctl_module.snapshot(),
             msg="A client sysctl snapshot must equal the in-process snapshot.",
         )
 
-    def test__ipc__control__sysctl_set_mutates_daemon_state(self) -> None:
+    async def test__ipc__control__sysctl_set_mutates_daemon_state(self) -> None:
         """
         Ensure an out-of-process sysctl set mutates the real daemon-side
         registry, and a subsequent client get reflects the new value.
@@ -165,18 +173,18 @@ class TestIpcControlSysctl(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
         new_value = sysctl_module.get(_SAMPLE_KEY) + 1000
 
-        client.sysctl.set(_SAMPLE_KEY, new_value)
+        await client.sysctl.set(_SAMPLE_KEY, new_value)
 
         self.assertEqual(
-            (sysctl_module.get(_SAMPLE_KEY), client.sysctl.get(_SAMPLE_KEY)),
+            (sysctl_module.get(_SAMPLE_KEY), await client.sysctl.get(_SAMPLE_KEY)),
             (new_value, new_value),
             msg="A client sysctl set must mutate the daemon registry and be visible on get.",
         )
 
-    def test__ipc__control__sysctl_get_unknown_key_raises_remote_error(self) -> None:
+    async def test__ipc__control__sysctl_get_unknown_key_raises_remote_error(self) -> None:
         """
         Ensure a client sysctl get on an unregistered key raises
         'IpcRemoteError', forwarding the daemon-side failure across the
@@ -185,12 +193,12 @@ class TestIpcControlSysctl(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         with self.assertRaises(IpcRemoteError):
-            client.sysctl.get("no.such.sysctl.key")
+            await client.sysctl.get("no.such.sysctl.key")
 
-    def test__ipc__control__sysctl_describe_matches_in_process(self) -> None:
+    async def test__ipc__control__sysctl_describe_matches_in_process(self) -> None:
         """
         Ensure an out-of-process sysctl describe returns the same text
         the in-process registry produces.
@@ -198,10 +206,10 @@ class TestIpcControlSysctl(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.sysctl.describe(_SAMPLE_KEY),
+            await client.sysctl.describe(_SAMPLE_KEY),
             sysctl_module.describe(_SAMPLE_KEY),
             msg="A client sysctl describe must match the in-process description.",
         )

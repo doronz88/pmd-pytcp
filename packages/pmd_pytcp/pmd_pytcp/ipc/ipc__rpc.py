@@ -138,7 +138,7 @@ def raise_control_error(body: Buffer, /) -> NoReturn:
     )
 
 
-def control_call(
+async def control_call(
     client: IpcClient,
     /,
     *,
@@ -152,7 +152,7 @@ def control_call(
     result, raising 'IpcRemoteError' if the daemon reported a failure.
     """
 
-    response = client.request(
+    response = await client.request(
         IpcOp.CONTROL_CALL,
         body=encode_control_request(api=api, method=method, ifindex=ifindex, args=args),
     )

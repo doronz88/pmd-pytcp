@@ -160,7 +160,22 @@ class TestslideStyleResult(unittest.TextTestResult):
         """
         Bypass the base class's "<method> ... " prefix print; the
         per-status hooks below are responsible for all output.
+
+        Also guarantee a current event loop on Python < 3.10 (mirrors
+        the pytest 'pytest_runtest_setup' hook in conftest.py): the
+        pure-asyncio stack binds 'asyncio.Event' / 'Semaphore' to the
+        current loop at construction there, and 'IsolatedAsyncioTestCase'
+        nulls the current loop on teardown, so a sync test constructing
+        a stack object after an async one would otherwise raise.
         """
+
+        if sys.version_info < (3, 10):
+            import asyncio
+
+            try:
+                asyncio.get_event_loop()
+            except RuntimeError:
+                asyncio.set_event_loop(asyncio.new_event_loop())
 
         unittest.TestResult.startTest(self, test)
 

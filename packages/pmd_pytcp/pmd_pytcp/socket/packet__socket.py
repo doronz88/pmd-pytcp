@@ -41,16 +41,16 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
-import threading
 from typing import TYPE_CHECKING, cast
 from typing_extensions import override
 
 from pmd_net_proto.lib.enums import EtherType
 from pmd_pytcp import stack
 from pmd_pytcp.lib.logger import log
-from pmd_pytcp.socket import ETH_P_ALL, AddressFamily, SocketType, socket
+from pmd_pytcp.socket import ETH_P_ALL, AddressFamily, SocketType, _sem_acquire, socket
 from pmd_pytcp.socket.packet__metadata import PacketMetadata
 from pmd_pytcp.socket.sockaddr_ll import SockAddrLl
 
@@ -95,7 +95,7 @@ class PacketSocket(socket):
         # matching frame; 'recv' / 'recvfrom' drain it. The semaphore
         # mirrors 'RawSocket' — one release per queued frame.
         self._packet_rx_md: list[PacketMetadata] = []
-        self._packet_rx_md_ready = threading.Semaphore(0)
+        self._packet_rx_md_ready = asyncio.Semaphore(0)
 
         # Register the capture filter immediately: Linux starts
         # delivering matching frames the moment 'socket(AF_PACKET, ...)'
@@ -136,14 +136,12 @@ class PacketSocket(socket):
         socket has already been closed.
         """
 
-        with self._lock__io:
-            if self._closed:
-                return
-            self._packet_rx_md.append(packet_rx_md)
-            self._packet_rx_md_ready.release()
-        self._signal_readable()
+        if self._closed:
+            return
+        self._packet_rx_md.append(packet_rx_md)
+        self._packet_rx_md_ready.release()
 
-    def _recv_md(self, timeout: float | None, /) -> PacketMetadata:
+    async def _recv_md(self, timeout: float | None, /) -> PacketMetadata:
         """
         Block until a captured frame is available (honoring the
         blocking flag and SO_RCVTIMEO) and return its metadata. Raises
@@ -154,43 +152,38 @@ class PacketSocket(socket):
         # SO_RCVTIMEO supplies the default if no per-call timeout.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if not acquired:
             if effective_timeout is None and not self._blocking:
                 raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
             raise TimeoutError("PACKET Socket - Receive operation timed out.")
 
-        packet_rx_md = self._packet_rx_md.pop(0)
-        if not self._packet_rx_md:
-            self._drain_readable()
-            if self._packet_rx_md:
-                self._signal_readable()
-        return packet_rx_md
+        return self._packet_rx_md.pop(0)
 
     @override
-    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
+    async def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read one captured frame from the socket. 'bufsize' truncates the
         returned frame (POSIX recv(2) on SOCK_RAW discards the
         remainder).
         """
 
-        packet_rx_md = self._recv_md(timeout)
+        packet_rx_md = await self._recv_md(timeout)
         data = packet_rx_md.frame if bufsize is None else packet_rx_md.frame[:bufsize]
         __debug__ and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
         return data
 
     @override
-    def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, SockAddrLl]:
+    async def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, SockAddrLl]:
         """
         Read one captured frame and the 'sockaddr_ll' describing how it
         arrived (interface, ethertype, packet type, source MAC).
         """
 
-        packet_rx_md = self._recv_md(timeout)
+        packet_rx_md = await self._recv_md(timeout)
         data = packet_rx_md.frame if bufsize is None else packet_rx_md.frame[:bufsize]
         __debug__ and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
         return data, packet_rx_md.sockaddr_ll
@@ -255,7 +248,7 @@ class PacketSocket(socket):
         return cast("PacketHandlerL2", handler)
 
     @override
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send a complete link-layer frame verbatim out the interface the
         socket is bound to ('bind' sets the ifindex; an unbound socket
@@ -268,7 +261,7 @@ class PacketSocket(socket):
         return len(data)
 
     @override
-    def sendto(self, data: bytes, address: SockAddrLl) -> int:
+    async def sendto(self, data: bytes, address: SockAddrLl) -> int:
         """
         Send a complete link-layer frame verbatim out the interface
         named by 'address.ifindex' (0 = the sole interface). Returns the

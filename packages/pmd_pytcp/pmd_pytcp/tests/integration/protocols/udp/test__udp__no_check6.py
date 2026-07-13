@@ -190,7 +190,7 @@ class TestUdpNoCheck6Tx(UdpTestCase):
     The UDP_NO_CHECK6_TX cksum-skip-on-send tests.
     """
 
-    def test__udp_no_check6_tx__opted_in__cksum_zero_on_wire(self) -> None:
+    async def test__udp_no_check6_tx__opted_in__cksum_zero_on_wire(self) -> None:
         """
         Ensure an outbound UDPv6 datagram from a socket with
         UDP_NO_CHECK6_TX=1 carries the literal value 0x0000 in
@@ -207,7 +207,7 @@ class TestUdpNoCheck6Tx(UdpTestCase):
         sock = self._bind_udp_socket(family=AddressFamily.INET6)
         sock.setsockopt(SOL_UDP, UDP_NO_CHECK6_TX, 1)
 
-        sock.sendto(b"probe", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
+        await sock.sendto(b"probe", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
 
         self.assertEqual(
             len(self._frames_tx),
@@ -224,7 +224,7 @@ class TestUdpNoCheck6Tx(UdpTestCase):
             msg="UDP_NO_CHECK6_TX=1 must emit cksum=0x0000 on the wire.",
         )
 
-    def test__udp_no_check6_tx__default__cksum_computed(self) -> None:
+    async def test__udp_no_check6_tx__default__cksum_computed(self) -> None:
         """
         Ensure an outbound UDPv6 datagram from a socket WITHOUT
         UDP_NO_CHECK6_TX set carries a computed non-zero
@@ -236,7 +236,7 @@ class TestUdpNoCheck6Tx(UdpTestCase):
 
         sock = self._bind_udp_socket(family=AddressFamily.INET6)
 
-        sock.sendto(b"probe", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
+        await sock.sendto(b"probe", (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
 
         outbound = self._frames_tx[-1]
         cksum = int.from_bytes(outbound[60:62], "big")
@@ -253,7 +253,7 @@ class TestUdpNoCheck6Rx(UdpTestCase):
     The UDP_NO_CHECK6_RX cksum-skip-on-receive tests.
     """
 
-    def test__udp_no_check6_rx__opted_in__delivers_to_socket(self) -> None:
+    async def test__udp_no_check6_rx__opted_in__delivers_to_socket(self) -> None:
         """
         Ensure an inbound UDPv6 datagram with checksum=0 is
         delivered to the matching socket when UDP_NO_CHECK6_RX=1,
@@ -270,7 +270,7 @@ class TestUdpNoCheck6Rx(UdpTestCase):
 
         self._drive_udp_rx(frame=_udpv6_zero_cksum_frame(payload=b"hello"))
 
-        data, addr = self._recvfrom(sock, timeout=0.5)
+        data, addr = await self._recvfrom(sock, timeout=0.5)
 
         self.assertEqual(
             data,

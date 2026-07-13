@@ -34,7 +34,7 @@ exchanges datagrams with a peer simulated on the TAP wire over its real
 SOCK_DGRAM descriptor — exercising the datagram data plane (control RPC +
 SCM_RIGHTS data channel + datagram bridge + per-datagram address framing,
 plus the recvmsg ancillary cmsg path) against the live stack. UDP has no
-handshake, so both directions run inline on the main thread.
+handshake, so both directions run inline on the test's loop.
 
 pmd_pytcp/tests/integration/ipc/test__ipc__udp_echo.py
 
@@ -43,9 +43,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-import time
 from typing import cast
 from typing_extensions import override
 
@@ -99,20 +99,29 @@ class TestIpcUdpEcho(UdpTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mocked UDP runtime (via 'UdpTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Build the mocked UDP runtime (via 'UdpTestCase', sync 'setUp' runs
+        first through the MRO) then stand up an 'IpcServer' on a temp
+        AF_UNIX path against it. The server needs the running loop.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -125,25 +134,25 @@ class TestIpcUdpEcho(UdpTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 
-    def _bound_socket(self) -> ClientUdpSocket:
+    async def _bound_socket(self) -> ClientUdpSocket:
         """
         Open and bind a client UDP socket onto the stack address /
-        local port, with a receive timeout set.
+        local port.
         """
 
-        sock = cast(ClientUdpSocket, self._connect().socket(AddressFamily.INET4, SocketType.DGRAM))
-        self.addCleanup(sock.close)
-        sock.settimeout(_DEADLINE__SEC)
-        sock.bind((str(STACK__IP4_HOST.address), _LOCAL_PORT))
+        client = await self._connect()
+        sock = cast(ClientUdpSocket, await client.socket(AddressFamily.INET4, SocketType.DGRAM))
+        self.addAsyncCleanup(sock.close)
+        await sock.bind((str(STACK__IP4_HOST.address), _LOCAL_PORT))
         return sock
 
     def _peer_datagram(self, *, payload: bytes, dscp: int = 0) -> bytes:
@@ -170,7 +179,7 @@ class TestIpcUdpEcho(UdpTestCase):
             )
         )
 
-    def test__udp_echo__client_receives_peer_datagram(self) -> None:
+    async def test__udp_echo__client_receives_peer_datagram(self) -> None:
         """
         Ensure a datagram a peer sends on the wire is delivered to the
         out-of-process client over its real fd, paired with the sender's
@@ -179,16 +188,16 @@ class TestIpcUdpEcho(UdpTestCase):
         Reference: RFC 768 (UDP — datagram delivery with source address).
         """
 
-        sock = self._bound_socket()
+        sock = await self._bound_socket()
         self._drive_udp_rx(frame=self._peer_datagram(payload=b"ping"))
 
         self.assertEqual(
-            sock.recvfrom(),
+            await asyncio.wait_for(sock.recvfrom(), timeout=_DEADLINE__SEC),
             (b"ping", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT)),
             msg="The client must receive the peer datagram and its sender address over its fd.",
         )
 
-    def test__udp_echo__recvmsg_carries_ip_tos_cmsg(self) -> None:
+    async def test__udp_echo__recvmsg_carries_ip_tos_cmsg(self) -> None:
         """
         Ensure that with IP_RECVTOS enabled, an inbound datagram's TOS is
         delivered to the out-of-process client as an IP_TOS ancillary
@@ -197,12 +206,12 @@ class TestIpcUdpEcho(UdpTestCase):
         Reference: RFC 1122 §4.1.4 (IP_TOS reported to the application).
         """
 
-        sock = self._bound_socket()
-        sock.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
+        sock = await self._bound_socket()
+        await sock.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
         # DSCP occupies the high 6 bits of the TOS byte: dscp 8 -> TOS 0x20.
         self._drive_udp_rx(frame=self._peer_datagram(payload=b"marked", dscp=8))
 
-        data, ancdata, _flags, address = sock.recvmsg()
+        data, ancdata, _flags, address = await asyncio.wait_for(sock.recvmsg(), timeout=_DEADLINE__SEC)
 
         self.assertEqual(
             (data, ancdata, address),
@@ -210,7 +219,7 @@ class TestIpcUdpEcho(UdpTestCase):
             msg="recvmsg must deliver the inbound TOS as an IP_TOS cmsg when IP_RECVTOS is set.",
         )
 
-    def test__udp_echo__client_datagram_reaches_the_wire(self) -> None:
+    async def test__udp_echo__client_datagram_reaches_the_wire(self) -> None:
         """
         Ensure a datagram the out-of-process client writes via 'sendto'
         is carried by the stack onto the wire as a UDP datagram to that
@@ -219,12 +228,12 @@ class TestIpcUdpEcho(UdpTestCase):
         Reference: RFC 768 (UDP — sendto datagram emission).
         """
 
-        sock = self._bound_socket()
-        sock.sendto(b"pong", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
+        sock = await self._bound_socket()
+        await sock.sendto(b"pong", (str(HOST_A__IP4_ADDRESS), _REMOTE_PORT))
 
-        deadline = time.monotonic() + _DEADLINE__SEC
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
         probe = None
-        while time.monotonic() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             for frame in list(self._frames_tx):
                 candidate = self._parse_tx(frame)
                 if candidate.sport == _LOCAL_PORT and candidate.payload:
@@ -232,7 +241,7 @@ class TestIpcUdpEcho(UdpTestCase):
                     break
             if probe is not None:
                 break
-            time.sleep(0.01)
+            await asyncio.sleep(0.01)
 
         assert probe is not None, "The client datagram never reached the wire."
         self.assertEqual(

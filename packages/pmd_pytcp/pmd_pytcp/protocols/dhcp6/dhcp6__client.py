@@ -37,13 +37,13 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import math
 import random
-import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import field
-from pmd_pytcp._compat import as_buffer, dataclass
+from pmd_pytcp._compat import as_buffer, dataclass, wait_event
 from typing import TYPE_CHECKING
 from typing_extensions import override
 
@@ -134,16 +134,17 @@ class Dhcp6Client(Subsystem):
 
     Two invocation modes:
 
-      - Sync: 'fetch_other_config()' / 'acquire_lease()' run one
-        exchange inline in the caller's thread and return the result.
-        The 'Subsystem' machinery is not engaged. Used by tests and
-        operator CLI tools.
-      - Daemon: 'start()' spawns the 'Subsystem' worker thread which
-        blocks on a trigger 'Event'; the RA RX handler calls
-        'trigger(managed=..., other=...)' on receipt of a Router
-        Advertisement with the Managed / Other-config flags set, and
-        the worker runs the stateful ('managed') or stateless
-        ('other') exchange. Used by 'stack.start()' in production.
+      - One-shot: 'await fetch_other_config()' / 'await
+        acquire_lease()' run one exchange inline in the caller's
+        coroutine and return the result. The 'Subsystem' machinery
+        is not engaged. Used by tests and operator CLI tools.
+      - Daemon: 'start()' spawns the 'Subsystem' worker task which
+        awaits a trigger 'Event'; the RA RX handler calls
+        'trigger(managed=..., other=...)' (a plain sync call) on
+        receipt of a Router Advertisement with the Managed /
+        Other-config flags set, and the worker runs the stateful
+        ('managed') or stateless ('other') exchange. Used by
+        'stack.start()' in production.
 
     Both exchanges share the §15 retransmission backoff and the
     inbound-frame validation in '_run_exchange' / '_recv_within_window'.
@@ -173,20 +174,24 @@ class Dhcp6Client(Subsystem):
         self._interface_name = interface_name
         self._address_api = address_api
 
-        # Trigger state. 'trigger()' (RX thread) sets the pending
-        # config-mode flags under '_lock__trigger' and wakes the worker
-        # via '_event__trigger'; the worker reads + clears them. The
-        # lease + debounce state ('_lease' / '_other_acquired') and the
-        # T1 / T2 / valid deadlines are worker-only — read and written
-        # solely from the '_subsystem_loop' thread (sync-mode callers do
-        # not engage the loop) so they need no lock.
-        self._event__trigger = threading.Event()
-        self._lock__trigger = threading.Lock()
+        # Trigger state. 'trigger()' (a sync call from the RX
+        # pipeline, on the same event loop) sets the pending
+        # config-mode flags and wakes the worker via
+        # '_event__trigger'; the worker reads + clears them. All
+        # of this state lives on the single stack event loop —
+        # callbacks never preempt each other, so no lock is
+        # needed ('docs/refactor/pure_asyncio.md').
+        self._event__trigger = asyncio.Event()
         self._pending_managed = False
         self._pending_other = False
         self._pending_decline_address: Ip6Address | None = None
         self._lease: Dhcp6Lease | None = None
         self._other_acquired = False
+        # Best-effort RELEASE task spawned by the '_stop' hook when a
+        # lease was held at stop time; awaited alongside the worker
+        # task by 'wait_stopped' (the sync '_stop' hook cannot await
+        # the wire exchange itself).
+        self._task__release_on_stop: "asyncio.Task[None] | None" = None
 
         # Monotonic deadlines for the BOUND lease lifecycle, armed by
         # '_arm_timers' whenever a lease is adopted: RENEW at T1, REBIND
@@ -198,31 +203,31 @@ class Dhcp6Client(Subsystem):
     def trigger(self, *, managed: bool, other: bool) -> None:
         """
         Record a config-mode request from an inbound Router
-        Advertisement and wake the worker thread. Called from the RX
-        thread; non-blocking and idempotent — the worker debounces so a
-        periodic RA does not re-run a completed exchange.
+        Advertisement and wake the worker task. A plain sync call —
+        the RX pipeline invokes it from loop context; non-blocking
+        and idempotent — the worker debounces so a periodic RA does
+        not re-run a completed exchange.
         """
 
-        with self._lock__trigger:
-            self._pending_managed = self._pending_managed or managed
-            self._pending_other = self._pending_other or other
+        self._pending_managed = self._pending_managed or managed
+        self._pending_other = self._pending_other or other
         self._event__trigger.set()
 
     def notify_dad_conflict(self, address: Ip6Address) -> None:
         """
         Record that Duplicate Address Detection found 'address' to be a
-        duplicate on the link and wake the worker. Called from the
-        DAD / RX thread; non-blocking. The worker DECLINEs the address
-        (RFC 8415 §18.2.8) only if it matches the currently held lease,
-        so a stale or unrelated conflict is harmless.
+        duplicate on the link and wake the worker. A plain sync call —
+        the DAD engine invokes it from loop context; non-blocking. The
+        worker DECLINEs the address (RFC 8415 §18.2.8) only if it
+        matches the currently held lease, so a stale or unrelated
+        conflict is harmless.
         """
 
-        with self._lock__trigger:
-            self._pending_decline_address = address
+        self._pending_decline_address = address
         self._event__trigger.set()
 
     @override
-    def _subsystem_loop(self) -> None:
+    async def _subsystem_loop(self) -> None:
         """
         Run one worker iteration: handle a pending RA-driven trigger
         (acquire a lease / fetch other config), then service the held
@@ -232,12 +237,16 @@ class Dhcp6Client(Subsystem):
         deadlines even when no RA arrives.
         """
 
-        if self._event__trigger.wait(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
+        # A trigger already pending when the iteration begins must be
+        # serviced without waiting: 'wait_event' (asyncio.wait_for) can
+        # report a timeout for a zero / expired poll interval even when
+        # the event is already set, so the set-state is checked directly.
+        if self._event__trigger.is_set() or await wait_event(self._event__trigger, SUBSYSTEM_SLEEP_TIME__SEC):
             self._event__trigger.clear()
-            self._handle_trigger()
-        self._service_lease()
+            await self._handle_trigger()
+        await self._service_lease()
 
-    def _handle_trigger(self) -> None:
+    async def _handle_trigger(self) -> None:
         """
         Run the exchange a pending RA-driven trigger requests.
 
@@ -248,31 +257,30 @@ class Dhcp6Client(Subsystem):
         lease arms the renewal timers.
         """
 
-        with self._lock__trigger:
-            managed = self._pending_managed
-            other = self._pending_other
-            decline_address = self._pending_decline_address
-            self._pending_managed = False
-            self._pending_other = False
-            self._pending_decline_address = None
+        managed = self._pending_managed
+        other = self._pending_other
+        decline_address = self._pending_decline_address
+        self._pending_managed = False
+        self._pending_other = False
+        self._pending_decline_address = None
 
         # A DAD conflict on the held address supersedes a same-tick
         # acquire/fetch — the address is unusable and must be declined
         # and replaced before anything else.
         if decline_address is not None:
-            self._handle_dad_conflict(decline_address)
+            await self._handle_dad_conflict(decline_address)
             return
 
         if managed and self._lease is None:
-            lease = self.acquire_lease()
+            lease = await self.acquire_lease()
             if lease is not None:
                 self._lease = lease
                 self._arm_timers(lease)
         elif other and not self._other_acquired:
-            if self.fetch_other_config() is not None:
+            if await self.fetch_other_config() is not None:
                 self._other_acquired = True
 
-    def _handle_dad_conflict(self, address: Ip6Address) -> None:
+    async def _handle_dad_conflict(self, address: Ip6Address) -> None:
         """
         Handle a DAD conflict reported for 'address': if it is the
         currently leased address, DECLINE it to the server (RFC 8415
@@ -286,13 +294,13 @@ class Dhcp6Client(Subsystem):
             return
 
         __debug__ and log("dhcp6", f"DAD conflict on leased {address}; declining and re-soliciting")
-        self.decline(lease)
+        await self.decline(lease)
         if self._address_api is not None:
             self._address_api.remove(address=address)
         self._lease = None
         self._t1_deadline = self._t2_deadline = self._valid_deadline = math.inf
 
-        new_lease = self.acquire_lease()
+        new_lease = await self.acquire_lease()
         if new_lease is not None:
             self._lease = new_lease
             self._arm_timers(new_lease)
@@ -300,12 +308,15 @@ class Dhcp6Client(Subsystem):
     @override
     def _stop(self) -> None:
         """
-        Subsystem post-stop hook (runs after the worker thread has
-        joined). Wake the trigger event for prompt teardown, then — if a
-        lease is held — emit a graceful RELEASE for it and remove the
-        leased address through the Address API (RFC 8415 §18.2.7). A
-        socket error in the best-effort RELEASE is swallowed so it cannot
-        abort the rest of the stack-stop sequence.
+        Subsystem post-stop hook (runs after the worker task has been
+        signalled + cancelled). Wake the trigger event for prompt
+        teardown, then — if a lease is held — emit a graceful RELEASE
+        for it and remove the leased address through the Address API
+        (RFC 8415 §18.2.7). The hook itself is sync (called from
+        'stop()'); the wire RELEASE is a coroutine, so it is spawned
+        as a task and awaited by 'wait_stopped()'. A socket error in
+        the best-effort RELEASE is swallowed so it cannot abort the
+        rest of the stack-stop sequence.
         """
 
         self._event__trigger.set()
@@ -314,13 +325,42 @@ class Dhcp6Client(Subsystem):
         if lease is None:
             return
 
-        try:
-            self.release(lease)
-        except OSError as error:
-            __debug__ and log("dhcp6", f"<WARN>RELEASE on shutdown raised {type(error).__name__}: {error}</>")
+        self._task__release_on_stop = asyncio.get_running_loop().create_task(
+            self._release_on_stop(lease),
+            name=f"{self._subsystem_name} release-on-stop",
+        )
         if self._address_api is not None:
             self._address_api.remove(address=lease.address)
         self._lease = None
+
+    async def _release_on_stop(self, lease: Dhcp6Lease, /) -> None:
+        """
+        Best-effort RELEASE emitted on graceful shutdown — the async
+        half of the '_stop' hook, run as a task so the sync hook does
+        not have to await the wire exchange.
+        """
+
+        try:
+            await self.release(lease)
+        except OSError as error:
+            __debug__ and log("dhcp6", f"<WARN>RELEASE on shutdown raised {type(error).__name__}: {error}</>")
+
+    @override
+    async def wait_stopped(self) -> None:
+        """
+        Await the worker task's exit, then the best-effort
+        release-on-stop task spawned by the '_stop' hook (if any) so
+        shutdown is complete — not merely signalled — when this
+        returns.
+        """
+
+        await super().wait_stopped()
+        if self._task__release_on_stop is not None:
+            try:
+                await self._task__release_on_stop
+            except asyncio.CancelledError:
+                pass
+            self._task__release_on_stop = None
 
     # --- message builders ---
 
@@ -536,7 +576,7 @@ class Dhcp6Client(Subsystem):
 
     # --- stateless exchange ---
 
-    def fetch_other_config(self) -> Dhcp6StatelessConfig | None:
+    async def fetch_other_config(self) -> Dhcp6StatelessConfig | None:
         """
         Run one stateless INFORMATION-REQUEST / REPLY exchange and
         return the other-configuration bundle, or None when no server
@@ -550,14 +590,14 @@ class Dhcp6Client(Subsystem):
             target = self._multicast_target()
             started = time.monotonic()
 
-            def _send() -> None:
+            async def _send() -> None:
                 elapsed = self._elapsed_centisecs(started)
-                client_socket.sendto(bytes(self._build_information_request(xid=xid, elapsed=elapsed)), target)
+                await client_socket.sendto(bytes(self._build_information_request(xid=xid, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending INFORMATION-REQUEST (xid={xid:#08x}) to {target[0]}")
-            _send()
+            await _send()
 
-            reply = self._run_exchange(
+            reply = await self._run_exchange(
                 client_socket,
                 xid=xid,
                 expected_type=Dhcp6MessageType.REPLY,
@@ -579,7 +619,7 @@ class Dhcp6Client(Subsystem):
     # --- stateful exchange ---
 
     @staticmethod
-    def _delay_first_solicit() -> None:
+    async def _delay_first_solicit() -> None:
         """
         Delay the first SOLICIT by a random interval drawn uniformly from
         [0, SOL_MAX_DELAY] (RFC 8415 §18.2.1) to desynchronise a fleet of
@@ -590,9 +630,9 @@ class Dhcp6Client(Subsystem):
 
         delay_s = random.uniform(0.0, dhcp6__constants.DHCP6__SOL_MAX_DELAY_MS) / 1000.0
         if delay_s > 0:
-            time.sleep(delay_s)
+            await asyncio.sleep(delay_s)
 
-    def acquire_lease(self) -> Dhcp6Lease | None:
+    async def acquire_lease(self) -> Dhcp6Lease | None:
         """
         Run the RFC 8415 §18.2.1-§18.2.2 stateful exchange and return the
         leased IA_NA address, or None when no usable lease is obtained.
@@ -609,21 +649,21 @@ class Dhcp6Client(Subsystem):
             client_socket.bind(("::", dhcp6__constants.DHCP6__CLIENT_PORT))
             target = self._multicast_target()
 
-            self._delay_first_solicit()
+            await self._delay_first_solicit()
 
             rapid_commit = bool(dhcp6__constants.DHCP6__RAPID_COMMIT)
             sol_xid = random.randint(0, _DHCP6__XID_MAX)
             sol_started = time.monotonic()
 
-            def _send_solicit() -> None:
+            async def _send_solicit() -> None:
                 elapsed = self._elapsed_centisecs(sol_started)
-                client_socket.sendto(
+                await client_socket.sendto(
                     bytes(self._build_solicit(xid=sol_xid, elapsed=elapsed, rapid_commit=rapid_commit)), target
                 )
 
             __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
 
-            rapid_reply, advertises = self._solicit_for_advertise(
+            rapid_reply, advertises = await self._solicit_for_advertise(
                 client_socket, xid=sol_xid, send=_send_solicit, rapid_commit=rapid_commit
             )
 
@@ -646,7 +686,7 @@ class Dhcp6Client(Subsystem):
             for advertise in advertises:
                 server_duid = advertise.server_id
                 assert server_duid is not None  # collection filters Server-Identifier-less ADVERTISEs
-                reply = self._request_from_server(client_socket, target=target, server_duid=server_duid)
+                reply = await self._request_from_server(client_socket, target=target, server_duid=server_duid)
                 if reply is None:
                     __debug__ and log("dhcp6", "REQUEST unanswered; trying the next advertised server")
                     continue
@@ -660,7 +700,7 @@ class Dhcp6Client(Subsystem):
         finally:
             client_socket.close()
 
-    def _request_from_server(
+    async def _request_from_server(
         self,
         client_socket: socket,
         *,
@@ -677,16 +717,16 @@ class Dhcp6Client(Subsystem):
         req_xid = random.randint(0, _DHCP6__XID_MAX)
         req_started = time.monotonic()
 
-        def _send_request() -> None:
+        async def _send_request() -> None:
             elapsed = self._elapsed_centisecs(req_started)
-            client_socket.sendto(
+            await client_socket.sendto(
                 bytes(self._build_request(xid=req_xid, server_duid=server_duid, elapsed=elapsed)), target
             )
 
         __debug__ and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
-        _send_request()
+        await _send_request()
 
-        return self._run_exchange(
+        return await self._run_exchange(
             client_socket,
             xid=req_xid,
             expected_type=Dhcp6MessageType.REPLY,
@@ -698,12 +738,12 @@ class Dhcp6Client(Subsystem):
 
     # --- SOLICIT / ADVERTISE collection + selection (RFC 8415 §18.2.1 / §18.2.9) ---
 
-    def _solicit_for_advertise(
+    async def _solicit_for_advertise(
         self,
         client_socket: socket,
         *,
         xid: int,
-        send: Callable[[], None],
+        send: Callable[[], Awaitable[None]],
         rapid_commit: bool = False,
     ) -> tuple[Dhcp6Parser | None, list[Dhcp6Parser]]:
         """
@@ -732,14 +772,14 @@ class Dhcp6Client(Subsystem):
             (Dhcp6MessageType.ADVERTISE, Dhcp6MessageType.REPLY) if rapid_commit else (Dhcp6MessageType.ADVERTISE,)
         )
 
-        send()
+        await send()
 
         # RFC 8415 §18.2.1 — the first RT MUST be strictly greater than
         # IRT (RAND chosen strictly greater than 0).
         rt_ms = irt_ms + random.uniform(0.0, rand_factor) * irt_ms
         deadline = time.monotonic() + max(0.001, rt_ms / 1000.0)
 
-        rapid_reply, collected = self._collect_advertises(
+        rapid_reply, collected = await self._collect_advertises(
             client_socket, xid=xid, deadline=deadline, accept_types=accept_types
         )
         if rapid_reply is not None:
@@ -754,8 +794,8 @@ class Dhcp6Client(Subsystem):
             rt_ms = 2 * rt_ms + rand * rt_ms
             if rt_ms > mrt_ms:
                 rt_ms = mrt_ms + rand * mrt_ms
-            send()
-            packet = self._recv_within_window(
+            await send()
+            packet = await self._recv_within_window(
                 client_socket,
                 xid=xid,
                 expected_types=accept_types,
@@ -772,7 +812,7 @@ class Dhcp6Client(Subsystem):
 
         return None, []
 
-    def _collect_advertises(
+    async def _collect_advertises(
         self,
         client_socket: socket,
         *,
@@ -796,7 +836,7 @@ class Dhcp6Client(Subsystem):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None, collected
-            packet = self._recv_within_window(
+            packet = await self._recv_within_window(
                 client_socket,
                 xid=xid,
                 expected_types=accept_types,
@@ -833,7 +873,7 @@ class Dhcp6Client(Subsystem):
 
     # --- lease maintenance (RENEW / REBIND) ---
 
-    def _renew(self, lease: Dhcp6Lease, *, deadline: float) -> Dhcp6Lease | None:
+    async def _renew(self, lease: Dhcp6Lease, *, deadline: float) -> Dhcp6Lease | None:
         """
         Run an RFC 8415 §18.2.4 RENEW exchange for the held 'lease',
         retransmitting (REN_TIMEOUT / REN_MAX_RT backoff) until the
@@ -849,14 +889,14 @@ class Dhcp6Client(Subsystem):
             target = self._multicast_target()
             started = time.monotonic()
 
-            def _send() -> None:
+            async def _send() -> None:
                 elapsed = self._elapsed_centisecs(started)
-                client_socket.sendto(bytes(self._build_renew(xid=xid, lease=lease, elapsed=elapsed)), target)
+                await client_socket.sendto(bytes(self._build_renew(xid=xid, lease=lease, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending RENEW (xid={xid:#08x}) for {lease.address}")
-            _send()
+            await _send()
 
-            reply = self._run_exchange(
+            reply = await self._run_exchange(
                 client_socket,
                 xid=xid,
                 expected_type=Dhcp6MessageType.REPLY,
@@ -873,7 +913,7 @@ class Dhcp6Client(Subsystem):
         finally:
             client_socket.close()
 
-    def _rebind(self, lease: Dhcp6Lease, *, deadline: float) -> Dhcp6Lease | None:
+    async def _rebind(self, lease: Dhcp6Lease, *, deadline: float) -> Dhcp6Lease | None:
         """
         Run an RFC 8415 §18.2.5 REBIND exchange for the held 'lease',
         retransmitting (REB_TIMEOUT / REB_MAX_RT backoff) until any
@@ -890,14 +930,14 @@ class Dhcp6Client(Subsystem):
             target = self._multicast_target()
             started = time.monotonic()
 
-            def _send() -> None:
+            async def _send() -> None:
                 elapsed = self._elapsed_centisecs(started)
-                client_socket.sendto(bytes(self._build_rebind(xid=xid, lease=lease, elapsed=elapsed)), target)
+                await client_socket.sendto(bytes(self._build_rebind(xid=xid, lease=lease, elapsed=elapsed)), target)
 
             __debug__ and log("dhcp6", f"Sending REBIND (xid={xid:#08x}) for {lease.address}")
-            _send()
+            await _send()
 
-            reply = self._run_exchange(
+            reply = await self._run_exchange(
                 client_socket,
                 xid=xid,
                 expected_type=Dhcp6MessageType.REPLY,
@@ -919,7 +959,7 @@ class Dhcp6Client(Subsystem):
         finally:
             client_socket.close()
 
-    def release(self, lease: Dhcp6Lease, /) -> None:
+    async def release(self, lease: Dhcp6Lease, /) -> None:
         """
         Run an RFC 8415 §18.2.7 RELEASE exchange — retransmit the Release
         to the granting server up to REL_MAX_RC times at REL_TIMEOUT
@@ -930,14 +970,14 @@ class Dhcp6Client(Subsystem):
         content is discarded; the binding ages out server-side regardless.
         """
 
-        self._teardown_exchange(
+        await self._teardown_exchange(
             msg_type=Dhcp6MessageType.RELEASE,
             lease=lease,
             irt_ms=dhcp6__constants.DHCP6__REL_TIMEOUT_MS,
             max_rc=dhcp6__constants.DHCP6__REL_MAX_RC,
         )
 
-    def decline(self, lease: Dhcp6Lease, /) -> None:
+    async def decline(self, lease: Dhcp6Lease, /) -> None:
         """
         Run an RFC 8415 §18.2.8 DECLINE exchange for an address that
         failed Duplicate Address Detection — retransmit up to DEC_MAX_RC
@@ -946,14 +986,16 @@ class Dhcp6Client(Subsystem):
         the conflict handler can proceed to re-soliciting a fresh address.
         """
 
-        self._teardown_exchange(
+        await self._teardown_exchange(
             msg_type=Dhcp6MessageType.DECLINE,
             lease=lease,
             irt_ms=dhcp6__constants.DHCP6__DEC_TIMEOUT_MS,
             max_rc=dhcp6__constants.DHCP6__DEC_MAX_RC,
         )
 
-    def _teardown_exchange(self, *, msg_type: Dhcp6MessageType, lease: Dhcp6Lease, irt_ms: int, max_rc: int) -> None:
+    async def _teardown_exchange(
+        self, *, msg_type: Dhcp6MessageType, lease: Dhcp6Lease, irt_ms: int, max_rc: int
+    ) -> None:
         """
         Send a RELEASE / DECLINE and await the server's REPLY, retransmit-
         ting up to 'max_rc' times at 'irt_ms' spacing (the MRT is set to
@@ -969,16 +1011,16 @@ class Dhcp6Client(Subsystem):
             target = self._multicast_target()
             started = time.monotonic()
 
-            def _send() -> None:
+            async def _send() -> None:
                 elapsed = self._elapsed_centisecs(started)
-                client_socket.sendto(
+                await client_socket.sendto(
                     bytes(self._build_teardown(msg_type=msg_type, xid=xid, lease=lease, elapsed=elapsed)), target
                 )
 
             __debug__ and log("dhcp6", f"Sending {msg_type!s} (xid={xid:#08x}) for {lease.address}")
-            _send()
+            await _send()
 
-            self._run_exchange(
+            await self._run_exchange(
                 client_socket,
                 xid=xid,
                 expected_type=Dhcp6MessageType.REPLY,
@@ -1030,7 +1072,7 @@ class Dhcp6Client(Subsystem):
         self._t2_deadline = now + t2
         self._valid_deadline = now + valid
 
-    def _service_lease(self) -> None:
+    async def _service_lease(self) -> None:
         """
         Advance the held lease's renewal state machine by one tick:
         RENEW once T1 is reached, REBIND once T2 is reached, and
@@ -1044,9 +1086,9 @@ class Dhcp6Client(Subsystem):
 
         now = time.monotonic()
         if now >= self._valid_deadline:
-            self._expire_lease(lease)
+            await self._expire_lease(lease)
         elif now >= self._t2_deadline:
-            refreshed = self._rebind(lease, deadline=self._valid_deadline)
+            refreshed = await self._rebind(lease, deadline=self._valid_deadline)
             if refreshed is not None:
                 self._adopt_refreshed(refreshed, previous=lease)
             else:
@@ -1054,7 +1096,7 @@ class Dhcp6Client(Subsystem):
                 # lifetime to expire and restart from SOLICIT.
                 self._t2_deadline = self._valid_deadline
         elif now >= self._t1_deadline:
-            refreshed = self._renew(lease, deadline=self._t2_deadline)
+            refreshed = await self._renew(lease, deadline=self._t2_deadline)
             if refreshed is not None:
                 self._adopt_refreshed(refreshed, previous=lease)
             else:
@@ -1077,7 +1119,7 @@ class Dhcp6Client(Subsystem):
         self._lease = refreshed
         self._arm_timers(refreshed)
 
-    def _expire_lease(self, lease: Dhcp6Lease) -> None:
+    async def _expire_lease(self, lease: Dhcp6Lease) -> None:
         """
         Handle valid-lifetime expiry: remove the leased address from the
         interface (RFC 8415 §18.2.5 — the client must stop using it) and
@@ -1090,7 +1132,7 @@ class Dhcp6Client(Subsystem):
             self._address_api.remove(address=lease.address)
         self._lease = None
 
-        new_lease = self.acquire_lease()
+        new_lease = await self.acquire_lease()
         if new_lease is not None:
             self._lease = new_lease
             self._arm_timers(new_lease)
@@ -1188,13 +1230,13 @@ class Dhcp6Client(Subsystem):
 
     # --- shared retransmission / recv machinery ---
 
-    def _run_exchange(
+    async def _run_exchange(
         self,
         client_socket: socket,
         *,
         xid: int,
         expected_type: Dhcp6MessageType,
-        resend: Callable[[], None],
+        resend: Callable[[], Awaitable[None]],
         irt_ms: int,
         mrt_ms: int,
         max_attempts: int | None = None,
@@ -1244,7 +1286,7 @@ class Dhcp6Client(Subsystem):
                 timeout_s = min(timeout_s, mrd_deadline - time.monotonic())
             timeout_s = max(0.001, timeout_s)
 
-            result = self._recv_within_window(
+            result = await self._recv_within_window(
                 client_socket, xid=xid, expected_types=(expected_type,), timeout_s=timeout_s
             )
             if result is not None:
@@ -1258,9 +1300,9 @@ class Dhcp6Client(Subsystem):
                 "dhcp6",
                 f"recv window expired ({timeout_s:.2f}s); retransmitting (attempt {attempt + 1})",
             )
-            resend()
+            await resend()
 
-    def _recv_within_window(
+    async def _recv_within_window(
         self,
         client_socket: socket,
         *,
@@ -1287,7 +1329,7 @@ class Dhcp6Client(Subsystem):
             first_iter = False
 
             try:
-                packet = Dhcp6Parser(client_socket.recv__mv(timeout=remaining))
+                packet = Dhcp6Parser(await client_socket.recv__mv(timeout=remaining))
             except TimeoutError:
                 return None
             except (Dhcp6IntegrityError, Dhcp6SanityError):

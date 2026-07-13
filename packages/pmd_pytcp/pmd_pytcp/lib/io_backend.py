@@ -48,6 +48,20 @@ def unregister_interface_fd(sock: socket.socket) -> None:
     _interface_fds.pop(sock.fileno(), None)
 
 
+def sock_for_fd(fd: int) -> socket.socket | None:
+    """The registered socket backing ``fd`` on the socket-I/O path, else None. The runtime
+    rings use this to pick their asyncio strategy: ``loop.sock_recv`` / ``loop.sock_sendall``
+    for a registered socket (works on proactor loops), ``loop.add_reader`` / ``add_writer``
+    on a plain fd."""
+    return _interface_fds.get(fd)
+
+
+def set_nonblocking(fd: int) -> None:
+    """Put a plain fd into non-blocking mode (the rings' add_reader/add_writer path requires
+    it). Registered sockets are switched via ``sock.setblocking`` by the caller instead."""
+    os.set_blocking(fd, False)
+
+
 def read(fd: int, n: int) -> bytes:
     sock = _interface_fds.get(fd)
     return sock.recv(n) if sock is not None else os.read(fd, n)

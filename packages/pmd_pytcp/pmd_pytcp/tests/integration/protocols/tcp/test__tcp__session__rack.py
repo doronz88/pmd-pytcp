@@ -1124,8 +1124,7 @@ class TestTcpTlpPhase7(TcpTestCase):
         # the TLP timer (so '_timer_expired' reports it fired) and
         # calling the tick handler directly. The probe path's choice
         # between new-data and retransmit is then deterministic.
-        with session._lock__tx_buffer:
-            session._tx.buffer.extend(b"new data tail")
+        session._tx.buffer.extend(b"new data tail")
 
         snd_max_pre_probe = session._snd_seq.max
         self._expire_timer(session, "tlp")

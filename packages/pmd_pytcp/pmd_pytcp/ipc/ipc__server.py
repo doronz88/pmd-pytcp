@@ -25,12 +25,21 @@
 """
 This module contains the IPC control-channel AF_UNIX server.
 
-'IpcServer' is a 'Subsystem' that listens on an AF_UNIX stream socket and
-serves each accepted client on its own dispatch thread: read a framed
+'IpcServer' listens on an AF_UNIX stream socket via
+'asyncio.start_unix_server' and serves each accepted client on its own
+connection task ('docs/refactor/pure_asyncio.md'): read a framed
 request, route its op to a handler, write the framed response. It is the
 daemon-side half of the boundary and — unlike the codec core — imports
-the stack 'Subsystem' base, so it stays pmd_pytcp-resident (see
+the stack-resident 'SocketSession', so it stays pmd_pytcp-resident (see
 docs/refactor/kernel_userspace_separation.md §2).
+
+Lifecycle shape: the listen socket is bound synchronously in
+'__init__' (so the AF_UNIX node exists — and clients can queue in the
+backlog — as soon as the server is constructed); 'start()' is a
+COROUTINE that arms the asyncio server on the running loop; 'stop()'
+stays sync (close the server, cancel the per-client tasks, unlink the
+node) and 'wait_stopped()' awaits the teardown's completion —
+mirroring the runtime 'Subsystem' start/stop/wait_stopped shape.
 
 pmd_pytcp/ipc/ipc__server.py
 
@@ -39,11 +48,11 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
-import threading
 from collections.abc import Callable, Mapping
-from typing_extensions import TypeAliasType, override
+from typing_extensions import TypeAliasType
 
 from pmd_pytcp.ipc.ipc__control import handle_control_call
 from pmd_pytcp.ipc.ipc__enums import IpcMessageKind, IpcOp
@@ -52,7 +61,7 @@ from pmd_pytcp.ipc.ipc__fdpass import send_frame_with_fd
 from pmd_pytcp.ipc.ipc__frame import recv_frame, send_frame
 from pmd_pytcp.ipc.ipc__message import IpcMessage
 from pmd_pytcp.ipc.ipc__socket_session import SocketSession
-from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
+from pmd_pytcp.lib.logger import log
 
 # A handler takes the decoded request and returns the full response
 # message, so it owns the response 'kind' (a control handler returns
@@ -60,7 +69,6 @@ from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 IpcRequestHandler = TypeAliasType("IpcRequestHandler", Callable[[IpcMessage], IpcMessage])
 
 IPC__SERVER__LISTEN_BACKLOG: int = 64
-IPC__SERVER__CLIENT_JOIN_TIMEOUT__SEC: float = 2.0
 
 
 def _handle_ping(request: IpcMessage, /) -> IpcMessage:
@@ -82,7 +90,7 @@ DEFAULT_HANDLERS: dict[int, IpcRequestHandler] = {
 }
 
 
-class IpcServer(Subsystem):
+class IpcServer:
     """
     The IPC control-channel AF_UNIX server.
     """
@@ -92,11 +100,10 @@ class IpcServer(Subsystem):
     _socket_path: str
     _handlers: dict[int, IpcRequestHandler]
     _listen_socket: socket.socket
-    _lock__clients: threading.Lock
-    _client_sockets: list[socket.socket]
-    _client_threads: list[threading.Thread]
+    _server: "asyncio.base_events.Server | None"
+    _client_tasks: "set[asyncio.Task[None]]"
+    _event__stop_subsystem: asyncio.Event
 
-    @override
     def __init__(
         self,
         *,
@@ -104,65 +111,108 @@ class IpcServer(Subsystem):
         handlers: Mapping[int, IpcRequestHandler] | None = None,
     ) -> None:
         """
-        Bind and listen on the AF_UNIX control socket.
+        Bind and listen on the AF_UNIX control socket. The socket node
+        exists (and connects queue in the backlog) from here on;
+        serving begins once 'start()' arms the asyncio server.
         """
 
         self._socket_path = socket_path
 
-        super().__init__(info=socket_path)
+        __debug__ and log("stack", f"Initializing {self._subsystem_name} [{socket_path}]")
 
         self._handlers = dict(DEFAULT_HANDLERS) if handlers is None else dict(handlers)
-        self._lock__clients = threading.Lock()
-        self._client_sockets = []
-        self._client_threads = []
+        self._server = None
+        self._client_tasks = set()
+        self._event__stop_subsystem = asyncio.Event()
 
         self._listen_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._unlink_socket_path()
         self._listen_socket.bind(socket_path)
         self._listen_socket.listen(IPC__SERVER__LISTEN_BACKLOG)
-        # A short accept timeout lets '_subsystem_loop' return between
-        # idle polls so the base loop can re-check the stop event.
-        self._listen_socket.settimeout(SUBSYSTEM_SLEEP_TIME__SEC)
+        self._listen_socket.setblocking(False)
 
-    @override
-    def _subsystem_loop(self) -> None:
+    async def start(self) -> None:
         """
-        Accept one pending client connection and hand it to a dedicated
-        dispatch thread. 'accept' raises 'TimeoutError' (an 'OSError'
-        subclass) on the idle-poll timeout and 'OSError' once the listen
-        socket is closed during teardown — both just take a fresh tick.
+        Arm the asyncio server on the running loop; on return the
+        server is accepting (connections already queued in the backlog
+        get served immediately).
         """
 
-        try:
-            conn, _ = self._listen_socket.accept()
-        except OSError:
-            return
+        __debug__ and log("stack", f"Starting {self._subsystem_name}")
 
-        conn.settimeout(None)
-        thread = threading.Thread(
-            target=self._serve_client,
-            args=(conn,),
-            name="IPC-Client",
-        )
-        with self._lock__clients:
-            self._client_sockets.append(conn)
-            self._client_threads.append(thread)
-        thread.start()
+        assert self._server is None, f"{self._subsystem_name}.start() called while the server is already running."
 
-    def _serve_client(self, conn: socket.socket, /) -> None:
+        self._event__stop_subsystem.clear()
+        self._server = await asyncio.start_unix_server(self._serve_client, sock=self._listen_socket)
+
+        __debug__ and log("stack", f"Started {self._subsystem_name}")
+
+    def stop(self) -> None:
+        """
+        Stop the server: set the stop event (unblocks the socket
+        sessions' accept polls), close the listen socket, cancel every
+        per-client connection task, and unlink the AF_UNIX socket node.
+        Sync-safe from loop context — use 'wait_stopped()' to await the
+        connection tasks' actual exit (each task's own 'finally' reaps
+        its session sockets and closes its connection).
+        """
+
+        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+
+        self._event__stop_subsystem.set()
+
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+        else:
+            # Never armed — the listen socket is still ours to close.
+            try:
+                self._listen_socket.close()
+            except OSError:
+                pass
+
+        for task in list(self._client_tasks):
+            if not task.done():
+                task.cancel()
+
+        self._unlink_socket_path()
+
+        __debug__ and log("stack", f"Stopped {self._subsystem_name}")
+
+    async def wait_stopped(self) -> None:
+        """
+        Await every per-client connection task's completion after
+        'stop()'.
+        """
+
+        tasks = list(self._client_tasks)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _serve_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """
         Serve one client connection until it closes or the server stops:
         read a framed request, dispatch it, write the framed response.
         Each connection owns a 'SocketSession' (its open-socket table),
         reaped when the connection ends — the daemon's analogue of a
         kernel closing a process's fds on exit.
+
+        Requests are read via the connection's 'StreamReader' (inbound
+        frames never carry descriptors) and responses written via its
+        'StreamWriter'; an fd-bearing response's SCM_RIGHTS prefix rides
+        a raw 'sendmsg' issued only once the writer's buffer is
+        verifiably empty (see 'ipc__fdpass').
         """
+
+        task = asyncio.current_task()
+        if task is not None:
+            self._client_tasks.add(task)
 
         session = SocketSession(self._event__stop_subsystem)
         try:
             while not self._event__stop_subsystem.is_set():
                 try:
-                    payload = recv_frame(conn)
+                    payload = await recv_frame(reader)
                 except (IpcFrameError, OSError):
                     break
 
@@ -177,24 +227,28 @@ class IpcServer(Subsystem):
                     break
 
                 if request.op == IpcOp.SOCKET_CALL:
-                    if not self._serve_socket_call(conn, session, request):
+                    if not await self._serve_socket_call(writer, session, request):
                         break
                     continue
 
                 try:
-                    send_frame(conn, self._dispatch(request).to_bytes())
+                    await send_frame(writer, self._dispatch(request).to_bytes())
                 except OSError:
                     break
+        except asyncio.CancelledError:
+            pass  # Server teardown — fall through to the session reap.
         finally:
             session.close_all()
             try:
-                conn.close()
+                writer.close()
             except OSError:
                 pass
+            if task is not None:
+                self._client_tasks.discard(task)
 
-    def _serve_socket_call(
+    async def _serve_socket_call(
         self,
-        conn: socket.socket,
+        writer: asyncio.StreamWriter,
         session: SocketSession,
         request: IpcMessage,
         /,
@@ -209,12 +263,12 @@ class IpcServer(Subsystem):
         drops its reference whether or not the send succeeded.
         """
 
-        response, fd_socket = session.handle(request)
+        response, fd_socket = await session.handle(request)
         try:
             if fd_socket is not None:
-                send_frame_with_fd(conn, response.to_bytes(), fd_socket.fileno())
+                await send_frame_with_fd(writer, response.to_bytes(), fd_socket.fileno())
             else:
-                send_frame(conn, response.to_bytes())
+                await send_frame(writer, response.to_bytes())
         except OSError:
             return False
         finally:
@@ -246,42 +300,6 @@ class IpcServer(Subsystem):
             )
 
         return handler(request)
-
-    @override
-    def _stop(self) -> None:
-        """
-        Close the listen socket, tear down every client connection, join
-        the dispatch threads, and unlink the AF_UNIX socket node. The
-        base 'stop()' has already joined the accept worker before this
-        runs, so the client lists are final and race-free.
-        """
-
-        try:
-            self._listen_socket.close()
-        except OSError:
-            pass
-
-        with self._lock__clients:
-            sockets = list(self._client_sockets)
-            threads = list(self._client_threads)
-
-        for conn in sockets:
-            # 'shutdown' (not just 'close') reliably interrupts a
-            # dispatch thread blocked in 'recv_frame'; a bare 'close'
-            # on Linux can leave the blocked syscall pending.
-            try:
-                conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            try:
-                conn.close()
-            except OSError:
-                pass
-
-        for thread in threads:
-            thread.join(timeout=IPC__SERVER__CLIENT_JOIN_TIMEOUT__SEC)
-
-        self._unlink_socket_path()
 
     def _unlink_socket_path(self) -> None:
         """

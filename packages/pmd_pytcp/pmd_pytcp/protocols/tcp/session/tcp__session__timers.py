@@ -29,20 +29,10 @@
 """
 This module contains the per-session TCP timer service —
 'TcpTimerService' — which owns the per-session logical-timer
-deadline map and the coalesced service handle. It is the
-collaborator that closes the no-GIL backlog item T2: the
-deadline-map mutations and the service-handle re-arm cycle now
-run under their own 'threading.Lock' instead of overloading the
-session's '_lock__fsm' RLock, so a non-FSM caller (notably
-'send()' kicking the tx pump) no longer needs to acquire the
-FSM lock just to arm a timer.
-
-Lock ordering is '_lock__fsm' -> '_lock__timer' (FSM-context
-callers may hold the FSM lock then arm timers); never the
-reverse. The service-handle 'call_later(..., self.tcp_fsm,
-timer=True)' callback runs lock-free on the timer worker
-thread and re-acquires '_lock__fsm' on entry to 'tcp_fsm',
-so no ordering edge ever runs '_lock__timer' -> '_lock__fsm'.
+deadline map and the coalesced service handle. Every mutator
+and the service-handle 'call_later(..., self.tcp_fsm,
+timer=True)' callback run on the one stack event loop
+(pure_asyncio.md), so nothing here needs a lock.
 
 packages/pmd_pytcp/pmd_pytcp/protocols/tcp/session/tcp__session__timers.py
 
@@ -51,7 +41,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from typing import TYPE_CHECKING
 
 from pmd_pytcp import stack
@@ -64,7 +53,7 @@ if TYPE_CHECKING:
 
 # Which logical timers may wake the session in each FSM state
 # (the §4.3 scope matrix as data; §5.6/§5.7). The matrix is
-# read by '_reschedule_locked' to compute the soonest relevant
+# read by '_reschedule' to compute the soonest relevant
 # deadline. Mirrors '_SERVICED_TIMERS_BY_STATE' on
 # 'tcp__session.py' — the constant is duplicated here rather
 # than imported so the service module can be reasoned about
@@ -91,8 +80,7 @@ class TcpTimerService:
     def __init__(self, session: "TcpSession", /) -> None:
         """
         Initialize the per-session timer service with an empty
-        deadline map, no coalesced service handle, and a fresh
-        non-reentrant lock guarding the two.
+        deadline map and no coalesced service handle.
         """
 
         self._session: TcpSession = session
@@ -103,18 +91,12 @@ class TcpTimerService:
         # "rack", "tx_pump").
         self._deadlines: dict[str, int] = {}
         # Coalesced per-session service handle. Re-armed by
-        # '_reschedule_locked' to the soonest deadline among
-        # logical timers in scope for the current FSM state.
+        # '_reschedule' to the soonest deadline among logical
+        # timers in scope for the current FSM state.
         self._service_handle: TimerHandle | None = None
-        # Non-reentrant: the public methods take it exactly once
-        # and call '_reschedule_locked' which assumes the lock is
-        # held. A plain 'threading.Lock' is preferred over
-        # 'RLock' so a future re-entrant misuse fails loudly
-        # instead of silently nesting.
-        self._lock: threading.Lock = threading.Lock()
 
     # ------------------------------------------------------------------
-    # Public surface — every mutator/accessor takes '_lock' once.
+    # Public surface.
     # ------------------------------------------------------------------
 
     def arm(self, name: str, delay_ms: int, /) -> None:
@@ -123,18 +105,16 @@ class TcpTimerService:
         milliseconds from now.
         """
 
-        with self._lock:
-            self._deadlines[name] = stack.timer.now_ms + delay_ms
-            self._reschedule_locked()
+        self._deadlines[name] = stack.timer.now_ms + delay_ms
+        self._reschedule()
 
     def cancel(self, name: str, /) -> None:
         """
         Cancel the named logical timer if armed.
         """
 
-        with self._lock:
-            self._deadlines.pop(name, None)
-            self._reschedule_locked()
+        self._deadlines.pop(name, None)
+        self._reschedule()
 
     def cancel_all(self) -> None:
         """
@@ -143,11 +123,10 @@ class TcpTimerService:
         that drops all of this session's armed timers in one call.
         """
 
-        with self._lock:
-            self._deadlines.clear()
-            if self._service_handle is not None:
-                stack.timer.cancel(self._service_handle)
-                self._service_handle = None
+        self._deadlines.clear()
+        if self._service_handle is not None:
+            stack.timer.cancel(self._service_handle)
+            self._service_handle = None
 
     def armed(self, name: str, /) -> bool:
         """
@@ -155,8 +134,7 @@ class TcpTimerService:
         not yet fired (the 'is it still running?' query).
         """
 
-        with self._lock:
-            deadline = self._deadlines.get(name)
+        deadline = self._deadlines.get(name)
         return deadline is not None and stack.timer.now_ms < deadline
 
     def expired(self, name: str, /) -> bool:
@@ -167,8 +145,7 @@ class TcpTimerService:
         'armed' for the complementary 'still running?' query).
         """
 
-        with self._lock:
-            deadline = self._deadlines.get(name)
+        deadline = self._deadlines.get(name)
         return deadline is not None and stack.timer.now_ms >= deadline
 
     def reschedule(self) -> None:
@@ -180,20 +157,18 @@ class TcpTimerService:
         cheap to call repeatedly.
         """
 
-        with self._lock:
-            self._reschedule_locked()
+        self._reschedule()
 
     # ------------------------------------------------------------------
-    # Internal helper — assumes '_lock' is held.
+    # Internal helper.
     # ------------------------------------------------------------------
 
-    def _reschedule_locked(self) -> None:
+    def _reschedule(self) -> None:
         """
         Re-arm the coalesced per-session service handle to the
         soonest deadline among the logical timers serviced in the
         current state. The 1 ms periodic is gone (Phase 4c); this
-        is the sole driver of timer-tick servicing. Assumes the
-        caller holds 'self._lock'.
+        is the sole driver of timer-tick servicing.
         """
 
         if self._service_handle is not None:

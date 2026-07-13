@@ -51,30 +51,30 @@ class ClientNeighbor(_DeviceScopedProxy):
 
     _api_name = "neighbor"
 
-    def add(self, *, ip: Ip4Address | Ip6Address, mac: MacAddress) -> None:
+    async def add(self, *, ip: Ip4Address | Ip6Address, mac: MacAddress) -> None:
         """
         Install a permanent neighbour entry mapping 'ip' to 'mac'.
         """
 
-        self._call("add", {"ip": ip, "mac": mac})
+        await self._call("add", {"ip": ip, "mac": mac})
 
-    def remove(self, *, ip: Ip4Address | Ip6Address) -> None:
+    async def remove(self, *, ip: Ip4Address | Ip6Address) -> None:
         """
         Remove the neighbour entry for 'ip'.
         """
 
-        self._call("remove", {"ip": ip})
+        await self._call("remove", {"ip": ip})
 
-    def flush(self, *, family: AddressFamily) -> None:
+    async def flush(self, *, family: AddressFamily) -> None:
         """
         Flush the bound interface's neighbour cache for 'family'.
         """
 
-        self._call("flush", {"family": family})
+        await self._call("flush", {"family": family})
 
-    def list_neighbors(self, *, family: AddressFamily | None = None) -> tuple[NeighborSnapshot, ...]:
+    async def list_neighbors(self, *, family: AddressFamily | None = None) -> tuple[NeighborSnapshot, ...]:
         """
         List the bound interface's neighbour-cache entries.
         """
 
-        return cast(tuple[NeighborSnapshot, ...], self._call("list_neighbors", {"family": family}))
+        return cast(tuple[NeighborSnapshot, ...], await self._call("list_neighbors", {"family": family}))

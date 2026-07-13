@@ -32,7 +32,6 @@ examples/service__udp_echo.py
 ver 3.0.7
 """
 
-import threading
 from typing import Any, override
 
 import click
@@ -41,8 +40,8 @@ from examples.lib.malpi import malpa, malpi, malpka
 from examples.lib.service import build_echo_services
 from examples.lib.udp_service import UdpService
 from examples.stack import cli as stack_cli
-from net_addr import IpAddress
-from pytcp.socket import socket
+from pmd_net_addr import IpAddress
+from pmd_pytcp.socket import socket
 
 
 class UdpEchoService(UdpService):
@@ -51,8 +50,6 @@ class UdpEchoService(UdpService):
     """
 
     _subsystem_name = f"{UdpService._protocol_name} Echo Service"
-
-    _event__stop_subsystem: threading.Event
 
     def __init__(self, *, local_ip_address: IpAddress, local_port: int):
         """
@@ -65,7 +62,7 @@ class UdpEchoService(UdpService):
         super().__init__()
 
     @override
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         Service logic handler.
         """
@@ -73,7 +70,7 @@ class UdpEchoService(UdpService):
         while not self._event__stop_subsystem.is_set():
 
             try:
-                message, remote_address = socket.recvfrom(timeout=1)
+                message, remote_address = await socket.recvfrom(timeout=1)
 
                 if message:
                     if __debug__:
@@ -88,7 +85,7 @@ class UdpEchoService(UdpService):
                     elif b"malpi" in message.strip().lower():
                         message = malpi
 
-                    socket.sendto(message, remote_address)
+                    await socket.sendto(message, remote_address)
 
                     if __debug__:
                         self._log(

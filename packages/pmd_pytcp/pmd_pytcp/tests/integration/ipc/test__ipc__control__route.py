@@ -44,7 +44,7 @@ class TestIpcControlRoute(IpcControlTestCase):
     The out-of-process route control-mirror tests.
     """
 
-    def test__ipc__control__route_list_matches_in_process(self) -> None:
+    async def test__ipc__control__route_list_matches_in_process(self) -> None:
         """
         Ensure an out-of-process route list returns the same routes the
         in-process FIB holds, so Route snapshots round-trip across the
@@ -53,15 +53,15 @@ class TestIpcControlRoute(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.route.list_routes(),
+            await client.route.list_routes(),
             stack.route.list_routes(),
             msg="A client route list must match the in-process route table.",
         )
 
-    def test__ipc__control__route_add_reflected_in_process(self) -> None:
+    async def test__ipc__control__route_add_reflected_in_process(self) -> None:
         """
         Ensure an out-of-process add_route installs the route in the
         real daemon FIB, visible to a subsequent in-process list.
@@ -69,14 +69,14 @@ class TestIpcControlRoute(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
         route = Route(
             destination=Ip4Network("10.9.9.0/24"),
             gateway=Ip4Address("10.0.1.1"),
             protocol=RouteProtocol.STATIC,
         )
 
-        client.route.add_route(route=route)
+        await client.route.add_route(route=route)
 
         self.assertIn(
             route,
@@ -84,7 +84,7 @@ class TestIpcControlRoute(IpcControlTestCase):
             msg="A client add_route must install the route in the daemon FIB.",
         )
 
-    def test__ipc__control__route_remove_default_returns_count(self) -> None:
+    async def test__ipc__control__route_remove_default_returns_count(self) -> None:
         """
         Ensure an out-of-process remove_default removes the fixture
         IPv4 default route and reports the removed count.
@@ -92,10 +92,10 @@ class TestIpcControlRoute(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.route.remove_default(family=AddressFamily.INET4),
+            await client.route.remove_default(family=AddressFamily.INET4),
             1,
             msg="A client remove_default must remove and count the IPv4 default route.",
         )

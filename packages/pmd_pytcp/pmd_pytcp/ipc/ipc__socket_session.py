@@ -30,7 +30,11 @@ op: one real stack socket plus its data bridge per open handle. The
 'socket' call creates a socketpair, builds the daemon-side socket, and
 returns the client end as a passed file descriptor; subsequent
 handle-keyed calls (bind / connect / setsockopt / getsockopt / shutdown /
-close / getsockname / getpeername) drive the underlying socket.
+close / getsockname / getpeername) drive the underlying socket. 'handle'
+is a coroutine ('docs/refactor/pure_asyncio.md'): the waiting stack
+socket calls ('connect' / 'accept') are awaited on the serving
+connection's task, so a long-blocking accept parks only its own
+control connection, never the loop.
 
 A STREAM handle is a 'TcpSocket' over a SOCK_STREAM 'SocketBridge', its
 bridge started once the connection is opened (the stack socket's 'recv'
@@ -51,8 +55,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
-import threading
 from typing import Any
 
 from pmd_net_proto.lib.enums import EtherType, IpProto
@@ -203,7 +207,7 @@ class SocketSession:
     The per-client socket-handle table backing the SOCKET_CALL op.
     """
 
-    def __init__(self, stop_event: threading.Event) -> None:
+    def __init__(self, stop_event: asyncio.Event) -> None:
         """
         Start with an empty handle table. 'stop_event' lets the blocking
         'accept' loop bail out on server shutdown.
@@ -213,7 +217,7 @@ class SocketSession:
         self._next_handle = 0
         self._stop_event = stop_event
 
-    def handle(self, request: IpcMessage, /) -> tuple[IpcMessage, socket.socket | None]:
+    async def handle(self, request: IpcMessage, /) -> tuple[IpcMessage, socket.socket | None]:
         """
         Serve one SOCKET_CALL request, returning the response and — for
         the 'socket' call — the client-end socket to pass alongside it.
@@ -225,7 +229,7 @@ class SocketSession:
         """
 
         try:
-            value, fd_socket = self._invoke(decode_socket_request(request.body))
+            value, fd_socket = await self._invoke(decode_socket_request(request.body))
         except Exception as error:
             return (
                 IpcMessage(
@@ -259,7 +263,7 @@ class SocketSession:
                 pass
         self._sockets.clear()
 
-    def _invoke(self, request: SocketRequest, /) -> tuple[Any, socket.socket | None]:
+    async def _invoke(self, request: SocketRequest, /) -> tuple[Any, socket.socket | None]:
         """
         Route an allowlisted socket method to the addressed handle.
         """
@@ -279,7 +283,7 @@ class SocketSession:
             raise KeyError(f"Unknown socket handle {request.handle!r}.")
 
         if isinstance(daemon_socket, _DaemonPacketSocket):
-            return self._invoke_packet(daemon_socket, request)
+            return self._invoke_packet(daemon_socket, request)  # sync — no waiting calls on a link-layer socket
 
         sock = daemon_socket.socket
 
@@ -287,7 +291,9 @@ class SocketSession:
             sock.bind(request.args["address"])
             return None, None
         elif request.method == "connect":
-            sock.connect(request.args["address"])
+            # The waiting call — awaited here so a slow handshake parks
+            # only this control connection's serving task.
+            await sock.connect(request.args["address"])
             daemon_socket.start_bridge()
             return None, None
         elif request.method == "listen":
@@ -298,7 +304,7 @@ class SocketSession:
         elif request.method == "accept":
             if not isinstance(sock, TcpSocket):
                 raise OSError("accept() is supported only on a stream socket.")
-            return self._accept(sock)
+            return await self._accept(sock)
         elif request.method == "setsockopt":
             sock.setsockopt(request.args["level"], request.args["optname"], request.args["value"])
             return None, None
@@ -342,9 +348,9 @@ class SocketSession:
 
         raise KeyError(f"Method {request.method!r} is not permitted on an AF_PACKET socket.")
 
-    def _accept(self, listening: TcpSocket, /) -> tuple[dict[str, Any], socket.socket]:
+    async def _accept(self, listening: TcpSocket, /) -> tuple[dict[str, Any], socket.socket]:
         """
-        Block (polling, so server shutdown interrupts) until an inbound
+        Wait (polling, so server shutdown interrupts) until an inbound
         connection completes its handshake, then build a data channel for
         the accepted child and return its handle and peer address with the
         client end to pass.
@@ -352,7 +358,7 @@ class SocketSession:
 
         while not self._stop_event.is_set():
             try:
-                child, peer = listening.accept(timeout=IPC__SESSION__ACCEPT_POLL__SEC)
+                child, peer = await listening.accept(timeout=IPC__SESSION__ACCEPT_POLL__SEC)
             except TimeoutError:
                 continue
 

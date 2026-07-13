@@ -26,18 +26,22 @@
 This module contains the 'user space' generic client base class used in
 the examples.
 
+A client is a pair of asyncio tasks (sender + receiver) on the stack's
+event loop ('docs/refactor/pure_asyncio.md'). 'start()' spawns a boot
+task that opens/binds/connects the client socket (connect is a
+coroutine on the async socket API) and then runs the two workers.
+
 examples/lib/client.py
 
 ver 3.0.7
 """
 
-import threading
 from abc import abstractmethod
 from typing import override
 
 from examples.lib.subsystem import Subsystem
-from net_addr import Ip4Address, Ip6Address, IpVersion
-from pytcp.socket import (
+from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
+from pmd_pytcp.socket import (
     IPPROTO_ICMP4,
     IPPROTO_ICMP6,
     socket,
@@ -57,12 +61,11 @@ class Client(Subsystem):
     _remote_port: int
     _client_socket: socket | None
 
-    _event__stop_subsystem: threading.Event
-
     @override
     def start(self) -> None:
         """
-        Start the client.
+        Start the client (spawns the boot task; requires a running
+        loop).
         """
 
         self._log("Starting the client.")
@@ -72,30 +75,39 @@ class Client(Subsystem):
         if isinstance(self._remote_ip_address, Ip6Address):
             self._local_ip_address = self.stack_ip6_address
 
-        try:
-            self._client_socket = self._get_client_socket()
-        except OSError:
-            self._event__stop_subsystem.set()
-            return
-
+        self._client_socket = None
         self._event__stop_subsystem.clear()
 
-        threading.Thread(target=self._thread__receiver).start()
-        threading.Thread(target=self._thread__sender).start()
+        self._spawn(self._task__client())
 
     @override
     def stop(self) -> None:
         """
-        Stop the client.
+        Stop the client tasks.
         """
 
         self._log("Stopping the client.")
 
-        self._event__stop_subsystem.set()
+        super().stop()
 
-    def _get_client_socket(self) -> socket:
+    async def _task__client(self) -> None:
         """
-        Create and bind the client's socket.
+        Boot task: open/bind/connect the client socket, then run the
+        receiver and sender workers.
+        """
+
+        try:
+            self._client_socket = await self._get_client_socket()
+        except OSError:
+            self._event__stop_subsystem.set()
+            return
+
+        self._spawn(self._task__receiver())
+        self._spawn(self._task__sender())
+
+    async def _get_client_socket(self) -> socket:
+        """
+        Create, bind and connect the client's socket.
         """
 
         client_socket = self._get_subsystem_socket(
@@ -117,7 +129,7 @@ class Client(Subsystem):
             raise error
 
         try:
-            client_socket.connect((str(self._remote_ip_address), self._remote_port))
+            await client_socket.connect((str(self._remote_ip_address), self._remote_port))
             self._log(f"Connection opened to {self._remote_ip_address}, port {self._remote_port}.")
         except OSError as error:
             self._log(
@@ -128,17 +140,17 @@ class Client(Subsystem):
         return client_socket
 
     @abstractmethod
-    def _thread__sender(self) -> None:
+    async def _task__sender(self) -> None:
         """
-        Thread used to send data by the client.
+        Task used to send data by the client.
         """
 
         raise NotImplementedError
 
     @abstractmethod
-    def _thread__receiver(self) -> None:
+    async def _task__receiver(self) -> None:
         """
-        Thread used to receive data by the client.
+        Task used to receive data by the client.
         """
 
         raise NotImplementedError

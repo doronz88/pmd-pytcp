@@ -32,7 +32,6 @@ examples/service__tcp_echo.py
 ver 3.0.7
 """
 
-import threading
 from typing import Any, override
 
 import click
@@ -41,8 +40,8 @@ from examples.lib.malpi import malpa, malpi, malpka
 from examples.lib.service import build_echo_services
 from examples.lib.tcp_service import TcpService
 from examples.stack import cli as stack_cli
-from net_addr import IpAddress
-from pytcp.socket import socket
+from pmd_net_addr import IpAddress
+from pmd_pytcp.socket import socket
 
 
 class TcpEchoService(TcpService):
@@ -51,8 +50,6 @@ class TcpEchoService(TcpService):
     """
 
     _subsystem_name = f"{TcpService._protocol_name} Echo Service"
-
-    _event__stop_subsystem: threading.Event
 
     def __init__(self, *, local_ip_address: IpAddress, local_port: int):
         """
@@ -65,7 +62,7 @@ class TcpEchoService(TcpService):
         super().__init__()
 
     @override
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         Service logic handler.
         """
@@ -73,25 +70,25 @@ class TcpEchoService(TcpService):
         remote_ip_address, remote_port = socket.getpeername()
 
         self._log(f"Sending first message to {remote_ip_address}, " f"port {remote_port}.")
-        socket.send(b"***CLIENT OPEN / SERVICE OPEN***\n")
+        await socket.send(b"***CLIENT OPEN / SERVICE OPEN***\n")
 
         while not self._event__stop_subsystem.is_set():
             try:
-                message = socket.recv(timeout=1)
+                message = await socket.recv(timeout=1)
             except TimeoutError:
                 continue
 
             if not message:
                 self._log(f"Connection to {remote_ip_address}, port {remote_port} has been closed by peer.")
                 self._log(f"Sending last message to {remote_ip_address}, port {remote_port}.")
-                socket.send(b"***CLIENT CLOSED, SERVICE CLOSING***\n")
+                await socket.send(b"***CLIENT CLOSED, SERVICE CLOSING***\n")
                 self._log(f"Closing connection to {remote_ip_address}, port {remote_port}.")
                 socket.close()
                 break
 
             if message.strip().lower() in {b"quit", b"close", b"bye", b"exit"}:
                 self._log(f"Sending last message to {remote_ip_address}, port {remote_port}.")
-                socket.send(b"***CLIENT OPEN, SERVICE CLOSING***\n")
+                await socket.send(b"***CLIENT OPEN, SERVICE CLOSING***\n")
                 self._log(f"Closing connection to {remote_ip_address}, port {remote_port}.")
                 socket.close()
                 continue
@@ -108,7 +105,7 @@ class TcpEchoService(TcpService):
             elif b"malpi" in message.strip().lower():
                 message = malpi
 
-            if socket.send(message):
+            if await socket.send(message):
                 if __debug__:
                     self._log(f"Sent {len(message)} bytes back to {remote_ip_address}, port {remote_port}.")
 

@@ -93,6 +93,8 @@ from pmd_pytcp.tests.lib.network_testcase import (
     STACK__IP4_HOST,
     STACK__IP6_HOST,
 )
+from unittest import IsolatedAsyncioTestCase
+
 from pmd_pytcp.tests.lib.tcp_testcase import TcpTestCase
 
 STACK__IP4: Ip4Address = STACK__IP4_HOST.address
@@ -398,13 +400,13 @@ class TestTcpIpRecverrRoundTrip(TcpTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase):
+class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Destination Unreachable end-to-end
     queue + recvmsg tests.
     """
 
-    def test__tcp__ip_recverr__icmp4_port_unreach__enqueues(self) -> None:
+    async def test__tcp__ip_recverr__icmp4_port_unreach__enqueues(self) -> None:
         """
         Ensure an ICMPv4 Port Unreachable matching a TcpSocket with
         IP_RECVERR=1 appears on the per-socket error queue and
@@ -424,7 +426,7 @@ class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase):
         )
         self._packet_handler._phrx_ethernet(_packet_rx(frame))
 
-        data, ancdata, flags, address = sock.recvmsg(
+        data, ancdata, flags, address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -468,7 +470,7 @@ class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase):
         self.assertEqual(ee_type, 3)
         self.assertEqual(ee_code, 3)
 
-    def test__tcp__ip_recverr__icmp4_host_unreach__maps_to_ehostunreach(self) -> None:
+    async def test__tcp__ip_recverr__icmp4_host_unreach__maps_to_ehostunreach(self) -> None:
         """
         Ensure an ICMPv4 Host Unreachable (Type=3 Code=1) maps to
         EHOSTUNREACH in the queued ErrorQueueEntry, matching the
@@ -485,7 +487,7 @@ class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase):
         )
         self._packet_handler._phrx_ethernet(_packet_rx(frame))
 
-        _data, ancdata, _flags, _address = sock.recvmsg(
+        _data, ancdata, _flags, _address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -499,13 +501,13 @@ class TestTcpIpRecverrIcmp4DestUnreachable(TcpTestCase):
         )
 
 
-class TestTcpIpRecverrIcmp4FragNeeded(TcpTestCase):
+class TestTcpIpRecverrIcmp4FragNeeded(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Fragmentation Needed (RFC 1191 PMTUD)
     queue tests.
     """
 
-    def test__tcp__ip_recverr__icmp4_frag_needed__emsgsize_with_mtu(self) -> None:
+    async def test__tcp__ip_recverr__icmp4_frag_needed__emsgsize_with_mtu(self) -> None:
         """
         Ensure an ICMPv4 Fragmentation Needed with next-hop MTU
         targeting a TcpSocket with IP_RECVERR=1 queues an
@@ -526,7 +528,7 @@ class TestTcpIpRecverrIcmp4FragNeeded(TcpTestCase):
         )
         self._packet_handler._phrx_ethernet(_packet_rx(frame))
 
-        _data, ancdata, _flags, _address = sock.recvmsg(
+        _data, ancdata, _flags, _address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -548,12 +550,12 @@ class TestTcpIpRecverrIcmp4FragNeeded(TcpTestCase):
         )
 
 
-class TestTcpIpRecverrIcmp4TimeExceeded(TcpTestCase):
+class TestTcpIpRecverrIcmp4TimeExceeded(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Time Exceeded queue tests.
     """
 
-    def test__tcp__ip_recverr__icmp4_time_exceeded__enqueues(self) -> None:
+    async def test__tcp__ip_recverr__icmp4_time_exceeded__enqueues(self) -> None:
         """
         Ensure an ICMPv4 Time Exceeded targeting a TcpSocket with
         IP_RECVERR=1 queues an ErrorQueueEntry with type=11 and
@@ -567,7 +569,7 @@ class TestTcpIpRecverrIcmp4TimeExceeded(TcpTestCase):
 
         self._packet_handler._phrx_ethernet(_packet_rx(_icmp4_time_exceeded_frame()))
 
-        _data, ancdata, _flags, _address = sock.recvmsg(
+        _data, ancdata, _flags, _address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -586,12 +588,12 @@ class TestTcpIpRecverrIcmp4TimeExceeded(TcpTestCase):
         )
 
 
-class TestTcpIpRecverrIcmp4ParameterProblem(TcpTestCase):
+class TestTcpIpRecverrIcmp4ParameterProblem(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IP_RECVERR ICMPv4 Parameter Problem queue tests.
     """
 
-    def test__tcp__ip_recverr__icmp4_parameter_problem__enqueues(self) -> None:
+    async def test__tcp__ip_recverr__icmp4_parameter_problem__enqueues(self) -> None:
         """
         Ensure an ICMPv4 Parameter Problem targeting a TcpSocket
         with IP_RECVERR=1 queues an ErrorQueueEntry with type=12
@@ -605,7 +607,7 @@ class TestTcpIpRecverrIcmp4ParameterProblem(TcpTestCase):
 
         self._packet_handler._phrx_ethernet(_packet_rx(_icmp4_parameter_problem_frame()))
 
-        _data, ancdata, _flags, _address = sock.recvmsg(
+        _data, ancdata, _flags, _address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -629,13 +631,13 @@ class TestTcpIpRecverrIcmp4ParameterProblem(TcpTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrIcmp6DestUnreachable(TcpTestCase):
+class TestTcpIpRecverrIcmp6DestUnreachable(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IPV6_RECVERR ICMPv6 Destination Unreachable end-to-end
     queue + recvmsg tests.
     """
 
-    def test__tcp__ipv6_recverr__icmp6_port_unreach__enqueues(self) -> None:
+    async def test__tcp__ipv6_recverr__icmp6_port_unreach__enqueues(self) -> None:
         """
         Ensure an ICMPv6 Destination Unreachable Code=4 (Port
         Unreachable) targeting a TcpSocket with IPV6_RECVERR=1
@@ -655,7 +657,7 @@ class TestTcpIpRecverrIcmp6DestUnreachable(TcpTestCase):
         )
         self._packet_handler._phrx_ethernet(_packet_rx(frame))
 
-        data, ancdata, flags, address = sock.recvmsg(
+        data, ancdata, flags, address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -694,13 +696,13 @@ class TestTcpIpRecverrIcmp6DestUnreachable(TcpTestCase):
         self.assertEqual(ee_code, 4)
 
 
-class TestTcpIpRecverrIcmp6PacketTooBig(TcpTestCase):
+class TestTcpIpRecverrIcmp6PacketTooBig(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IPV6_RECVERR ICMPv6 Packet Too Big (RFC 8201 PMTUD)
     queue tests.
     """
 
-    def test__tcp__ipv6_recverr__icmp6_packet_too_big__emsgsize_with_mtu(self) -> None:
+    async def test__tcp__ipv6_recverr__icmp6_packet_too_big__emsgsize_with_mtu(self) -> None:
         """
         Ensure an ICMPv6 Packet Too Big targeting a TcpSocket with
         IPV6_RECVERR=1 queues an ErrorQueueEntry with
@@ -716,7 +718,7 @@ class TestTcpIpRecverrIcmp6PacketTooBig(TcpTestCase):
         frame = _icmp6_packet_too_big_frame(mtu=NEXT_HOP_MTU)
         self._packet_handler._phrx_ethernet(_packet_rx(frame))
 
-        _data, ancdata, _flags, _address = sock.recvmsg(
+        _data, ancdata, _flags, _address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,
@@ -743,12 +745,12 @@ class TestTcpIpRecverrIcmp6PacketTooBig(TcpTestCase):
 # ---------------------------------------------------------------------------
 
 
-class TestTcpIpRecverrGating(TcpTestCase):
+class TestTcpIpRecverrGating(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IP_RECVERR gating tests — opt-in only.
     """
 
-    def test__tcp__ip_recverr__disabled__no_queue_population(self) -> None:
+    async def test__tcp__ip_recverr__disabled__no_queue_population(self) -> None:
         """
         Ensure a TcpSocket with IP_RECVERR=0 (default) does NOT
         accumulate ICMP errors on its error queue — the legacy
@@ -768,7 +770,7 @@ class TestTcpIpRecverrGating(TcpTestCase):
         self._packet_handler._phrx_ethernet(_packet_rx(frame))
 
         with self.assertRaises(TimeoutError):
-            sock.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
+            await sock.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
 
 
 class TestTcpIpRecverrFifoBound(TcpTestCase):
@@ -821,14 +823,14 @@ class TestTcpIpRecverrFifoBound(TcpTestCase):
         )
 
 
-class TestTcpIpRecverrFsmIndependence(TcpTestCase):
+class TestTcpIpRecverrFsmIndependence(TcpTestCase, IsolatedAsyncioTestCase):
     """
     The TCP IP_RECVERR FSM-independence tests — entries queued
     during one FSM state remain readable after the session
     transitions.
     """
 
-    def test__tcp__ip_recverr__entry_survives_syn_sent_to_closed(self) -> None:
+    async def test__tcp__ip_recverr__entry_survives_syn_sent_to_closed(self) -> None:
         """
         Ensure an ErrorQueueEntry queued during SYN_SENT remains
         readable after the session transitions to CLOSED (driven
@@ -857,7 +859,7 @@ class TestTcpIpRecverrFsmIndependence(TcpTestCase):
         )
 
         # Despite the transition, the queue still has the entry.
-        data, ancdata, _flags, _address = sock.recvmsg(
+        data, ancdata, _flags, _address = await sock.recvmsg(
             ancbufsize=256,
             flags=MSG_ERRQUEUE,
             timeout=0.5,

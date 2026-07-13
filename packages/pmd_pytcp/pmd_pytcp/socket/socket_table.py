@@ -23,7 +23,7 @@
 
 
 """
-This module contains the lock-guarded registry of open stack sockets.
+This module contains the registry of open stack sockets.
 
 pmd_pytcp/socket/socket_table.py
 
@@ -32,7 +32,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Iterator, Mapping
 
 from pmd_pytcp.socket import socket
@@ -43,11 +42,10 @@ class SocketTable:
     """
     The stack-wide registry of open sockets keyed by 'SocketId'.
 
-    A lock-guarded registry whose every operation is serialized by a
-    single lock. The registry is read by the RX-side packet handlers
-    (delivery lookups) while app threads register / unregister
-    sockets at bind / connect / close time; compound access (and
-    free-threaded / no-GIL builds) need the explicit lock.
+    The registry is read by the RX-side packet handlers (delivery
+    lookups) while application code registers / unregisters sockets
+    at bind / connect / close time — all on the one stack event
+    loop, so no guarding lock is needed.
 
     SO_REUSEPORT support makes each 'SocketId' map to a *cohort* — a
     list of sockets — rather than a single socket. In the common
@@ -72,9 +70,9 @@ class SocketTable:
     id (lossy for a live REUSEPORT cohort, which no harness snapshots).
 
     Iteration accessors ('values' / 'keys' / 'items' / '__iter__')
-    return detached snapshots taken under the lock, so an RX or
-    control thread can iterate the open-socket set while another
-    thread mutates it without risking
+    return detached snapshots, so a caller can iterate the
+    open-socket set while a loop callback it invokes mutates it
+    without risking
     'RuntimeError: dictionary changed size during iteration'.
     'values' / 'items' flatten every cohort member, so they may
     return more entries than 'len(table)' (the number of registered
@@ -83,10 +81,9 @@ class SocketTable:
 
     def __init__(self) -> None:
         """
-        Initialize an empty registry and its guarding lock.
+        Initialize an empty registry.
         """
 
-        self._lock = threading.Lock()
         self._sockets: dict[SocketId, list[socket]] = {}
         # Per-cohort round-robin cursor, populated lazily for
         # multi-member (REUSEPORT) cohorts only.
@@ -102,10 +99,9 @@ class SocketTable:
         instead of the second clobbering the first.
         """
 
-        with self._lock:
-            cohort = self._sockets.setdefault(sock.socket_id, [])
-            if not any(existing is sock for existing in cohort):
-                cohort.append(sock)
+        cohort = self._sockets.setdefault(sock.socket_id, [])
+        if not any(existing is sock for existing in cohort):
+            cohort.append(sock)
 
     def unregister(self, sock: socket) -> None:
         """
@@ -115,14 +111,13 @@ class SocketTable:
         silent no-op (matches the tolerant 'pop' default).
         """
 
-        with self._lock:
-            cohort = self._sockets.get(sock.socket_id)
-            if cohort is None:
-                return
-            cohort[:] = [existing for existing in cohort if existing is not sock]
-            if not cohort:
-                del self._sockets[sock.socket_id]
-                self._rr_cursor.pop(sock.socket_id, None)
+        cohort = self._sockets.get(sock.socket_id)
+        if cohort is None:
+            return
+        cohort[:] = [existing for existing in cohort if existing is not sock]
+        if not cohort:
+            del self._sockets[sock.socket_id]
+            self._rr_cursor.pop(sock.socket_id, None)
 
     def get(self, socket_id: SocketId, default: socket | None = None) -> socket | None:
         """
@@ -135,15 +130,14 @@ class SocketTable:
         datagrams load-balance across the cohort.
         """
 
-        with self._lock:
-            cohort = self._sockets.get(socket_id)
-            if not cohort:
-                return default
-            if len(cohort) == 1:
-                return cohort[0]
-            index = self._rr_cursor.get(socket_id, 0)
-            self._rr_cursor[socket_id] = (index + 1) % len(cohort)
-            return cohort[index % len(cohort)]
+        cohort = self._sockets.get(socket_id)
+        if not cohort:
+            return default
+        if len(cohort) == 1:
+            return cohort[0]
+        index = self._rr_cursor.get(socket_id, 0)
+        self._rr_cursor[socket_id] = (index + 1) % len(cohort)
+        return cohort[index % len(cohort)]
 
     def pop(self, socket_id: SocketId, default: socket | None = None) -> socket | None:
         """
@@ -151,18 +145,16 @@ class SocketTable:
         member (single-socket compat shim), or 'default' when absent.
         """
 
-        with self._lock:
-            cohort = self._sockets.pop(socket_id, None)
-            self._rr_cursor.pop(socket_id, None)
-            return cohort[-1] if cohort else default
+        cohort = self._sockets.pop(socket_id, None)
+        self._rr_cursor.pop(socket_id, None)
+        return cohort[-1] if cohort else default
 
     def __getitem__(self, socket_id: SocketId) -> socket:
         """
         Return the first cohort member under 'socket_id' (or raise).
         """
 
-        with self._lock:
-            return self._sockets[socket_id][0]
+        return self._sockets[socket_id][0]
 
     def __setitem__(self, socket_id: SocketId, sock: socket) -> None:
         """
@@ -170,50 +162,44 @@ class SocketTable:
         replacing any prior cohort (single-socket compat shim).
         """
 
-        with self._lock:
-            self._sockets[socket_id] = [sock]
-            self._rr_cursor.pop(socket_id, None)
+        self._sockets[socket_id] = [sock]
+        self._rr_cursor.pop(socket_id, None)
 
     def __delitem__(self, socket_id: SocketId) -> None:
         """
         Remove the entire cohort under 'socket_id' (or raise).
         """
 
-        with self._lock:
-            del self._sockets[socket_id]
-            self._rr_cursor.pop(socket_id, None)
+        del self._sockets[socket_id]
+        self._rr_cursor.pop(socket_id, None)
 
     def __contains__(self, socket_id: SocketId) -> bool:
         """
         Return whether any socket is registered under 'socket_id'.
         """
 
-        with self._lock:
-            return socket_id in self._sockets
+        return socket_id in self._sockets
 
     def __len__(self) -> int:
         """
         Return the number of registered ids (not cohort members).
         """
 
-        with self._lock:
-            return len(self._sockets)
+        return len(self._sockets)
 
     def __iter__(self) -> Iterator[SocketId]:
         """
         Return an iterator over a snapshot of the registered ids.
         """
 
-        with self._lock:
-            return iter(list(self._sockets))
+        return iter(list(self._sockets))
 
     def keys(self) -> list[SocketId]:
         """
         Return a snapshot list of the registered ids.
         """
 
-        with self._lock:
-            return list(self._sockets.keys())
+        return list(self._sockets.keys())
 
     def values(self) -> list[socket]:
         """
@@ -221,8 +207,7 @@ class SocketTable:
         all cohorts.
         """
 
-        with self._lock:
-            return [sock for cohort in self._sockets.values() for sock in cohort]
+        return [sock for cohort in self._sockets.values() for sock in cohort]
 
     def items(self) -> list[tuple[SocketId, socket]]:
         """
@@ -230,17 +215,15 @@ class SocketTable:
         member.
         """
 
-        with self._lock:
-            return [(socket_id, sock) for socket_id, cohort in self._sockets.items() for sock in cohort]
+        return [(socket_id, sock) for socket_id, cohort in self._sockets.items() for sock in cohort]
 
     def clear(self) -> None:
         """
         Remove every registered socket.
         """
 
-        with self._lock:
-            self._sockets.clear()
-            self._rr_cursor.clear()
+        self._sockets.clear()
+        self._rr_cursor.clear()
 
     def update(self, other: Mapping[SocketId, socket]) -> None:
         """
@@ -248,7 +231,6 @@ class SocketTable:
         cohorts (single-socket compat shim for the harness restore).
         """
 
-        with self._lock:
-            for socket_id, sock in other.items():
-                self._sockets[socket_id] = [sock]
-                self._rr_cursor.pop(socket_id, None)
+        for socket_id, sock in other.items():
+            self._sockets[socket_id] = [sock]
+            self._rr_cursor.pop(socket_id, None)

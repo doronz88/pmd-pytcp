@@ -34,13 +34,14 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
+import asyncio
 import time
 from typing import TYPE_CHECKING
 from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp import stack
+from pmd_pytcp._compat import acquire_semaphore, wait_event
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.protocols.tcp import tcp__constants
 from pmd_pytcp.protocols.tcp.fsm import dispatch_icmp as tcp_fsm_dispatch_icmp
@@ -91,8 +92,6 @@ from pmd_pytcp.protocols.tcp.tcp__seq import Seq32, le32, lt32, sub32
 from pmd_pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
-    from threading import Event, Lock, RLock, Semaphore
-
     from pmd_pytcp.socket.tcp__metadata import TcpMetadata
     from pmd_pytcp.socket.tcp__socket import TcpSocket
 
@@ -506,40 +505,26 @@ class TcpSession:
         # TCP FSM (Finite State Machine) state.
         self._state: FsmState = FsmState.CLOSED
 
-        # Wakes the blocked CONNECT syscall once the FSM has reached
+        # Wakes the awaiting CONNECT syscall once the FSM has reached
         # a terminal handshake outcome (ESTABLISHED, refused, or
-        # timed out). 'Semaphore(0)' rather than 'threading.Event'
+        # timed out). 'Semaphore(0)' rather than 'asyncio.Event'
         # because we want the wake-up to be one-shot per CONNECT
         # call: 'Event' stays set, so a second CONNECT would
         # observe a stale signal; 'Semaphore' counts releases and
-        # acquires, naturally consuming the signal.
-        self._event__connect: Semaphore = threading.Semaphore(0)
+        # acquires, naturally consuming the signal. The FSM arms
+        # ('tcp__fsm__syn_sent.py' / 'tcp__fsm__syn_rcvd.py') call
+        # '.release()' synchronously from loop context.
+        self._event__connect: asyncio.Semaphore = asyncio.Semaphore(0)
 
         # Used to inform RECV syscall that there is new data in buffer ready
         # to be picked up.
-        self._event__rx_buffer: Event = threading.Event()
+        self._event__rx_buffer: asyncio.Event = asyncio.Event()
 
-        # Set when the FSM reaches CLOSED so a blocking lingering
-        # close() (SO_LINGER {l_onoff=1, l_linger>0}) wakes as soon as
-        # the connection is fully torn down rather than sleeping the
-        # full linger timeout. Set from '_change_state'; in a running
-        # stack the RX / timer threads drive the transition while the
-        # application thread waits in 'TcpSocket.close'.
-        # Phase: no-GIL — 'threading.Event' is self-synchronizing
-        # (its internal Condition/Lock is the cross-thread barrier);
-        # set on the terminal CLOSED state and never cleared, so no
-        # lock and no lost/stale-wakeup window. See
-        # no_gil_thread_safety_audit.md §5.
-        self._event__closed: Event = threading.Event()
-
-        # Used to ensure that only single event can run FSM at given time.
-        self._lock__fsm: RLock = threading.RLock()
-
-        # Used to ensure only single event has access to RX buffer at given time.
-        self._lock__rx_buffer: Lock = threading.Lock()
-
-        # Used to ensure only single event has access to TX buffer at given time.
-        self._lock__tx_buffer: Lock = threading.Lock()
+        # Set when the FSM reaches CLOSED so an application that
+        # wants to observe the connection fully torn down can await
+        # it. Set from '_change_state' on the terminal CLOSED state
+        # and never cleared.
+        self._event__closed: asyncio.Event = asyncio.Event()
 
         # Indicates that CLOSE syscall is in progress, this lets to finish
         # sending data before FIN packet is transmitted.
@@ -553,18 +538,14 @@ class TcpSession:
 
         # Per-session timer service — owns the logical-timer
         # deadline map ('_deadlines') and the coalesced service
-        # handle ('_service_handle') plus the dedicated lock
-        # ('_lock') that guards both. The FSM timer is
+        # handle ('_service_handle'). The FSM timer is
         # event-driven — there is no 1 ms periodic. The coalesced
-        # service handle (armed by 'TcpTimerService._reschedule_locked'
+        # service handle (armed by 'TcpTimerService._reschedule'
         # from every public mutator and from the 'tcp_fsm' tail
         # via 'self._timers.reschedule()') drives both
         # logical-timer servicing and the 'tx_pump' FSM-pump
-        # (§5.6/§5.7). Closes the no-GIL backlog item T2: the
-        # deadline-map mutations no longer ride the FSM lock.
-        # Lock ordering for the rest of the session is
-        # '_lock__fsm' -> '_timers._lock' -> 'stack.timer._lock';
-        # the timer-worker callback re-enters 'tcp_fsm' lock-free.
+        # (§5.6/§5.7). Everything runs on the one stack event
+        # loop, so no locks guard any of it.
         self._timers: TcpTimerService = TcpTimerService(self)
 
         # Per-session TX engine — owns the outbound-segment
@@ -678,8 +659,7 @@ class TcpSession:
         Arm or re-arm the named logical timer to fire 'delay_ms'
         milliseconds from now. Thin delegator over
         'TcpTimerService.arm' — the deadline-map mutation +
-        coalesced-service reschedule are serialized under the
-        service's own '_lock'.
+        coalesced-service reschedule live on the service.
         """
 
         self._timers.arm(name, delay_ms)
@@ -786,12 +766,7 @@ class TcpSession:
         residual was send()-path): the sole non-'tcp_fsm'
         FSM-progression mutator is 'send()'; listen / connect /
         close / shutdown route through 'tcp_fsm', and receive /
-        abort need no pump. No-op once CLOSED. Takes the
-        'TcpTimerService' lock via '_arm_timer' (the deadline
-        map's dedicated guard); the '_state' read is a single
-        attribute read whose worst-case outcome on a torn
-        transition is one extra pump tick that no-ops in the
-        CLOSED branch of the next FSM dispatch — benign.
+        abort need no pump. No-op once CLOSED.
         """
 
         if self._state is not FsmState.CLOSED:
@@ -902,7 +877,7 @@ class TcpSession:
 
         self.tcp_fsm(syscall=SysCall.LISTEN)
 
-    def connect(self) -> None:
+    async def connect(self) -> None:
         """
         The 'CONNECT' syscall.
         """
@@ -913,7 +888,7 @@ class TcpSession:
         )
 
         self.tcp_fsm(syscall=SysCall.CONNECT)
-        self._event__connect.acquire()
+        await acquire_semaphore(self._event__connect)
         if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.REFUSED:
             raise TcpSessionError("Connection refused")
         if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.TIMEOUT:
@@ -938,26 +913,29 @@ class TcpSession:
             raise TcpSessionError("TCP session is closing")
 
         if self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT}:
-            with self._lock__tx_buffer:
-                self._tx.buffer.extend(data)
-            # Kick the FSM pump OUTSIDE '_lock__tx_buffer' (the
-            # 'tcp_fsm' lock order is _lock__fsm -> _lock__tx_buffer;
-            # taking _lock__fsm while holding _lock__tx_buffer here
-            # would invert it and deadlock).
+            self._tx.buffer.extend(data)
             self._kick_pump()
             return len(data)
 
         # This error should be raised when session is locally or fully closed.
         raise TcpSessionError("TCP session not in ESTABLISHED or CLOSE_WAIT state")
 
-    def receive(self, *, byte_count: int | None = None, timeout: float | None = None) -> bytes:
+    async def receive(self, *, byte_count: int | None = None, timeout: float | None = None) -> bytes:
         """
         The 'RECEIVE' syscall.
         """
 
         # Wait till there is any data in the buffer (this will get bypassed
-        # when FSM goes into CLOSE_WAIT or CLOSED).
-        if not self._event__rx_buffer.wait(timeout=timeout):
+        # when FSM goes into CLOSE_WAIT or CLOSED). A zero / negative
+        # timeout is a single non-suspending poll — the non-blocking
+        # socket mode forwards 'timeout=0' here, and
+        # 'asyncio.wait_for(..., 0)' would time an already-set event
+        # out because the wait task never gets a loop slice.
+        if timeout is not None and timeout <= 0:
+            data_ready = self._event__rx_buffer.is_set()
+        else:
+            data_ready = await wait_event(self._event__rx_buffer, timeout)
+        if not data_ready:
             raise TimeoutError("TCP session receive operation timed out while waiting for data.")
 
         # If there is no data in RX buffer and remote end closed connection
@@ -968,34 +946,26 @@ class TcpSession:
         }:
             return b""
 
-        with self._lock__rx_buffer:
-            if byte_count is None:
-                byte_count = len(self._rx_buffer)
-            else:
-                byte_count = min(byte_count, len(self._rx_buffer))
+        if byte_count is None:
+            byte_count = len(self._rx_buffer)
+        else:
+            byte_count = min(byte_count, len(self._rx_buffer))
 
-            rx_buffer = self._rx_buffer[:byte_count]
-            del self._rx_buffer[:byte_count]
+        rx_buffer = self._rx_buffer[:byte_count]
+        del self._rx_buffer[:byte_count]
 
-            # Clear the event only when the buffer is fully drained
-            # AND the remote end is still open. When the remote
-            # closed (CLOSE_WAIT or CLOSED), leave the event set so
-            # the next 'receive()' returns 'b""' immediately - the
-            # BSD-socket EOF semantics, where a connection-closed
-            # state must be re-readable as zero bytes without
-            # blocking the caller.
-            if not self._rx_buffer and self._state not in {
-                FsmState.CLOSE_WAIT,
-                FsmState.CLOSED,
-            }:
-                self._event__rx_buffer.clear()
-                # Drain the eventfd backing 'socket.fileno()' so the
-                # next selector tick stops firing once the buffer is
-                # empty. CLOSE_WAIT / CLOSED are deliberately
-                # excluded so peer-FIN EOF stays select-readable as
-                # a 0-byte recv() until the application closes its
-                # half (matches BSD select-on-read-EOF semantics).
-                self._socket._drain_readable()
+        # Clear the event only when the buffer is fully drained
+        # AND the remote end is still open. When the remote
+        # closed (CLOSE_WAIT or CLOSED), leave the event set so
+        # the next 'receive()' returns 'b""' immediately - the
+        # BSD-socket EOF semantics, where a connection-closed
+        # state must be re-readable as zero bytes without
+        # blocking the caller.
+        if not self._rx_buffer and self._state not in {
+            FsmState.CLOSE_WAIT,
+            FsmState.CLOSED,
+        }:
+            self._event__rx_buffer.clear()
 
         return bytes(rx_buffer)
 
@@ -1038,11 +1008,10 @@ class TcpSession:
         if how in (0, 2):
             if not self._shut.rd:
                 self._shut.rd = True
-                # Wake any blocked recv() so it observes the
+                # Wake any pending recv() so it observes the
                 # shutdown and returns 0 (the FSM check + empty
                 # buffer makes recv() yield empty bytes).
                 self._event__rx_buffer.set()
-                self._socket._signal_readable()
                 __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_RD): receive side closed")
 
         # SHUT_WR or SHUT_RDWR: trigger FIN emission via the
@@ -1086,10 +1055,9 @@ class TcpSession:
             # RFC 9293 §3.9.1 ABORT in synchronized states: emit
             # RST + ACK at SND.NXT, RCV.NXT.
             self._transmit_packet(flag_rst=True, flag_ack=True, seq=self._snd_seq.nxt)
-        # Mark connection as aborted so any blocked recv() raises.
+        # Mark connection as aborted so any pending recv() raises.
         self._connection_error = ConnError.CANCELED
         self._event__rx_buffer.set()
-        self._socket._signal_readable()
         self._event__connect.release()
         self._change_state(FsmState.CLOSED)
 
@@ -1229,9 +1197,8 @@ class TcpSession:
 
         # Unregister session.
         if self._state is FsmState.CLOSED:
-            # Wake any lingering close() blocked on the
-            # close-complete event (SO_LINGER {l_onoff=1,
-            # l_linger>0}).
+            # Signal close-complete so an application awaiting the
+            # teardown observes it.
             self._event__closed.set()
             stack.sockets.unregister(self._socket)
             # Cancel every per-session logical timer and release
@@ -1437,7 +1404,6 @@ class TcpSession:
             self._connection_error = ConnError.TIMEOUT
             self._event__connect.release()
             self._event__rx_buffer.set()
-            self._socket._signal_readable()
             self._change_state(FsmState.CLOSED)
             return
         stack.egress_packet_handler(self._remote_ip_address).send_tcp_packet(
@@ -1611,17 +1577,10 @@ class TcpSession:
         if self._shut.rd:
             return
 
-        with self._lock__rx_buffer:
-            self._rx_buffer.extend(data)
-            # 'Event.set()' is idempotent so this is safe whether the
-            # event was already set by a sibling FSM handler or not.
-            self._event__rx_buffer.set()
-            # Selector readability: an asyncio / trio / selectors
-            # consumer waiting on 'self._socket.fileno()' must wake
-            # on inbound data. The hook lives under the rx-buffer
-            # lock so concurrent recv() drains observe a consistent
-            # eventfd state.
-            self._socket._signal_readable()
+        self._rx_buffer.extend(data)
+        # 'Event.set()' is idempotent so this is safe whether the
+        # event was already set by a sibling FSM handler or not.
+        self._event__rx_buffer.set()
 
     def _transmit_data(self) -> None:
         """
@@ -1756,150 +1715,149 @@ class TcpSession:
         Run TCP finite state machine.
         """
 
-        with self._lock__fsm:
-            # Phase 4c: snapshot the state before any dispatch so
-            # the tail can detect a transition and arm the
-            # 'tx_pump' FSM-pump (§5.6/§5.7).
-            state_at_entry = self._state
+        # Phase 4c: snapshot the state before any dispatch so
+        # the tail can detect a transition and arm the
+        # 'tx_pump' FSM-pump (§5.6/§5.7).
+        state_at_entry = self._state
 
-            # Phase 2 of the ICMP-into-FSM refactor: 'icmp' is
-            # dispatched through 'FSM_ICMP_HANDLERS' to the per-state
-            # handler carrying RFC 5927 §5.2 hard-vs-soft semantics
-            # (synchronized states downgrade hard errors to soft;
-            # SYN_SENT is the only state allowed to abort).
-            if icmp is not None:
-                tcp_fsm_dispatch_icmp(self, icmp)
-                self._pump_tail(state_at_entry, True)
-                return
+        # Phase 2 of the ICMP-into-FSM refactor: 'icmp' is
+        # dispatched through 'FSM_ICMP_HANDLERS' to the per-state
+        # handler carrying RFC 5927 §5.2 hard-vs-soft semantics
+        # (synchronized states downgrade hard errors to soft;
+        # SYN_SENT is the only state allowed to abort).
+        if icmp is not None:
+            tcp_fsm_dispatch_icmp(self, icmp)
+            self._pump_tail(state_at_entry, True)
+            return
 
-            # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo
-            # tracking. Run BEFORE the FSM dispatch so the
-            # state-handler-emitted ACK on this segment already
-            # carries ECE, and the sender's CWR confirmation
-            # observed on the same segment clears the flag.
-            if self._ecn.enabled and packet_rx_md is not None:
-                if packet_rx_md.tcp__flag_cwr:
-                    self._ecn.send_ece = False
-                if packet_rx_md.ip__ecn == 3:
-                    self._ecn.send_ece = True
-            # RFC 9768 §3.2.2 / §3.2.3 receiver-side counter
-            # accumulation: r.cep packet counter on CE, plus
-            # per-codepoint byte counters from the TCP payload.
-            # All counters wrap modulo 2^24 per the option width.
-            if self._accecn.enabled and packet_rx_md is not None:
-                self._accecn.record_received_codepoint(
-                    ip_ecn=packet_rx_md.ip__ecn,
-                    payload_len=len(packet_rx_md.tcp__data),
-                )
-            # RFC 3168 §6.1.2 sender-side response to inbound
-            # ECE. Halve ssthresh per RFC 5681 §3.1, collapse
-            # cwnd to ssthresh, and arm '_ecn_send_cwr' so the
-            # next outbound data segment confirms the response
-            # via CWR. One-shot per RTT: '_ecn_recovery_point'
-            # = SND.NXT at the moment of response; subsequent
-            # ECEs within the same window of data are ignored
-            # until SND.UNA crosses the recovery point.
-            if (
-                self._ecn.enabled
-                and packet_rx_md is not None
-                and packet_rx_md.tcp__flag_ece
-                and (self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una))
+        # RFC 3168 §6.1.2 / §6.1.3 receiver-side CE echo
+        # tracking. Run BEFORE the FSM dispatch so the
+        # state-handler-emitted ACK on this segment already
+        # carries ECE, and the sender's CWR confirmation
+        # observed on the same segment clears the flag.
+        if self._ecn.enabled and packet_rx_md is not None:
+            if packet_rx_md.tcp__flag_cwr:
+                self._ecn.send_ece = False
+            if packet_rx_md.ip__ecn == 3:
+                self._ecn.send_ece = True
+        # RFC 9768 §3.2.2 / §3.2.3 receiver-side counter
+        # accumulation: r.cep packet counter on CE, plus
+        # per-codepoint byte counters from the TCP payload.
+        # All counters wrap modulo 2^24 per the option width.
+        if self._accecn.enabled and packet_rx_md is not None:
+            self._accecn.record_received_codepoint(
+                ip_ecn=packet_rx_md.ip__ecn,
+                payload_len=len(packet_rx_md.tcp__data),
+            )
+        # RFC 3168 §6.1.2 sender-side response to inbound
+        # ECE. Halve ssthresh per RFC 5681 §3.1, collapse
+        # cwnd to ssthresh, and arm '_ecn_send_cwr' so the
+        # next outbound data segment confirms the response
+        # via CWR. One-shot per RTT: '_ecn_recovery_point'
+        # = SND.NXT at the moment of response; subsequent
+        # ECEs within the same window of data are ignored
+        # until SND.UNA crosses the recovery point.
+        if (
+            self._ecn.enabled
+            and packet_rx_md is not None
+            and packet_rx_md.tcp__flag_ece
+            and (self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una))
+        ):
+            flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
+            # RFC 8511 ABE: ECN signals early-warning
+            # congestion (no actual loss yet); reduce
+            # ssthresh by the less-aggressive 0.85
+            # multiplier instead of the 0.5 used for
+            # genuine packet-loss events.
+            self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
+            self._cc.cwnd = self._cc.ssthresh
+            self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
+            self._ecn.arm_cwr_response(snd_nxt=self._snd_seq.nxt)
+        # RFC 9768 §3.4 sender-side response to AccECN
+        # feedback. When the peer's inbound AccECN option
+        # reports an r.CE byte counter higher than our
+        # tracked value, treat the delta as a single
+        # congestion event: halve ssthresh per RFC 5681
+        # §3.1, collapse cwnd to ssthresh, and update the
+        # tracker so subsequent ACKs reporting the same
+        # cumulative count are idempotent. The same
+        # one-shot recovery-point guard the RFC 3168
+        # path uses prevents multiple AccECN events
+        # within a single RTT from compounding the
+        # reduction.
+        if (
+            self._accecn.enabled
+            and packet_rx_md is not None
+            and packet_rx_md.tcp__accecn0_counters is not None
+            and packet_rx_md.tcp__accecn0_counters[1] is not None
+            and packet_rx_md.tcp__accecn0_counters[1] > self._accecn.s_ce_b
+            and (self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una))
+        ):
+            flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
+            # RFC 8511 ABE: same as the RFC 3168 ECN path
+            # above - on ECN-class events the sender uses
+            # the less-aggressive 0.85 multiplier rather
+            # than the 0.5 reserved for genuine packet
+            # loss events.
+            self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
+            self._cc.cwnd = self._cc.ssthresh
+            self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
+            self._ecn.recovery_point = self._snd_seq.nxt
+        # RFC 9768 §3.2.1 sender-side counter mirrors. Update
+        # s.e0b / s.ce_b / s.e1b from the inbound option's
+        # populated slots (per-slot None per the §3.2.3
+        # abbreviation rule). Done outside the cwnd-response
+        # gate above so the trackers advance even when the
+        # recovery-point guard suppresses the response.
+        if self._accecn.enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
+            self._accecn.update_sender_counters_from_option(packet_rx_md.tcp__accecn0_counters)
+        # RFC 9768 §3.2.2.5 ACE-based fallback. When an
+        # AccECN-mode inbound ACK arrives WITHOUT the
+        # AccECN option (e.g. a middlebox stripped it),
+        # the byte-counter path above cannot detect new
+        # CE marks. As a fallback, decode the ACE field
+        # from the AE+CWR+ECE flags and compare to the
+        # prior 's.cep & 7' value: a positive delta is
+        # the apparent CE-marked-segment count since the
+        # last seen ACE. If positive, treat as a
+        # congestion event (gated by the same one-shot
+        # recovery-point guard the byte-counter path
+        # uses, so concurrent firing of both paths within
+        # one RTT is harmless). The wrap-aware §3.2.2.5.2
+        # safest-likely-case correction is omitted here:
+        # for typical Internet workloads the option is
+        # rarely stripped, so the apparent delta is
+        # almost always the true delta; the simpler
+        # detection captures the common case without
+        # the over-aggressive wrap-correction risk.
+        if (
+            self._accecn.enabled
+            and packet_rx_md is not None
+            and packet_rx_md.tcp__accecn0_counters is None
+            and not packet_rx_md.tcp__flag_syn
+        ):
+            incoming_ace = (
+                (int(packet_rx_md.tcp__flag_ns) << 2)
+                | (int(packet_rx_md.tcp__flag_cwr) << 1)
+                | int(packet_rx_md.tcp__flag_ece)
+            )
+            apparent_delta = self._accecn.apparent_ce_delta(incoming_ace)
+            if apparent_delta > 0 and (
+                self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una)
             ):
                 flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
-                # RFC 8511 ABE: ECN signals early-warning
-                # congestion (no actual loss yet); reduce
-                # ssthresh by the less-aggressive 0.85
-                # multiplier instead of the 0.5 used for
-                # genuine packet-loss events.
-                self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
-                self._cc.cwnd = self._cc.ssthresh
-                self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
-                self._ecn.arm_cwr_response(snd_nxt=self._snd_seq.nxt)
-            # RFC 9768 §3.4 sender-side response to AccECN
-            # feedback. When the peer's inbound AccECN option
-            # reports an r.CE byte counter higher than our
-            # tracked value, treat the delta as a single
-            # congestion event: halve ssthresh per RFC 5681
-            # §3.1, collapse cwnd to ssthresh, and update the
-            # tracker so subsequent ACKs reporting the same
-            # cumulative count are idempotent. The same
-            # one-shot recovery-point guard the RFC 3168
-            # path uses prevents multiple AccECN events
-            # within a single RTT from compounding the
-            # reduction.
-            if (
-                self._accecn.enabled
-                and packet_rx_md is not None
-                and packet_rx_md.tcp__accecn0_counters is not None
-                and packet_rx_md.tcp__accecn0_counters[1] is not None
-                and packet_rx_md.tcp__accecn0_counters[1] > self._accecn.s_ce_b
-                and (self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una))
-            ):
-                flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
-                # RFC 8511 ABE: same as the RFC 3168 ECN path
-                # above - on ECN-class events the sender uses
-                # the less-aggressive 0.85 multiplier rather
-                # than the 0.5 reserved for genuine packet
-                # loss events.
                 self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
                 self._cc.cwnd = self._cc.ssthresh
                 self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
                 self._ecn.recovery_point = self._snd_seq.nxt
-            # RFC 9768 §3.2.1 sender-side counter mirrors. Update
-            # s.e0b / s.ce_b / s.e1b from the inbound option's
-            # populated slots (per-slot None per the §3.2.3
-            # abbreviation rule). Done outside the cwnd-response
-            # gate above so the trackers advance even when the
-            # recovery-point guard suppresses the response.
-            if self._accecn.enabled and packet_rx_md is not None and packet_rx_md.tcp__accecn0_counters is not None:
-                self._accecn.update_sender_counters_from_option(packet_rx_md.tcp__accecn0_counters)
-            # RFC 9768 §3.2.2.5 ACE-based fallback. When an
-            # AccECN-mode inbound ACK arrives WITHOUT the
-            # AccECN option (e.g. a middlebox stripped it),
-            # the byte-counter path above cannot detect new
-            # CE marks. As a fallback, decode the ACE field
-            # from the AE+CWR+ECE flags and compare to the
-            # prior 's.cep & 7' value: a positive delta is
-            # the apparent CE-marked-segment count since the
-            # last seen ACE. If positive, treat as a
-            # congestion event (gated by the same one-shot
-            # recovery-point guard the byte-counter path
-            # uses, so concurrent firing of both paths within
-            # one RTT is harmless). The wrap-aware §3.2.2.5.2
-            # safest-likely-case correction is omitted here:
-            # for typical Internet workloads the option is
-            # rarely stripped, so the apparent delta is
-            # almost always the true delta; the simpler
-            # detection captures the common case without
-            # the over-aggressive wrap-correction risk.
-            if (
-                self._accecn.enabled
-                and packet_rx_md is not None
-                and packet_rx_md.tcp__accecn0_counters is None
-                and not packet_rx_md.tcp__flag_syn
-            ):
-                incoming_ace = (
-                    (int(packet_rx_md.tcp__flag_ns) << 2)
-                    | (int(packet_rx_md.tcp__flag_cwr) << 1)
-                    | int(packet_rx_md.tcp__flag_ece)
-                )
-                apparent_delta = self._accecn.apparent_ce_delta(incoming_ace)
-                if apparent_delta > 0 and (
-                    self._ecn.recovery_point == 0 or le32(self._ecn.recovery_point, self._snd_seq.una)
-                ):
-                    flight_size = sub32(self._snd_seq.max, self._snd_seq.una)
-                    self._cc.ssthresh = compute_ecn_event_ssthresh(flight_size, self._win.snd_mss)
-                    self._cc.cwnd = self._cc.ssthresh
-                    self._cc.snd_ewn = min(self._cc.cwnd, self._win.snd_wnd)
-                    self._ecn.recovery_point = self._snd_seq.nxt
-            # Route to the per-event-kind dispatcher.
-            # 'tcp_fsm()' is invoked with exactly one of the
-            # three kwargs set; pick the matching dispatcher.
-            if packet_rx_md is not None:
-                tcp_fsm_dispatch_packet(self, packet_rx_md)
-            elif syscall is not None:
-                tcp_fsm_dispatch_syscall(self, syscall)
-            elif timer:
-                tcp_fsm_dispatch_timer(self)
+        # Route to the per-event-kind dispatcher.
+        # 'tcp_fsm()' is invoked with exactly one of the
+        # three kwargs set; pick the matching dispatcher.
+        if packet_rx_md is not None:
+            tcp_fsm_dispatch_packet(self, packet_rx_md)
+        elif syscall is not None:
+            tcp_fsm_dispatch_syscall(self, syscall)
+        elif timer:
+            tcp_fsm_dispatch_timer(self)
 
-            self._pump_tail(state_at_entry, packet_rx_md is not None or syscall is not None)
+        self._pump_tail(state_at_entry, packet_rx_md is not None or syscall is not None)

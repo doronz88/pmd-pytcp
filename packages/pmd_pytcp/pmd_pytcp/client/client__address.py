@@ -55,21 +55,21 @@ class ClientAddress(_DeviceScopedProxy):
 
     _api_name = "address"
 
-    def add(self, *, ifaddr: _AnyIfAddr) -> None:
+    async def add(self, *, ifaddr: _AnyIfAddr) -> None:
         """
         Assign an interface address to the bound interface.
         """
 
-        self._call("add", {"ifaddr": ifaddr})
+        await self._call("add", {"ifaddr": ifaddr})
 
-    def remove(self, *, address: Ip4Address | Ip6Address, abort_bound_sessions: bool = True) -> None:
+    async def remove(self, *, address: Ip4Address | Ip6Address, abort_bound_sessions: bool = True) -> None:
         """
         Remove the interface address whose host part is 'address'.
         """
 
-        self._call("remove", {"address": address, "abort_bound_sessions": abort_bound_sessions})
+        await self._call("remove", {"address": address, "abort_bound_sessions": abort_bound_sessions})
 
-    def replace(
+    async def replace(
         self,
         *,
         old_address: Ip4Address | Ip6Address,
@@ -80,7 +80,7 @@ class ClientAddress(_DeviceScopedProxy):
         Replace the interface address whose host part is 'old_address'.
         """
 
-        self._call(
+        await self._call(
             "replace",
             {
                 "old_address": old_address,
@@ -89,9 +89,9 @@ class ClientAddress(_DeviceScopedProxy):
             },
         )
 
-    def list_ifaddrs(self, *, family: AddressFamily | None = None) -> tuple[_AnyIfAddr, ...]:
+    async def list_ifaddrs(self, *, family: AddressFamily | None = None) -> tuple[_AnyIfAddr, ...]:
         """
         List the bound interface's interface addresses.
         """
 
-        return cast(tuple[_AnyIfAddr, ...], self._call("list_ifaddrs", {"family": family}))
+        return cast(tuple[_AnyIfAddr, ...], await self._call("list_ifaddrs", {"family": family}))

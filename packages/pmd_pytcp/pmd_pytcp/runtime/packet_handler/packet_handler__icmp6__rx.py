@@ -1225,14 +1225,11 @@ class Icmp6RxHandler:
         in MLDv1 Host Compatibility Mode. The §9.12 timeout is
         [Robustness Variable] x [Query Interval] + [Query Response
         Interval]; the Query's Maximum Response Delay supplies the
-        last term. Written under '_lock__multicast' (the no-GIL
-        standing invariant), mirroring the IGMP querier-present
-        arming.
+        last term. Mirrors the IGMP querier-present arming.
         """
 
         timeout_ms = MLD__ROBUSTNESS_VARIABLE * MLD__QUERY_INTERVAL__MS + max_response_delay_ms
-        with self._if._lock__multicast:
-            self._if._mld__v1_querier_present_until_ms = stack.timer.now_ms + timeout_ms
+        self._if._mld__v1_querier_present_until_ms = stack.timer.now_ms + timeout_ms
 
     def _mld_query__schedule_response(self, mrd_ms: int, /) -> None:
         """
@@ -1254,29 +1251,26 @@ class Icmp6RxHandler:
             return
 
         # The pending-response timer state is also cleared by the
-        # timer-thread deferred-send, so the read-modify-write below
-        # takes the interface multicast lock — without it a
-        # free-threaded build could interleave this RX scheduling with
-        # the timer-thread clear and orphan a timer handle or lose the
-        # coalescing decision. Mirrors the IGMP query-response locking.
-        with self._if._lock__multicast:
-            response_at = stack.timer.now_ms + delay_ms
-            pending = self._if._mld2_query__pending_response_at_ms
-            if pending is not None and pending <= response_at:
-                # Existing pending Report fires sooner than this new
-                # Query would; absorb the Query per §5.1.10
-                # coalescing rule.
-                return
+        # timer-fired deferred-send — both run on the one stack
+        # loop, so the read-modify-write below cannot interleave
+        # with the clear. Mirrors the IGMP query-response path.
+        response_at = stack.timer.now_ms + delay_ms
+        pending = self._if._mld2_query__pending_response_at_ms
+        if pending is not None and pending <= response_at:
+            # Existing pending Report fires sooner than this new
+            # Query would; absorb the Query per §5.1.10
+            # coalescing rule.
+            return
 
-            if pending is not None:
-                # Newer Query supersedes: cancel the old timer.
-                if self._if._mld2_query__handle is not None:
-                    stack.timer.cancel(self._if._mld2_query__handle)
-                self._if._packet_stats_rx.icmp6__mld2_query__superseded += 1
+        if pending is not None:
+            # Newer Query supersedes: cancel the old timer.
+            if self._if._mld2_query__handle is not None:
+                stack.timer.cancel(self._if._mld2_query__handle)
+            self._if._packet_stats_rx.icmp6__mld2_query__superseded += 1
 
-            self._if._mld2_query__pending_response_at_ms = response_at
-            self._if._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
-            self._if._packet_stats_rx.icmp6__mld2_query__scheduled += 1
+        self._if._mld2_query__pending_response_at_ms = response_at
+        self._if._mld2_query__handle = stack.timer.call_later(delay_ms, self._mld2_query__deferred_send)
+        self._if._packet_stats_rx.icmp6__mld2_query__scheduled += 1
 
     def _mld2_query__pick_response_delay_ms(self, mrd_ms: int) -> int:
         """
@@ -1294,14 +1288,12 @@ class Icmp6RxHandler:
         Report and clears the per-handler pending state.
         """
 
-        # Runs on the Timer thread; the pending state it clears is
-        # armed by the RX Query handler under the interface multicast
-        # lock, so take the same lock here (reentrant — the report
-        # emit nested below does not re-enter it).
-        with self._if._lock__multicast:
-            self._if._mld2_query__pending_response_at_ms = None
-            self._if._mld2_query__handle = None
-            self._mld2_query__send_now()
+        # Runs as a Timer callback on the stack loop; the pending
+        # state it clears is armed by the RX Query handler on the
+        # same loop, so no synchronisation is needed.
+        self._if._mld2_query__pending_response_at_ms = None
+        self._if._mld2_query__handle = None
+        self._mld2_query__send_now()
 
     def _mld2_query__send_now(self) -> None:
         """

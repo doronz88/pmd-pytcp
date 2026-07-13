@@ -34,8 +34,8 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing_extensions import override
-from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from pmd_net_addr import Ip4Address, MacAddress
 from pmd_net_proto import ArpAssembler, ArpOperation, EthernetAssembler
@@ -133,7 +133,7 @@ class TestIp4AcdGatewayReplyPredicate(TestCase):
         )
 
 
-class TestIp4AcdProbeReachable(TestCase):
+class TestIp4AcdProbeReachable(IsolatedAsyncioTestCase):
     """
     The 'Ip4Acd.probe_reachable' DNAv4 socket-driven probe tests.
     """
@@ -147,18 +147,22 @@ class TestIp4AcdProbeReachable(TestCase):
 
         self.enterContext(patch("pmd_pytcp.protocols.ip4.acd.ip4_acd.log"))
         self._sock = MagicMock(name="raw_link_socket")
+        # probe_reachable awaits sock.recvfrom()/sendto() on the pure-asyncio
+        # runtime, so the raw-link-socket mock exposes them as AsyncMocks.
+        self._sock.recvfrom = AsyncMock()
+        self._sock.sendto = AsyncMock()
         socket_factory = self.enterContext(patch("pmd_pytcp.protocols.ip4.acd.ip4_acd.socket"))
         socket_factory.return_value = self._sock
         self._acd = Ip4Acd(mac_address=_OUR_MAC, ifindex=1)
 
-    def _run(self, *, timeout: float = 1.0) -> bool:
+    async def _run(self, *, timeout: float = 1.0) -> bool:
         """
         Run a DNAv4 reachability probe to the cached gateway.
         """
 
-        return self._acd.probe_reachable(target=_GW_IP, target_mac=_GW_MAC, sender=_CANDIDATE, timeout=timeout)
+        return await self._acd.probe_reachable(target=_GW_IP, target_mac=_GW_MAC, sender=_CANDIDATE, timeout=timeout)
 
-    def test__ip4_acd__probe_reachable_true_when_gateway_answers(self) -> None:
+    async def test__ip4_acd__probe_reachable_true_when_gateway_answers(self) -> None:
         """
         Ensure 'probe_reachable' returns True when the cached gateway's
         Reply is read off the socket, and that the probe unicasts to the
@@ -170,7 +174,7 @@ class TestIp4AcdProbeReachable(TestCase):
 
         self._sock.recvfrom.return_value = (_arp_reply(sha=_GW_MAC, spa=_GW_IP), ("", 0))
 
-        self.assertTrue(self._run(), msg="probe_reachable must return True when the gateway answers.")
+        self.assertTrue(await self._run(), msg="probe_reachable must return True when the gateway answers.")
 
         self._sock.sendto.assert_called_once()
         sent_frame = self._sock.sendto.call_args.args[0]
@@ -180,7 +184,7 @@ class TestIp4AcdProbeReachable(TestCase):
         self.assertEqual(arp.spa, _CANDIDATE, msg="The probe ar$spa must be the candidate address.")
         self.assertEqual(arp.tpa, _GW_IP, msg="The probe must target the gateway IPv4.")
 
-    def test__ip4_acd__probe_reachable_false_on_silent_gateway(self) -> None:
+    async def test__ip4_acd__probe_reachable_false_on_silent_gateway(self) -> None:
         """
         Ensure 'probe_reachable' returns False when no Reply arrives
         before the timeout elapses.
@@ -190,9 +194,9 @@ class TestIp4AcdProbeReachable(TestCase):
 
         self._sock.recvfrom.side_effect = BlockingIOError
 
-        self.assertFalse(self._run(timeout=0.0), msg="A silent gateway must yield False.")
+        self.assertFalse(await self._run(timeout=0.0), msg="A silent gateway must yield False.")
 
-    def test__ip4_acd__probe_reachable_ignores_non_gateway_frame(self) -> None:
+    async def test__ip4_acd__probe_reachable_ignores_non_gateway_frame(self) -> None:
         """
         Ensure 'probe_reachable' skips an unrelated ARP frame and still
         returns True on the gateway's subsequent Reply.
@@ -205,4 +209,4 @@ class TestIp4AcdProbeReachable(TestCase):
             (_arp_reply(sha=_GW_MAC, spa=_GW_IP), ("", 0)),
         ]
 
-        self.assertTrue(self._run(), msg="An unrelated ARP must be ignored; the gateway Reply must win.")
+        self.assertTrue(await self._run(), msg="An unrelated ARP must be ignored; the gateway Reply must win.")

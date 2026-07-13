@@ -38,8 +38,8 @@ from __future__ import annotations
 
 from typing import cast
 from typing_extensions import override
-from unittest import TestCase
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 from pmd_net_addr import MacAddress
 from pmd_pytcp.protocols.ip4.acd.ip4_acd import AcdResult, Ip4Acd
@@ -52,7 +52,7 @@ from pmd_pytcp.stack import sysctl as sysctl_module
 from pmd_pytcp.stack.address import AddressApi
 
 
-class TestIp4LinkLocalClaiming(TestCase):
+class TestIp4LinkLocalClaiming(IsolatedAsyncioTestCase):
     """
     The 'Ip4LinkLocal' CLAIMING-state tests.
     """
@@ -68,10 +68,14 @@ class TestIp4LinkLocalClaiming(TestCase):
 
         self.enterContext(patch("pmd_pytcp.protocols.ip4.link_local.link_local__client.log"))
         self.enterContext(patch("pmd_pytcp.runtime.subsystem.log"))
-        # 'time.sleep' is patched globally for the test class so
-        # the rate-limit cool-down does not actually block.
+        # The rate-limit cool-down is an 'await asyncio.sleep(...)'
+        # under the pure-asyncio runtime; patch it with an AsyncMock
+        # so the cool-down does not actually block the test loop.
         self._mock_sleep = self.enterContext(
-            patch("pmd_pytcp.protocols.ip4.link_local.link_local__client.time.sleep"),
+            patch(
+                "pmd_pytcp.protocols.ip4.link_local.link_local__client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         )
 
         self._mac = MacAddress("02:00:00:00:00:07")
@@ -110,7 +114,7 @@ class TestIp4LinkLocalClaiming(TestCase):
             conflict_mac=peer_mac,
         )
 
-    def test__ip4_link_local__claiming_clean_transitions_to_bound(self) -> None:
+    async def test__ip4_link_local__claiming_clean_transitions_to_bound(self) -> None:
         """
         Ensure a successful 'claim_with_acd' returns the FSM to
         BOUND and the candidate stays installed.
@@ -120,7 +124,7 @@ class TestIp4LinkLocalClaiming(TestCase):
 
         self._set_claim_outcome(success=True)
 
-        self._client._do_claiming()
+        await self._client._do_claiming()
 
         self.assertEqual(
             self._client._state,
@@ -135,7 +139,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         cast(MagicMock, self._acd).claim.assert_called_once()
         cast(MagicMock, self._address_api).add.assert_called_once()
 
-    def test__ip4_link_local__claiming_conflict_returns_to_init_and_bumps_counter(self) -> None:
+    async def test__ip4_link_local__claiming_conflict_returns_to_init_and_bumps_counter(self) -> None:
         """
         Ensure a conflicting 'claim_with_acd' returns the FSM
         to INIT, bumps the conflict counter, and clears the
@@ -148,7 +152,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         peer_mac = MacAddress("02:00:00:00:00:99")
         self._set_claim_outcome(success=False, peer_mac=peer_mac)
 
-        self._client._do_claiming()
+        await self._client._do_claiming()
 
         self.assertEqual(
             self._client._state,
@@ -165,7 +169,7 @@ class TestIp4LinkLocalClaiming(TestCase):
             msg="Conflict must clear the candidate so INIT picks a new one.",
         )
 
-    def test__ip4_link_local__claiming_retry_picks_different_candidate(self) -> None:
+    async def test__ip4_link_local__claiming_retry_picks_different_candidate(self) -> None:
         """
         Ensure that running INIT after a conflict picks a
         DIFFERENT candidate — the RNG's attempt counter rolls
@@ -180,7 +184,7 @@ class TestIp4LinkLocalClaiming(TestCase):
 
         peer_mac = MacAddress("02:00:00:00:00:99")
         self._set_claim_outcome(success=False, peer_mac=peer_mac)
-        self._client._do_claiming()
+        await self._client._do_claiming()
         self._client._do_init()  # pick the next candidate
         second_candidate = self._client._candidate
         assert second_candidate is not None
@@ -191,7 +195,7 @@ class TestIp4LinkLocalClaiming(TestCase):
             msg="Retry after conflict must pick a different candidate.",
         )
 
-    def test__ip4_link_local__claiming_max_conflicts_rate_limits(self) -> None:
+    async def test__ip4_link_local__claiming_max_conflicts_rate_limits(self) -> None:
         """
         Ensure that after MAX_CONFLICTS consecutive conflicts
         the FSM sleeps RATE_LIMIT_INTERVAL seconds and resets
@@ -211,7 +215,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         #   - _do_init picks the next candidate so the next
         #     _do_claiming has something to claim.
         for _ in range(ip4ll_const.IP4_LINK_LOCAL__MAX_CONFLICTS):
-            self._client._do_claiming()
+            await self._client._do_claiming()
             self._client._do_init()
 
         self.assertEqual(
@@ -229,7 +233,7 @@ class TestIp4LinkLocalClaiming(TestCase):
             f"({ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL}). Got sleeps: {sleep_arg_values}",
         )
 
-    def test__ip4_link_local__claiming_sysctl_overrides_honoured(self) -> None:
+    async def test__ip4_link_local__claiming_sysctl_overrides_honoured(self) -> None:
         """
         Ensure the FSM reads 'ip4_link_local.max_conflicts' /
         'rate_limit_interval_s' via qualified-module access so
@@ -248,7 +252,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         # Two conflicts triggers the rate-limit under the
         # override.
         for _ in range(2):
-            self._client._do_claiming()
+            await self._client._do_claiming()
             self._client._do_init()
 
         sleep_arg_values = [c.args[0] for c in self._mock_sleep.call_args_list]
@@ -258,7 +262,7 @@ class TestIp4LinkLocalClaiming(TestCase):
             msg=f"Sleep must use the live sysctl-overridden interval (7). " f"Got sleeps: {sleep_arg_values}",
         )
 
-    def test__ip4_link_local__subsystem_loop_drives_claiming(self) -> None:
+    async def test__ip4_link_local__subsystem_loop_drives_claiming(self) -> None:
         """
         Ensure '_subsystem_loop' dispatches the CLAIMING state
         to '_do_claiming' — the FSM-driver contract.
@@ -270,7 +274,7 @@ class TestIp4LinkLocalClaiming(TestCase):
         # Confirm we're in CLAIMING from the INIT-tick in setUp.
         self.assertEqual(self._client._state, Ip4LinkLocalState.CLAIMING)
 
-        self._client._subsystem_loop()
+        await self._client._subsystem_loop()
 
         self.assertEqual(
             self._client._state,

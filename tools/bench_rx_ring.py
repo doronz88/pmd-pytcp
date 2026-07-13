@@ -27,8 +27,11 @@
 RX-ring synthetic micro-benchmark — drives a SOCK_DGRAM
 'socketpair' (preserves message boundaries, mirrors TAP packet
 semantics) as the ring's source fd, measures per-frame overhead
-and sustained throughput. Use to A/B the per-iteration 'select()
-+ os.read()' cost vs an experimental inner-drain branch.
+and sustained throughput under the pure-asyncio ingress
+('docs/refactor/pure_asyncio.md'): the ring is armed with
+'loop.add_reader' and delivers each parsed frame synchronously to
+the installed deliver callback (there is no rx queue and no
+'dequeue()' anymore).
 
 Run:
     PYTHONPATH=. python3.14 -O tools/bench_rx_ring.py
@@ -41,10 +44,10 @@ Or under cProfile:
 
 A SOCK_DGRAM pair is the closest userspace-only stand-in for a
 real TAP fd: each 'send' produces one boundaried datagram; each
-'os.read' returns exactly one frame (matching how TAP delivers
+read returns exactly one frame (matching how TAP delivers
 packets, not bytes). A plain os.pipe coalesces multiple writes
 into one read, which under-represents the burst path that the
-inner-drain optimisation targets.
+readiness-callback burst-drain targets.
 
 tools/bench_rx_ring.py
 
@@ -52,34 +55,50 @@ ver 3.0.7
 """
 
 import argparse
+import asyncio
 import socket
 import sys
-import threading
 import time
 from unittest.mock import patch
 
-from pytcp.runtime.rx_ring import RxRing
+from pmd_net_proto.lib.packet_rx import PacketRx
+from pmd_pytcp.runtime.rx_ring import RxRing
 
 
-def _bench(n_frames: int, frame_size: int, prefill: int) -> None:
+async def _bench(n_frames: int, frame_size: int, prefill: int) -> None:
     """
     Run a single benchmark pass and print per-frame timings. The
     'prefill' parameter sends 'prefill' frames into the SOCK_DGRAM
     pair before the ring starts, simulating a burst that the
-    inner-drain optimisation can absorb in a single selector wake.
+    readiness-callback burst-drain can absorb in a single wake.
     """
 
     frame = b"\x00" * frame_size
     rx_sock, tx_sock = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
     # AF_UNIX SOCK_DGRAM caps the receive queue at /proc/sys/net/
     # unix/max_dgram_qlen (typically 512). The bench works around
-    # that by feeding from a producer thread that runs concurrently
+    # that by feeding from a producer task that runs concurrently
     # with the consumer — pre-fill is bounded by qlen.
     qlen_cap = 256
 
-    ring = RxRing(fd=rx_sock.fileno(), mtu=1500, queue_max_size=n_frames + 1000)
+    # 'queue_max_size' now bounds the per-readiness-callback drain
+    # burst (there is no rx queue to size).
+    ring = RxRing(fd=rx_sock.fileno(), mtu=1500, queue_max_size=qlen_cap)
 
-    # Bound prefill to the qlen cap so the producer doesn't deadlock
+    # Deliver callback — the packet handler's slot; here it just
+    # counts frames and flags completion.
+    drained = 0
+    done = asyncio.Event()
+
+    def _deliver(_packet_rx: PacketRx) -> None:
+        nonlocal drained
+        drained += 1
+        if drained >= n_frames:
+            done.set()
+
+    ring.set_deliver_callback(_deliver)
+
+    # Bound prefill to the qlen cap so the producer doesn't stall
     # before the ring starts.
     actual_prefill = min(prefill, qlen_cap, n_frames)
     for _ in range(actual_prefill):
@@ -87,27 +106,28 @@ def _bench(n_frames: int, frame_size: int, prefill: int) -> None:
 
     remaining = n_frames - actual_prefill
 
-    # Background writer streams the rest at producer rate so the
-    # ring sees sustained pressure throughout the test.
-    def writer() -> None:
+    # Producer task streams the rest at producer rate so the ring
+    # sees sustained pressure throughout the test ('sock_sendall'
+    # yields on a full kernel queue instead of blocking the loop).
+    loop = asyncio.get_running_loop()
+    tx_sock.setblocking(False)
+
+    async def _producer() -> None:
         try:
             for _ in range(remaining):
-                tx_sock.send(frame)
+                await loop.sock_sendall(tx_sock, frame)
         finally:
             tx_sock.close()
 
-    ring.start()
-    t = threading.Thread(target=writer)
-    t.start()
-
     start = time.perf_counter()
-    drained = 0
-    while drained < n_frames:
-        if ring.dequeue() is not None:
-            drained += 1
+    ring.start()
+    producer = loop.create_task(_producer())
+
+    await done.wait()
     elapsed = time.perf_counter() - start
+
     ring.stop()
-    t.join()
+    await producer
     try:
         rx_sock.close()
     except OSError:
@@ -121,7 +141,7 @@ def _bench(n_frames: int, frame_size: int, prefill: int) -> None:
     print(f"  Elapsed:           {elapsed:.3f}s")
     print(f"  Throughput:        {pps:,.0f} pps")
     print(f"  Per-frame overhead: {per_frame_us:.2f} µs")
-    print(f"  Queue-full drops:  {ring.queue_full_drop_count}")
+    print(f"  No-deliver drops:  {ring.queue_full_drop_count}")
 
 
 def main() -> int:
@@ -162,13 +182,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Suppress the rx_ring + subsystem log calls. Under '-O' they
-    # are already short-circuited at bytecode time; under default
-    # (debug) mode the patches matter so the benchmark isn't
-    # dominated by f-string formatting.
+    # Suppress the rx_ring log calls. Under '-O' they are already
+    # short-circuited at bytecode time; under default (debug) mode
+    # the patch matters so the benchmark isn't dominated by
+    # f-string formatting.
     log_patches = [
-        patch("pytcp.runtime.rx_ring.log"),
-        patch("pytcp.runtime.subsystem.log"),
+        patch("pmd_pytcp.runtime.rx_ring.log"),
     ]
     for p in log_patches:
         p.start()
@@ -180,7 +199,7 @@ def main() -> int:
     try:
         for run in range(1, args.runs + 1):
             print(f"--- Run {run}/{args.runs} ---")
-            _bench(n_frames=args.frames, frame_size=args.size, prefill=args.prefill)
+            asyncio.run(_bench(n_frames=args.frames, frame_size=args.size, prefill=args.prefill))
             print()
     finally:
         for p in log_patches:

@@ -196,7 +196,7 @@ class TestIcmp6Nd__EnhancedDad__DadProbeIncludesNonce(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__enhanced_dad__probe_carries_tracked_nonce(self) -> None:
+    async def test__icmp6__nd__enhanced_dad__probe_carries_tracked_nonce(self) -> None:
         """
         Ensure '_perform_ip6_nd_dad' (with default
         enhanced_dad=1) emits NS probes whose Nonce option
@@ -207,7 +207,7 @@ class TestIcmp6Nd__EnhancedDad__DadProbeIncludesNonce(NdTestCase):
 
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 1):
             with sysctl_module.override("icmp6.default.dad_transmits", 1):
-                self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=CANDIDATE)
+                await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=CANDIDATE)
 
         # Find the NS(DAD) frame the stack emitted.
         dad_message: Icmp6NdMessageNeighborSolicitation | None = None
@@ -250,7 +250,7 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__enhanced_dad__sysctl_zero_emits_no_nonce(self) -> None:
+    async def test__icmp6__nd__enhanced_dad__sysctl_zero_emits_no_nonce(self) -> None:
         """
         Ensure 'icmp6.enhanced_dad=0' makes
         '_perform_ip6_nd_dad' emit DAD probes without a Nonce
@@ -262,7 +262,7 @@ class TestIcmp6Nd__EnhancedDad__SysctlDisable(NdTestCase):
         with sysctl_module.override("icmp6.default.enhanced_dad", 0):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 1):
                 with sysctl_module.override("icmp6.default.dad_transmits", 1):
-                    self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=CANDIDATE)
+                    await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=CANDIDATE)
 
         # Find the NS(DAD) frame the stack emitted.
         dad_message: Icmp6NdMessageNeighborSolicitation | None = None

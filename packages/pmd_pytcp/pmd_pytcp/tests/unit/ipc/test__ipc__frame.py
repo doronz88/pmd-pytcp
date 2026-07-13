@@ -25,6 +25,11 @@
 """
 Tests for the IPC length-prefixed stream framing codec.
 
+The stream flavours ('send_frame' on a 'StreamWriter' / 'recv_frame' on a
+'StreamReader' — the daemon side of the pure-asyncio transport) are
+exercised over a real AF_UNIX socketpair whose two ends are wrapped in
+asyncio stream connections on the test's loop.
+
 pmd_pytcp/tests/unit/ipc/test__ipc__frame.py
 
 ver 3.0.7
@@ -32,11 +37,11 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import struct
-import threading
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 
 from pmd_pytcp.ipc.ipc__errors import IpcFrameError
 from pmd_pytcp.ipc.ipc__frame import (
@@ -46,6 +51,8 @@ from pmd_pytcp.ipc.ipc__frame import (
     recv_frame,
     send_frame,
 )
+
+_DEADLINE__SEC: float = 5.0
 
 
 class TestIpcFramePack(TestCase):
@@ -128,24 +135,40 @@ class TestIpcFramePack(TestCase):
         )
 
 
-class TestIpcFrameStream(TestCase):
+class TestIpcFrameStream(IsolatedAsyncioTestCase):
     """
     The IPC frame send/recv round-trip tests over a real stream
-    socketpair.
+    socketpair wrapped in asyncio stream connections.
     """
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Create a connected AF_UNIX stream socketpair as the transport
-        under test.
+        Create a connected AF_UNIX stream socketpair and wrap both ends
+        in asyncio stream connections on the running loop — writes go
+        out on end A's 'StreamWriter', reads come back on end B's
+        'StreamReader'.
         """
 
-        self._sock_a, self._sock_b = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.addCleanup(self._sock_a.close)
-        self.addCleanup(self._sock_b.close)
+        sock_a, sock_b = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._reader_a, self._writer_a = await asyncio.open_unix_connection(sock=sock_a)
+        self._reader_b, self._writer_b = await asyncio.open_unix_connection(sock=sock_b)
+        self.addAsyncCleanup(self._close_streams)
 
-    def test__ipc__frame__roundtrip(self) -> None:
+    async def _close_streams(self) -> None:
+        """
+        Close both stream transports (closing a transport closes the
+        underlying socketpair end it owns).
+        """
+
+        for writer in (self._writer_a, self._writer_b):
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except (OSError, ConnectionError):
+                pass
+
+    async def test__ipc__frame__roundtrip(self) -> None:
         """
         Ensure a payload written with 'send_frame' is recovered intact
         by 'recv_frame' on the peer end of the stream.
@@ -153,15 +176,15 @@ class TestIpcFrameStream(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        send_frame(self._sock_a, b"hello world")
+        await send_frame(self._writer_a, b"hello world")
 
         self.assertEqual(
-            recv_frame(self._sock_b),
+            await recv_frame(self._reader_b),
             b"hello world",
             msg="recv_frame must recover the exact payload written by send_frame.",
         )
 
-    def test__ipc__frame__roundtrip__empty_payload(self) -> None:
+    async def test__ipc__frame__roundtrip__empty_payload(self) -> None:
         """
         Ensure an empty payload round-trips as an empty bytes value,
         distinct from the clean-EOF 'None' sentinel.
@@ -169,15 +192,15 @@ class TestIpcFrameStream(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        send_frame(self._sock_a, b"")
+        await send_frame(self._writer_a, b"")
 
         self.assertEqual(
-            recv_frame(self._sock_b),
+            await recv_frame(self._reader_b),
             b"",
             msg="An empty payload must round-trip as b'' (not None).",
         )
 
-    def test__ipc__frame__preserves_message_boundaries(self) -> None:
+    async def test__ipc__frame__preserves_message_boundaries(self) -> None:
         """
         Ensure multiple frames written back-to-back on one stream are
         read back as separate messages, so the length prefix restores
@@ -186,17 +209,17 @@ class TestIpcFrameStream(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        send_frame(self._sock_a, b"first")
-        send_frame(self._sock_a, b"second")
-        send_frame(self._sock_a, b"third")
+        await send_frame(self._writer_a, b"first")
+        await send_frame(self._writer_a, b"second")
+        await send_frame(self._writer_a, b"third")
 
         self.assertEqual(
-            [recv_frame(self._sock_b) for _ in range(3)],
+            [await recv_frame(self._reader_b) for _ in range(3)],
             [b"first", b"second", b"third"],
             msg="recv_frame must restore per-message boundaries from the byte stream.",
         )
 
-    def test__ipc__frame__large_payload_reassembled(self) -> None:
+    async def test__ipc__frame__large_payload_reassembled(self) -> None:
         """
         Ensure a payload larger than a single kernel stream segment is
         reassembled across partial reads, so the recv loop does not
@@ -208,21 +231,20 @@ class TestIpcFrameStream(TestCase):
         payload = bytes(range(256)) * 4096  # 1 MiB, will span many reads
 
         # A 1 MiB payload exceeds the socketpair's kernel send buffer,
-        # so 'send_frame' (a blocking sendall) cannot complete until the
-        # peer drains it. Run the send on a worker thread so 'recv_frame'
-        # in the test thread drains concurrently — without this the two
-        # blocking calls would deadlock.
-        sender = threading.Thread(target=send_frame, args=(self._sock_a, payload))
-        sender.start()
-        self.addCleanup(sender.join)
+        # so 'send_frame' cannot finish draining until the peer reads.
+        # Run the send as a concurrent task so 'recv_frame' drains it —
+        # awaiting the send to completion first would deadlock the loop.
+        send_task = asyncio.ensure_future(send_frame(self._writer_a, payload))
 
         self.assertEqual(
-            recv_frame(self._sock_b),
+            await asyncio.wait_for(recv_frame(self._reader_b), _DEADLINE__SEC),
             payload,
             msg="recv_frame must reassemble a multi-segment payload exactly.",
         )
 
-    def test__ipc__frame__clean_eof_returns_none(self) -> None:
+        await asyncio.wait_for(send_task, _DEADLINE__SEC)
+
+    async def test__ipc__frame__clean_eof_returns_none(self) -> None:
         """
         Ensure 'recv_frame' returns None when the peer closes the
         stream at a frame boundary, signalling end-of-stream rather
@@ -231,14 +253,15 @@ class TestIpcFrameStream(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._sock_a.close()
+        self._writer_a.close()
+        await self._writer_a.wait_closed()
 
         self.assertIsNone(
-            recv_frame(self._sock_b),
+            await recv_frame(self._reader_b),
             msg="recv_frame must return None on a clean EOF at a frame boundary.",
         )
 
-    def test__ipc__frame__truncated_prefix_raises(self) -> None:
+    async def test__ipc__frame__truncated_prefix_raises(self) -> None:
         """
         Ensure 'recv_frame' raises 'IpcFrameError' when the peer closes
         after sending only part of the length prefix, so a half-written
@@ -247,11 +270,13 @@ class TestIpcFrameStream(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._sock_a.sendall(b"\x00\x00")  # 2 of 4 prefix bytes, then close
-        self._sock_a.close()
+        self._writer_a.write(b"\x00\x00")  # 2 of 4 prefix bytes, then close
+        await self._writer_a.drain()
+        self._writer_a.close()
+        await self._writer_a.wait_closed()
 
         with self.assertRaises(IpcFrameError) as error:
-            recv_frame(self._sock_b)
+            await recv_frame(self._reader_b)
 
         self.assertEqual(
             str(error.exception),
@@ -259,7 +284,7 @@ class TestIpcFrameStream(TestCase):
             msg="A truncated length prefix must raise IpcFrameError.",
         )
 
-    def test__ipc__frame__truncated_payload_raises(self) -> None:
+    async def test__ipc__frame__truncated_payload_raises(self) -> None:
         """
         Ensure 'recv_frame' raises 'IpcFrameError' when the peer closes
         after a complete length prefix but before the full payload, so
@@ -269,11 +294,13 @@ class TestIpcFrameStream(TestCase):
         """
 
         # Length prefix announces 10 bytes; only 3 follow before close.
-        self._sock_a.sendall(struct.pack("!I", 10) + b"abc")
-        self._sock_a.close()
+        self._writer_a.write(struct.pack("!I", 10) + b"abc")
+        await self._writer_a.drain()
+        self._writer_a.close()
+        await self._writer_a.wait_closed()
 
         with self.assertRaises(IpcFrameError) as error:
-            recv_frame(self._sock_b)
+            await recv_frame(self._reader_b)
 
         self.assertEqual(
             str(error.exception),
@@ -281,7 +308,7 @@ class TestIpcFrameStream(TestCase):
             msg="A truncated payload must raise IpcFrameError.",
         )
 
-    def test__ipc__frame__oversize_prefix_raises(self) -> None:
+    async def test__ipc__frame__oversize_prefix_raises(self) -> None:
         """
         Ensure 'recv_frame' rejects a length prefix that announces a
         payload larger than the maximum, so a hostile or corrupt peer
@@ -290,10 +317,11 @@ class TestIpcFrameStream(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._sock_a.sendall(struct.pack("!I", IPC__FRAME__MAX_PAYLOAD_LEN + 1))
+        self._writer_a.write(struct.pack("!I", IPC__FRAME__MAX_PAYLOAD_LEN + 1))
+        await self._writer_a.drain()
 
         with self.assertRaises(IpcFrameError) as error:
-            recv_frame(self._sock_b)
+            await recv_frame(self._reader_b)
 
         self.assertEqual(
             str(error.exception),

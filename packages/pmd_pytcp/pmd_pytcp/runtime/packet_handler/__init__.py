@@ -32,14 +32,14 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import random
 import secrets
-import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import field
-from pmd_pytcp._compat import dataclass
+from pmd_pytcp._compat import acquire_semaphore, dataclass, wait_event
 from typing import TYPE_CHECKING
 from typing_extensions import override
 
@@ -104,7 +104,7 @@ from pmd_pytcp.protocols.ip4.acd.ip4_acd import Ip4Acd
 from pmd_pytcp.protocols.ip.ip_frag_table import IpFragTable
 from pmd_pytcp.runtime.fib import RouteProtocol
 from pmd_pytcp.runtime.rx_ring import RxRing
-from pmd_pytcp.runtime.subsystem import Subsystem
+from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC
 from pmd_pytcp.runtime.timer import TimerHandle
 from pmd_pytcp.runtime.tx_ring import TxRing
 from pmd_pytcp.socket import AddressFamily
@@ -136,8 +136,6 @@ from .packet_handler__udp__rx import UdpRxHandler
 from .packet_handler__udp__tx import UdpTxHandler
 
 if TYPE_CHECKING:
-    from threading import Semaphore
-
     from pmd_pytcp.protocols.arp.arp__cache import ArpCache
     from pmd_pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
     from pmd_pytcp.protocols.dhcp6.dhcp6__client import Dhcp6Client
@@ -186,9 +184,20 @@ class _Ip4GroupMembership:
         return contributors
 
 
-class PacketHandler(Subsystem, ABC):
+class PacketHandler(ABC):
     """
     Base class for packet handlers.
+
+    Pure-asyncio ingress ('docs/refactor/pure_asyncio.md'): the
+    handler is no longer a 'Subsystem' with an rx-dequeue loop.
+    'start()' installs the per-layer frame entry point directly on
+    the injected RX ring ('set_deliver_callback'), so every inbound
+    frame runs the rx→parse→FSM→tx pipeline synchronously on the
+    loop callback. The handler still spawns loop tasks (address
+    acquisition, DAD claims, periodic housekeeping) — all tracked
+    on 'self._tasks' and cancelled by 'stop()'; 'wait_stopped()'
+    awaits their actual exit (the same start/stop/wait_stopped
+    surface 'stack/lifecycle.py' drives for Subsystems).
     """
 
     _subsystem_name = "Packet Handler"
@@ -264,7 +273,11 @@ class PacketHandler(Subsystem, ABC):
             ethernet__payload: EthernetPayload = RawAssembler(),
         ) -> TxStatus: ...
 
-    _event__stop_subsystem: threading.Event
+    # Loop tasks spawned by this handler (address acquisition, DAD
+    # claims, periodic housekeeping, the boot address-info log).
+    # Tracked so 'stop()' can cancel every one and 'wait_stopped()'
+    # can await their exit; completed tasks discard themselves.
+    _tasks: "set[asyncio.Task[None]]"
 
     _stats_rx: PacketStatsShards[PacketStatsRx]
     _stats_tx: PacketStatsShards[PacketStatsTx]
@@ -322,20 +335,17 @@ class PacketHandler(Subsystem, ABC):
     # this map's keys. In Phase 1 every entry is EXCLUDE{} (any-source).
     _ip4_multicast_filters: dict[Ip4Address, Ip4MulticastFilter]
     _ip4_multicast_refs: dict[Ip4Address, _Ip4GroupMembership]
-    # IPv4 Identification counter + the lock guarding its masked
-    # read-modify-write. Per-interface (the counter is interface
-    # state); the tiny lock makes '_next_ip4_id' atomic under the
-    # current app-thread TX model and stays cheap (uncontended)
-    # once Phase 4 makes TX single-writer. IPv6 has no counterpart:
-    # its Fragment Identification is a fresh random per datagram
-    # (a loop-local in '_phtx_ip6_frag'), not stored on the handler.
+    # IPv4 Identification counter. Per-interface (the counter is
+    # interface state); the masked read-modify-write in
+    # '_next_ip4_id' is single-writer by construction — every
+    # mutation runs on the one stack event loop. IPv6 has no
+    # counterpart: its Fragment Identification is a fresh random
+    # per datagram (a loop-local in '_phtx_ip6_frag'), not stored
+    # on the handler.
     _ip4_id: int
-    _lock__ip4_id: threading.Lock
-    _lock__multicast: threading.RLock
-    _lock__addr_config: threading.RLock
     _ip6_frag_table: IpFragTable
     _ip4_frag_table: IpFragTable
-    _ip_configuration_in_progress: Semaphore
+    _ip_configuration_in_progress: asyncio.Semaphore
     _mac_unicast: MacAddress
     _icmp6_default_routers: list[Icmp6DefaultRouter]
     _icmp6_slaac_addresses: list[Icmp6SlaacAddress]
@@ -353,7 +363,7 @@ class PacketHandler(Subsystem, ABC):
     # already uses.
     _icmp6_nd_dad__registry: DadSlotRegistry[Ip6Address]
     _icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]]
-    _icmp6_ra__event: Semaphore
+    _icmp6_ra__event: asyncio.Semaphore
     _mld2_query__pending_response_at_ms: int | None
     _mld2_query__handle: TimerHandle | None
     # Class-level default: PacketHandlerL2.__init__ sets a per-instance value, but
@@ -362,7 +372,6 @@ class PacketHandler(Subsystem, ABC):
     # the address-setup thread. None = no MLDv1 querier seen (MLDv2 mode).
     _mld__v1_querier_present_until_ms: int | None = None
 
-    @override
     def __init__(
         self,
         *,
@@ -382,7 +391,11 @@ class PacketHandler(Subsystem, ABC):
         Class constructor.
         """
 
-        super().__init__()
+        __debug__ and log("stack", f"Initializing {self._subsystem_name}")
+
+        # Loop tasks this handler spawned — cancelled by 'stop()',
+        # awaited by 'wait_stopped()'.
+        self._tasks = set()
 
         # Per-interface RX / TX rings (fd-bound). Injected by
         # 'stack.init()'; standalone unit-test handlers leave them
@@ -460,42 +473,20 @@ class PacketHandler(Subsystem, ABC):
         # ref-managed.
         self._ip4_multicast_refs = {}
 
-        # Guards every read / write of the two IPv4 multicast reception-
-        # state structures above against concurrent application-thread
-        # membership changes and the RX/timer read paths. Reentrant
-        # because the mutators nest ('_mc_ref_acquire' -> '_mc_recompute'
-        # -> '_assign_ip4_multicast' -> '_ip4_multicast_filter_for').
-        # GIL atomicity is not relied upon — PyTCP targets free-threaded
-        # CPython, where a bare dict RMW racing another thread corrupts.
-        self._lock__multicast = threading.RLock()
-
-        # Serializes writers to the per-interface address-configuration
-        # cluster — '_ip4_ifaddr' / '_ip6_ifaddr', '_ip6_multicast',
-        # the RA-derived SLAAC / temporary / default-router lists and
-        # the DAD-state map. Writers publish a fresh list/dict object
-        # under this lock (copy-on-write); the per-packet RX / TX
-        # readers stay lock-free, iterating the immutable snapshot they
-        # load. Reentrant because the RA / sweep / DAD-claim paths nest
-        # ('_icmp6_sweep_* -> _remove_ip6_multicast', '_assign_ip6_host
-        # -> _assign_ip6_multicast'). NEVER held across a blocking DAD
-        # wait — the DAD loop locks only at its individual mutation
-        # points. Ordering: this lock is taken before 'tx_ring' on the
-        # emit paths and never under '_lock__multicast'.
-        self._lock__addr_config = threading.RLock()
-
-        # IPv4 Identification counter (last value) + its lock. The
-        # IPv6 Fragment Identification is generated fresh per
-        # datagram as a loop-local in '_phtx_ip6_frag', so there is
-        # no IPv6 counter to store here.
+        # IPv4 Identification counter (last value). The IPv6
+        # Fragment Identification is generated fresh per datagram
+        # as a loop-local in '_phtx_ip6_frag', so there is no IPv6
+        # counter to store here. Single loop = single writer, so
+        # the masked read-modify-write in '_next_ip4_id' needs no
+        # lock (docs/refactor/pure_asyncio.md).
         self._ip4_id: int = 0
-        self._lock__ip4_id = threading.Lock()
 
         # Used to defragment IPv4 and IPv6 packets.
         self._ip4_frag_table = IpFragTable(timeout=stack.IP4__FRAG_FLOW_TIMEOUT__S)
         self._ip6_frag_table = IpFragTable(timeout=stack.IP6__FRAG_FLOW_TIMEOUT__S)
 
         # Used for IPv4 and IPv6 address configuration.
-        self._ip_configuration_in_progress: Semaphore = threading.Semaphore(0)
+        self._ip_configuration_in_progress: asyncio.Semaphore = asyncio.Semaphore(0)
 
         # RFC 4429 §3.1 Optimistic DAD per-address state map.
         # Populated by the DAD-claim path; consulted by the NA
@@ -598,38 +589,31 @@ class PacketHandler(Subsystem, ABC):
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         """
-        Marshal a '_phtx_*' pipeline call onto this interface's TX
-        worker thread (ring-handoff single-writer) and return its
-        'TxStatus'. Every stack-originated or stack-generated TX
-        operation — socket sends, RX-thread replies, timer-thread
-        retransmits, neighbor solicitations / advertisements —
-        funnels through here so the per-interface TX state
-        ('_ip4_id', stat counters, the ifaddr lists read during
-        assembly) is written by one thread only. 'TxRing.dispatch'
-        runs the call inline when there is no live worker (unit-test
-        / boot path) or when the caller is already the worker (a
-        re-entrant solicitation emitted mid-pipeline), so wrapping
-        every entry point is safe even when they nest.
+        Run a '_phtx_*' pipeline call and return its 'TxStatus'.
+        Every stack-originated or stack-generated TX operation —
+        socket sends, RX replies, timer retransmits, neighbor
+        solicitations / advertisements — funnels through here.
+        Single event loop = single writer by construction
+        ('docs/refactor/pure_asyncio.md'), so the former TxRing
+        worker marshaling is gone and the call simply runs inline;
+        the funnel is kept so callers don't churn.
         """
 
-        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
-        return self._tx_ring.dispatch(run)
+        return run()
 
     def _marshal_tx_async(self, run: Callable[[], TxStatus], /) -> None:
         """
-        Fire-and-forget variant of '_marshal_tx' (Phase 4b async
-        send): hand a '_phtx_*' call to this interface's TX worker
-        and return immediately without waiting for the 'TxStatus'.
-        The UDP / raw socket send paths use this so the application
-        thread is not blocked on the worker; the datagram is
-        "accepted into the stack" the moment it is queued, matching
-        Linux's queued-on-send UDP semantics. Delivery failures
-        (no route, ARP timeout, ICMP error) surface asynchronously,
+        Fire-and-forget variant of '_marshal_tx' — the UDP / raw
+        socket send paths use this; the datagram is "accepted into
+        the stack" the moment the pipeline call returns, matching
+        Linux's queued-on-send UDP semantics. Single event loop =
+        single writer by construction, so the call runs inline and
+        only the 'TxStatus' is discarded. Delivery failures (no
+        route, ARP timeout, ICMP error) surface asynchronously,
         not through the send() return value.
         """
 
-        assert self._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
-        self._tx_ring.dispatch_async(run)
+        run()
 
     @property
     def _ip6_unicast(self) -> list[Ip6Address]:
@@ -657,8 +641,7 @@ class PacketHandler(Subsystem, ABC):
         view the RX accept / TX source / IGMP report paths consume.
         """
 
-        with self._lock__multicast:
-            return list(self._ip4_multicast_filters)
+        return list(self._ip4_multicast_filters)
 
     @property
     def _ip4_broadcast(self) -> list[Ip4Address]:
@@ -671,45 +654,139 @@ class PacketHandler(Subsystem, ABC):
 
         return ip4_broadcast
 
-    @override
+    def _spawn_task(self, coro: "Coroutine[object, object, None]", /, *, name: str) -> "asyncio.Task[None]":
+        """
+        Spawn a loop task owned by this handler. The task is
+        tracked on 'self._tasks' so 'stop()' can cancel it and
+        'wait_stopped()' can await its exit; completed tasks
+        discard themselves from the set. Requires a running loop
+        — 'start()' is only ever called from loop context
+        (lifecycle 'start()' is a coroutine).
+        """
+
+        task = asyncio.get_running_loop().create_task(coro, name=name)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return task
+
+    def start(self) -> None:
+        """
+        Start the packet handler: install the per-layer frame
+        entry point as the RX ring's deliver callback (every
+        inbound frame runs the rx pipeline synchronously on the
+        loop callback) and spawn the handler-owned loop tasks
+        (address acquisition, periodic housekeeping, the boot
+        address-info log). Requires a running event loop.
+        """
+
+        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+
+        assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
+        self._rx_ring.set_deliver_callback(self._rx_frame_entry)
+
+        self._spawn_task(
+            self._task__periodic_housekeeping(),
+            name=f"{self._subsystem_name} housekeeping",
+        )
+        self._start()
+
+    def stop(self) -> None:
+        """
+        Stop the packet handler: uninstall the RX ring deliver
+        callback and cancel every task the handler spawned.
+        Sync-safe from loop context — use 'wait_stopped()' to
+        await the workers' actual exit.
+        """
+
+        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+
+        if self._rx_ring is not None:
+            self._rx_ring.set_deliver_callback(None)
+        for task in list(self._tasks):
+            if not task.done():
+                task.cancel()
+
+    async def wait_stopped(self) -> None:
+        """
+        Await the exit of every handler-owned task after 'stop()'.
+        """
+
+        for task in list(self._tasks):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
     def _start(self) -> None:
         """
-        Perform additional actions after starting the subsystem thread.
+        Perform additional actions after starting the packet handler.
         """
 
         self._acquire_ip4_addresses()
         self._acquire_ip6_addresses()
 
-        self._log_stack_address_info()
-
-    def _thread__packet_handler__acquire_ip6_addresses(self) -> None:
-        """
-        Thread to acquire the IPv6 addresses.
-        """
-
-        __debug__ and log("stack", "Started the IPv6 address acquire thread")
-
-        self._create_stack_ip6_addressing()
-
-        self._ip_configuration_in_progress.release()
-
-        __debug__ and log("stack", "Finished the IPv6 address acquire thread")
-
-    def _thread__packet_handler__acquire_ip4_addresses(self) -> None:
-        """
-        Thread to acquire the IPv4 addresses.
-        """
-
-        __debug__ and log("stack", "Started the IPv4 address acquire thread")
-
-        self._create_stack_ip4_addressing()
-
-        self._ip_configuration_in_progress.release()
-
-        __debug__ and log("stack", "Finished the IPv4 address acquire thread")
+        self._spawn_task(
+            self._log_stack_address_info(),
+            name=f"{self._subsystem_name} address info log",
+        )
 
     @abstractmethod
-    def _create_stack_ip6_addressing(self) -> None:
+    def _rx_frame_entry(self, packet_rx: PacketRx, /) -> None:
+        """
+        Per-layer inbound-frame entry point installed on the RX
+        ring by 'start()' — the L2 handler demuxes Ethernet II vs
+        IEEE 802.3 framing, the L3 handler demuxes the TUN PI
+        header.
+        """
+
+        raise NotImplementedError
+
+    async def _task__periodic_housekeeping(self) -> None:
+        """
+        Run the periodic housekeeping hook at the subsystem
+        cadence — the loop-task replacement for the housekeeping
+        half of the former rx-dequeue subsystem loop.
+        """
+
+        while True:
+            await asyncio.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
+            self._maybe_run_periodic_tasks()
+
+    def _maybe_run_periodic_tasks(self) -> None:
+        """
+        Periodic housekeeping hook — no-op on the base; the L2
+        handler overrides it with the RFC 8981 temp-address sweep
+        cluster.
+        """
+
+    async def _task__packet_handler__acquire_ip6_addresses(self) -> None:
+        """
+        Task to acquire the IPv6 addresses.
+        """
+
+        __debug__ and log("stack", "Started the IPv6 address acquire task")
+
+        await self._create_stack_ip6_addressing()
+
+        self._ip_configuration_in_progress.release()
+
+        __debug__ and log("stack", "Finished the IPv6 address acquire task")
+
+    async def _task__packet_handler__acquire_ip4_addresses(self) -> None:
+        """
+        Task to acquire the IPv4 addresses.
+        """
+
+        __debug__ and log("stack", "Started the IPv4 address acquire task")
+
+        await self._create_stack_ip4_addressing()
+
+        self._ip_configuration_in_progress.release()
+
+        __debug__ and log("stack", "Finished the IPv4 address acquire task")
+
+    @abstractmethod
+    async def _create_stack_ip6_addressing(self) -> None:
         """
         Create lists of IPv6 unicast and multicast addresses stack
         should listen on.
@@ -718,7 +795,7 @@ class PacketHandler(Subsystem, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def _create_stack_ip4_addressing(self) -> None:
+    async def _create_stack_ip4_addressing(self) -> None:
         """
         Create lists of IPv4 unicast, multicast and broadcast addresses stack
         should listen on.
@@ -728,35 +805,34 @@ class PacketHandler(Subsystem, ABC):
 
     def _acquire_ip6_addresses(self) -> None:
         """
-        Start thread to acquire the IPv6 addresses.
+        Spawn the task acquiring the IPv6 addresses.
         """
 
-        __debug__ and log("stack", "Starting the IPv6 address acquire thread")
+        __debug__ and log("stack", "Starting the IPv6 address acquire task")
 
-        threading.Thread(
-            target=self._thread__packet_handler__acquire_ip6_addresses,
-            daemon=True,
-        ).start()
+        self._spawn_task(
+            self._task__packet_handler__acquire_ip6_addresses(),
+            name=f"{self._subsystem_name} IPv6 address acquire",
+        )
 
     def _acquire_ip4_addresses(self) -> None:
         """
-        Start thread to acquire the IPv4 addresses.
+        Spawn the task acquiring the IPv4 addresses.
         """
 
-        __debug__ and log("stack", "Starting the IPv4 address acquire thread")
+        __debug__ and log("stack", "Starting the IPv4 address acquire task")
 
-        threading.Thread(
-            target=self._thread__packet_handler__acquire_ip4_addresses,
-            daemon=True,
-        ).start()
+        self._spawn_task(
+            self._task__packet_handler__acquire_ip4_addresses(),
+            name=f"{self._subsystem_name} IPv4 address acquire",
+        )
 
     def _assign_ip6_host(self, /, ip6_host: Ip6IfAddr) -> None:
         """
         Assign IPv6 host unicast  address to the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip6_ifaddr = [*self._ip6_ifaddr, ip6_host]
+        self._ip6_ifaddr = [*self._ip6_ifaddr, ip6_host]
 
         __debug__ and log("stack", f"Assigned IPv6 unicast address {ip6_host}")
 
@@ -767,8 +843,7 @@ class PacketHandler(Subsystem, ABC):
         Remove IPv6 host unicast address from the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
+        self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
 
         __debug__ and log("stack", f"Removed IPv6 unicast address {ip6_host}")
 
@@ -781,11 +856,11 @@ class PacketHandler(Subsystem, ABC):
         ip6_host: Ip6IfAddr,
         regenerate: Callable[[], Ip6IfAddr] | None = None,
         on_conflict: Callable[[Ip6Address], None] | None = None,
-    ) -> threading.Thread:
+    ) -> "asyncio.Task[None]":
         """
-        Claim 'ip6_host' on a daemon worker thread (DAD on L2,
-        direct assign on L3). Returns the worker so callers
-        that need to wait can '.join()'.
+        Claim 'ip6_host' on a worker task (DAD on L2, direct
+        assign on L3). Returns the worker so callers that need
+        to wait can 'await' it.
 
         When 'regenerate' is supplied, on DAD failure the
         worker calls it up to 'icmp6.idgen_retries' times to
@@ -840,8 +915,7 @@ class PacketHandler(Subsystem, ABC):
         also covers the permanent all-systems group 224.0.0.1.
         """
 
-        with self._lock__multicast:
-            return group in self._ip4_multicast_filters
+        return group in self._ip4_multicast_filters
 
     def _mc_recompute(self, group: Ip4Address, /) -> None:
         """
@@ -855,25 +929,24 @@ class PacketHandler(Subsystem, ABC):
         224.0.0.1 is assigned directly and never recomputed here.
         """
 
-        with self._lock__multicast:
-            membership = self._ip4_multicast_refs.get(group)
-            merged = Ip4MulticastFilter.merge(membership.contributors() if membership is not None else [])
-            joined = self._mc_is_joined(group)
+        membership = self._ip4_multicast_refs.get(group)
+        merged = Ip4MulticastFilter.merge(membership.contributors() if membership is not None else [])
+        joined = self._mc_is_joined(group)
 
-            if merged.has_reception:
-                if not joined:
-                    # Reception edge: '_assign_ip4_multicast' materializes
-                    # the merged filter, programs the MAC, and emits the
-                    # §5.1 join difference record(s).
-                    self._assign_ip4_multicast(group)
-                elif merged != self._ip4_multicast_filters[group]:
-                    # Still joined, filter changed: emit the §5.1 source
-                    # delta (ALLOW / BLOCK / CHANGE_TO_*) and re-materialize.
-                    old = self._ip4_multicast_filters[group]
-                    self._ip4_multicast_filters[group] = merged
-                    self._send_igmp_state_change(group, old=old, new=merged)
-            elif joined:
-                self._remove_ip4_multicast(group)
+        if merged.has_reception:
+            if not joined:
+                # Reception edge: '_assign_ip4_multicast' materializes
+                # the merged filter, programs the MAC, and emits the
+                # §5.1 join difference record(s).
+                self._assign_ip4_multicast(group)
+            elif merged != self._ip4_multicast_filters[group]:
+                # Still joined, filter changed: emit the §5.1 source
+                # delta (ALLOW / BLOCK / CHANGE_TO_*) and re-materialize.
+                old = self._ip4_multicast_filters[group]
+                self._ip4_multicast_filters[group] = merged
+                self._send_igmp_state_change(group, old=old, new=merged)
+        elif joined:
+            self._remove_ip4_multicast(group)
 
     def _mc_ref_acquire(self, group: Ip4Address, /) -> None:
         """
@@ -886,9 +959,8 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        with self._lock__multicast:
-            self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).operator = True
-            self._mc_recompute(group)
+        self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).operator = True
+        self._mc_recompute(group)
 
     def _mc_ref_release(self, group: Ip4Address, /) -> None:
         """
@@ -902,15 +974,14 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        with self._lock__multicast:
-            membership = self._ip4_multicast_refs.get(group)
-            if membership is None:
-                return
+        membership = self._ip4_multicast_refs.get(group)
+        if membership is None:
+            return
 
-            membership.operator = False
-            if not membership.operator and not membership.socket_filters:
-                del self._ip4_multicast_refs[group]
-            self._mc_recompute(group)
+        membership.operator = False
+        if not membership.operator and not membership.socket_filters:
+            del self._ip4_multicast_refs[group]
+        self._mc_recompute(group)
 
     def _mc_set_socket_filter(self, group: Ip4Address, /, *, token: int, source_filter: Ip4MulticastFilter) -> None:
         """
@@ -924,9 +995,8 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        with self._lock__multicast:
-            self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).socket_filters[token] = source_filter
-            self._mc_recompute(group)
+        self._ip4_multicast_refs.setdefault(group, _Ip4GroupMembership()).socket_filters[token] = source_filter
+        self._mc_recompute(group)
 
     def _mc_clear_socket_filter(self, group: Ip4Address, /, *, token: int) -> None:
         """
@@ -940,23 +1010,21 @@ class PacketHandler(Subsystem, ABC):
         if group == IP4__MULTICAST__ALL_SYSTEMS:
             return
 
-        with self._lock__multicast:
-            membership = self._ip4_multicast_refs.get(group)
-            if membership is None:
-                return
+        membership = self._ip4_multicast_refs.get(group)
+        if membership is None:
+            return
 
-            membership.socket_filters.pop(token, None)
-            if not membership.operator and not membership.socket_filters:
-                del self._ip4_multicast_refs[group]
-            self._mc_recompute(group)
+        membership.socket_filters.pop(token, None)
+        if not membership.operator and not membership.socket_filters:
+            del self._ip4_multicast_refs[group]
+        self._mc_recompute(group)
 
     def _assign_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
         Assign IPv6 host unicast  address to the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip4_ifaddr = [*self._ip4_ifaddr, ip4_host]
+        self._ip4_ifaddr = [*self._ip4_ifaddr, ip4_host]
 
         __debug__ and log("stack", f"Assigned IPv4 unicast address {ip4_host}")
 
@@ -965,18 +1033,17 @@ class PacketHandler(Subsystem, ABC):
         Remove IPv4 host unicast address from the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip4_ifaddr = [host for host in self._ip4_ifaddr if host != ip4_host]
+        self._ip4_ifaddr = [host for host in self._ip4_ifaddr if host != ip4_host]
 
         __debug__ and log("stack", f"Removed IPv4 unicast address {ip4_host}")
 
-    def _log_stack_address_info(self) -> None:
+    async def _log_stack_address_info(self) -> None:
         """
         Log all the addresses stack will listen on
         """
 
         for _ in (self._ip6_support, self._ip4_support):
-            self._ip_configuration_in_progress.acquire(timeout=15)
+            await acquire_semaphore(self._ip_configuration_in_progress, 15)
 
         if __debug__:
             if self._ip6_support:
@@ -1127,18 +1194,16 @@ class PacketHandler(Subsystem, ABC):
                 expires_at=time.monotonic() + router_lifetime,
                 prf=normalised_prf,
             )
-            with self._lock__addr_config:
-                self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address] + [
-                    new_router
-                ]
+            self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address] + [
+                new_router
+            ]
             self._packet_stats_rx.icmp6__nd_router_advertisement__update_router += 1
             if route_api is not None:
                 route_api.replace_default(gateway=address, protocol=RouteProtocol.RA)
             return
 
         if existing is not None:
-            with self._lock__addr_config:
-                self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
+            self._icmp6_default_routers = [r for r in self._icmp6_default_routers if r.address != address]
             self._packet_stats_rx.icmp6__nd_router_advertisement__remove_router += 1
             if route_api is not None:
                 route_api.remove_default(family=AddressFamily.INET6)
@@ -1198,8 +1263,7 @@ class PacketHandler(Subsystem, ABC):
 
         if valid_lifetime == 0:
             if existing is not None:
-                with self._lock__addr_config:
-                    self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
+                self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix]
                 self._packet_stats_rx.icmp6__nd_router_advertisement__pi__remove_address += 1
             return
 
@@ -1230,8 +1294,7 @@ class PacketHandler(Subsystem, ABC):
             valid_until=now + new_valid_lifetime,
             router_address=router_address,
         )
-        with self._lock__addr_config:
-            self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix] + [new_slaac]
+        self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.prefix != prefix] + [new_slaac]
         self._packet_stats_rx.icmp6__nd_router_advertisement__pi__update_address += 1
 
         # Runtime stable-address claim: a brand-new prefix
@@ -1302,8 +1365,7 @@ class PacketHandler(Subsystem, ABC):
 
         if valid_lifetime == 0:
             if existing is not None:
-                with self._lock__addr_config:
-                    self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
+                self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix]
             return
 
         # RFC 8981 §3.4 lifetime clamps. The preferred lifetime
@@ -1331,8 +1393,7 @@ class PacketHandler(Subsystem, ABC):
                 created_at=existing.created_at,
                 router_address=router_address,
             )
-            with self._lock__addr_config:
-                self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix] + [refreshed]
+            self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.prefix != prefix] + [refreshed]
             return
 
         # New entry — generate random IID, spawn DAD claim.
@@ -1352,8 +1413,7 @@ class PacketHandler(Subsystem, ABC):
             created_at=now,
             router_address=router_address,
         )
-        with self._lock__addr_config:
-            self._icmp6_temp_addresses = [*self._icmp6_temp_addresses, new_temp]
+        self._icmp6_temp_addresses = [*self._icmp6_temp_addresses, new_temp]
 
         # RFC 8981 §3.3.3 — on DAD failure, retry with a fresh
         # random IID up to 'icmp6.idgen_retries' times. Each
@@ -1406,32 +1466,31 @@ class PacketHandler(Subsystem, ABC):
         if not expired:
             return
 
-        # Hold the address-config lock across the cluster mutation so
-        # '_ip6_ifaddr', '_ip6_multicast' and '_icmp6_temp_addresses'
-        # are republished (copy-on-write) as a consistent set. No
-        # blocking call runs inside the lock.
-        with self._lock__addr_config:
-            for entry in expired:
-                __debug__ and log(
-                    "stack",
-                    f"<INFO>RFC 8981 sweep: temp address {entry.address} "
-                    f"(prefix {entry.prefix}) past valid_until — removing</>",
-                )
-                # Drop from '_ip6_ifaddr'. The address may already
-                # be absent (e.g. if a manual operator action
-                # removed it). The solicited-node multicast may
-                # already be absent too (manual cleanup, never
-                # joined). Both are tolerated — best-effort.
-                for ip6_host in self._ip6_ifaddr:
-                    if ip6_host.address == entry.address:
-                        self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
-                        snm = ip6_host.address.solicited_node_multicast
-                        if snm in self._ip6_multicast:
-                            self._remove_ip6_multicast(snm)
-                        break
+        # The cluster mutation republishes '_ip6_ifaddr',
+        # '_ip6_multicast' and '_icmp6_temp_addresses' (copy-on-
+        # write) as a consistent set — atomic by construction on
+        # the single stack loop (no await point inside).
+        for entry in expired:
+            __debug__ and log(
+                "stack",
+                f"<INFO>RFC 8981 sweep: temp address {entry.address} "
+                f"(prefix {entry.prefix}) past valid_until — removing</>",
+            )
+            # Drop from '_ip6_ifaddr'. The address may already
+            # be absent (e.g. if a manual operator action
+            # removed it). The solicited-node multicast may
+            # already be absent too (manual cleanup, never
+            # joined). Both are tolerated — best-effort.
+            for ip6_host in self._ip6_ifaddr:
+                if ip6_host.address == entry.address:
+                    self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
+                    snm = ip6_host.address.solicited_node_multicast
+                    if snm in self._ip6_multicast:
+                        self._remove_ip6_multicast(snm)
+                    break
 
-            # Drop from the temp-address table.
-            self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
+        # Drop from the temp-address table.
+        self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
 
     def _icmp6_regen_temp_addresses(self) -> None:
         """
@@ -1501,8 +1560,7 @@ class PacketHandler(Subsystem, ABC):
                 created_at=now,
                 router_address=newest.router_address,
             )
-            with self._lock__addr_config:
-                self._icmp6_temp_addresses = [*self._icmp6_temp_addresses, regen_temp]
+            self._icmp6_temp_addresses = [*self._icmp6_temp_addresses, regen_temp]
 
             # RFC 8981 §3.3.3 regen via §20.3 retry: each retry
             # mints a fresh random IID.
@@ -1540,26 +1598,25 @@ class PacketHandler(Subsystem, ABC):
         if not expired:
             return
 
-        # Hold the address-config lock across the cluster mutation so
-        # '_ip6_ifaddr', '_ip6_multicast' and '_icmp6_slaac_addresses'
-        # are republished (copy-on-write) as a consistent set. No
-        # blocking call runs inside the lock.
-        with self._lock__addr_config:
-            for entry in expired:
-                __debug__ and log(
-                    "stack",
-                    f"<INFO>SLAAC sweep: stable address {entry.address} "
-                    f"(prefix {entry.prefix}) past valid_until — removing</>",
-                )
-                for ip6_host in self._ip6_ifaddr:
-                    if ip6_host.address == entry.address:
-                        self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
-                        snm = ip6_host.address.solicited_node_multicast
-                        if snm in self._ip6_multicast:
-                            self._remove_ip6_multicast(snm)
-                        break
+        # The cluster mutation republishes '_ip6_ifaddr',
+        # '_ip6_multicast' and '_icmp6_slaac_addresses' (copy-on-
+        # write) as a consistent set — atomic by construction on
+        # the single stack loop (no await point inside).
+        for entry in expired:
+            __debug__ and log(
+                "stack",
+                f"<INFO>SLAAC sweep: stable address {entry.address} "
+                f"(prefix {entry.prefix}) past valid_until — removing</>",
+            )
+            for ip6_host in self._ip6_ifaddr:
+                if ip6_host.address == entry.address:
+                    self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
+                    snm = ip6_host.address.solicited_node_multicast
+                    if snm in self._ip6_multicast:
+                        self._remove_ip6_multicast(snm)
+                    break
 
-            self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
+        self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
 
     def get_icmp6_default_router_for_destination(
         self,
@@ -2172,11 +2229,10 @@ class PacketHandler(Subsystem, ABC):
         test-driven direct assign).
         """
 
-        with self._lock__multicast:
-            membership = self._ip4_multicast_refs.get(group)
-            if membership is None:
-                return Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
-            return Ip4MulticastFilter.merge(membership.contributors())
+        membership = self._ip4_multicast_refs.get(group)
+        if membership is None:
+            return Ip4MulticastFilter(Ip4MulticastFilterMode.EXCLUDE)
+        return Ip4MulticastFilter.merge(membership.contributors())
 
     def _send_igmp_leave_all(self) -> None:
         """
@@ -2212,9 +2268,8 @@ class PacketHandler(Subsystem, ABC):
         Return the RFC 3810 §8.2.1 MLD Host Compatibility Mode for this
         interface: MLDv1 while the Older Version Querier Present timer
         runs (an MLDv1 Query was heard within the timeout), else MLDv2.
-        The scalar is written under '_lock__multicast' by the RX Query
-        handler; this read is lock-free (a benign-stale read at worst
-        picks the previous mode), mirroring '_igmp_host_compatibility_mode'.
+        The scalar is written by the RX Query handler on the same
+        loop, mirroring '_igmp_host_compatibility_mode'.
         """
 
         now_ms = stack.timer.now_ms
@@ -2560,7 +2615,7 @@ class PacketHandlerL2(
 
         # Used for the ICMPv6 ND RA address auto configuration.
         self._icmp6_ra__prefixes: list[tuple[Ip6Network, Ip6Address]] = []
-        self._icmp6_ra__event: Semaphore = threading.Semaphore(0)
+        self._icmp6_ra__event: asyncio.Semaphore = asyncio.Semaphore(0)
 
         # RFC 3810 §5.1.10 deferred-Report state. Tracks the
         # absolute 'stack.timer.now_ms' at which the next
@@ -2573,7 +2628,7 @@ class PacketHandlerL2(
         self._mld2_query__handle: TimerHandle | None = None
 
         # RFC 3810 §8.2.1 MLDv1 Older Version Querier Present timer.
-        # Armed (under '_lock__multicast') when an MLDv1 Query is
+        # Armed by the RX Query handler when an MLDv1 Query is
         # heard; while it runs the interface is in MLDv1 Host
         # Compatibility Mode and emits MLDv1 Reports instead of the
         # MLDv2 Report. 'None' = no MLDv1 querier seen (MLDv2 mode).
@@ -2791,23 +2846,22 @@ class PacketHandlerL2(
         self._ethernet_tx.send_link_frame(frame)
 
     @override
-    def _subsystem_loop(self) -> None:
+    def _rx_frame_entry(self, packet_rx: PacketRx, /) -> None:
         """
-        Pick up incoming packets from RX Ring and processes them.
-        Also runs periodic housekeeping (RFC 8981 temp-address
-        sweep) rate-limited by 'icmp6.temp_addr_sweep_interval_s'.
+        Process one inbound frame delivered by the RX ring —
+        Ethernet II vs IEEE 802.3 demux by the length/EtherType
+        field. Installed as the ring's deliver callback by
+        'start()'; the periodic housekeeping (RFC 8981 temp-
+        address sweep) runs on its own loop task instead of
+        piggybacking the rx loop.
         """
 
-        assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
+        if int.from_bytes(packet_rx.frame[12:14], "big") <= ETHERNET_802_3__PACKET__MAX_LEN:
+            self._phrx_ethernet_802_3(packet_rx)
+        else:
+            self._phrx_ethernet(packet_rx)
 
-        if (packet_rx := self._rx_ring.dequeue()) is not None:
-            if int.from_bytes(packet_rx.frame[12:14], "big") <= ETHERNET_802_3__PACKET__MAX_LEN:
-                self._phrx_ethernet_802_3(packet_rx)
-            else:
-                self._phrx_ethernet(packet_rx)
-
-        self._maybe_run_periodic_tasks()
-
+    @override
     def _maybe_run_periodic_tasks(self) -> None:
         """
         Run periodic housekeeping tasks at most once per
@@ -2831,7 +2885,7 @@ class PacketHandlerL2(
         # for §12a.runtime lifecycle close-out.
         self._icmp6_sweep_slaac_addresses()
 
-    def _send_icmp6_nd_router_solicitations_with_backoff(self) -> None:
+    async def _send_icmp6_nd_router_solicitations_with_backoff(self) -> None:
         """
         Send up to 'icmp6.max_rtr_solicitations' Router
         Solicitations spaced by RFC 7559 §2 truncated binary
@@ -2854,11 +2908,11 @@ class PacketHandlerL2(
         for _ in range(max_attempts):
             self._send_icmp6_nd_router_solicitation()
             wait_s = (rt_ms + random.uniform(-0.1, 0.1) * rt_ms) / 1000.0
-            if self._icmp6_ra__event.acquire(timeout=wait_s):
+            if await acquire_semaphore(self._icmp6_ra__event, wait_s):
                 return
             rt_ms = min(2 * rt_ms, mrt_ms)
 
-    def _perform_ip6_nd_dad(self, *, ip6_unicast_candidate: Ip6Address) -> bool:
+    async def _perform_ip6_nd_dad(self, *, ip6_unicast_candidate: Ip6Address) -> bool:
         """
         Perform IPv6 ND Duplicate Address Detection, return True if passed.
 
@@ -2873,7 +2927,7 @@ class PacketHandlerL2(
         Per-address DAD state lives in '_icmp6_nd_dad__registry'
         ('DadSlotRegistry[Ip6Address]') keyed by the candidate
         address, so multiple addresses can DAD concurrently in
-        separate worker threads. Each call installs its own
+        separate worker tasks. Each call installs its own
         slot on entry and tears it down on exit — the RX path
         looks up the slot by inbound NS / NA 'target_address'
         and signals the right Event. The candidate's lifecycle
@@ -2896,8 +2950,7 @@ class PacketHandlerL2(
         # emitted, no initial delay taken, and no per-address
         # DAD-state slot. Linux 'accept_dad=0' parity.
         if sysctl_iface.get_for_iface("icmp6.accept_dad", self._interface_name) == 0:
-            with self._lock__addr_config:
-                self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
+            self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
             return True
 
         # Per-address DAD slot. Populated BEFORE the first probe
@@ -2908,12 +2961,11 @@ class PacketHandlerL2(
         dad_event = self._icmp6_nd_dad__registry.install(ip6_unicast_candidate)
         # Default to TENTATIVE; the Optimistic-DAD wrapper
         # promotes this to OPTIMISTIC before invoking us.
-        with self._lock__addr_config:
-            if ip6_unicast_candidate not in self._icmp6_dad__states:
-                self._icmp6_dad__states = {
-                    **self._icmp6_dad__states,
-                    ip6_unicast_candidate: Icmp6DadState.TENTATIVE,
-                }
+        if ip6_unicast_candidate not in self._icmp6_dad__states:
+            self._icmp6_dad__states = {
+                **self._icmp6_dad__states,
+                ip6_unicast_candidate: Icmp6DadState.TENTATIVE,
+            }
 
         # RFC 4862 §5.4.2 — random initial delay before the
         # first DAD probe to alleviate fleet-wide
@@ -2923,7 +2975,7 @@ class PacketHandlerL2(
         # to 0 disables.
         max_initial_delay_ms = sysctl_iface.get_for_iface("icmp6.max_rtr_solicitation_delay_ms", self._interface_name)
         if max_initial_delay_ms > 0:
-            time.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))
+            await asyncio.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))
 
         # The optimistic wrapper has already joined the
         # solicited-node multicast group via '_assign_ip6_host';
@@ -2957,7 +3009,7 @@ class PacketHandlerL2(
                 ip6_unicast_candidate=ip6_unicast_candidate,
                 nonce=nonce,
             )
-            if dad_event.wait(timeout=retrans_timer_s):
+            if await wait_event(dad_event, retrans_timer_s):
                 conflict = True
                 break
 
@@ -2976,10 +3028,9 @@ class PacketHandlerL2(
             # caller is responsible for reverting any pre-claim
             # (Optimistic-DAD wrapper removes the address from
             # '_ip6_ifaddr'; the strict path never assigned it).
-            with self._lock__addr_config:
-                self._icmp6_dad__states = {
-                    addr: state for addr, state in self._icmp6_dad__states.items() if addr != ip6_unicast_candidate
-                }
+            self._icmp6_dad__states = {
+                addr: state for addr, state in self._icmp6_dad__states.items() if addr != ip6_unicast_candidate
+            }
         else:
             __debug__ and log(
                 "stack",
@@ -2990,8 +3041,7 @@ class PacketHandlerL2(
             # OPTIMISTIC-source Override-flag suppression no
             # longer applies (RFC 9131 §3 announcement carries
             # Override=1 by design, RFC 4429 §3.3 step 5).
-            with self._lock__addr_config:
-                self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
+            self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
             # RFC 9131 §3 — gratuitous Neighbor Advertisement(s)
             # on host attachment so peers preemptively populate
             # their neighbour cache for our newly-claimed
@@ -3011,7 +3061,7 @@ class PacketHandlerL2(
             self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
         return not conflict
 
-    def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6IfAddr) -> bool:
+    async def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6IfAddr) -> bool:
         """
         Claim 'ip6_host' using RFC 4429 §3 Optimistic DAD: the
         address is installed into '_ip6_ifaddr' as OPTIMISTIC
@@ -3023,10 +3073,9 @@ class PacketHandlerL2(
         Returns True on DAD success, False on collision.
         """
 
-        with self._lock__addr_config:
-            self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_host.address: Icmp6DadState.OPTIMISTIC}
+        self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_host.address: Icmp6DadState.OPTIMISTIC}
         self._assign_ip6_host(ip6_host=ip6_host)
-        if self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address):
+        if await self._perform_ip6_nd_dad(ip6_unicast_candidate=ip6_host.address):
             return True
         # Collision: roll back the optimistic assignment. The
         # per-address state was already cleared inside
@@ -3041,15 +3090,16 @@ class PacketHandlerL2(
         ip6_host: Ip6IfAddr,
         regenerate: Callable[[], Ip6IfAddr] | None = None,
         on_conflict: Callable[[Ip6Address], None] | None = None,
-    ) -> threading.Thread:
+    ) -> "asyncio.Task[None]":
         """
-        Spawn a daemon worker thread that runs the DAD claim for
-        'ip6_host' (synchronous '_perform_ip6_nd_dad' or
+        Spawn a worker task that runs the DAD claim for
+        'ip6_host' ('_perform_ip6_nd_dad' or
         '_claim_ip6_address_optimistic' depending on
-        'icmp6.optimistic_dad'). Returns the worker thread so
-        callers that need to wait for completion can '.join()'
+        'icmp6.optimistic_dad'). Returns the worker task so
+        callers that need to wait for completion can 'await'
         it; callers that fire-and-forget simply discard the
-        returned handle.
+        returned handle. The task is tracked on 'self._tasks'
+        so 'stop()' cancels an in-flight claim.
 
         Multiple addresses can be claimed concurrently — each
         worker owns its own slot in '_icmp6_nd_dad__registry'
@@ -3057,7 +3107,7 @@ class PacketHandlerL2(
         'target_address' to signal the right slot. This is what
         unblocks RFC 8981 temp-address regen (§18b/c) and
         runtime PI-arrival claims, neither of which can block
-        the RX subsystem thread.
+        the RX pipeline.
 
         When 'regenerate' is supplied (RFC 7217 §6 / RFC 8981
         §3.3.3), on DAD failure the worker calls it up to
@@ -3067,21 +3117,21 @@ class PacketHandlerL2(
         accept_dad=2 fail-hard hook (§20.4) fires.
         """
 
-        def _attempt_claim(candidate: Ip6IfAddr) -> bool:
+        async def _attempt_claim(candidate: Ip6IfAddr) -> bool:
             if sysctl_iface.get_for_iface("icmp6.optimistic_dad", self._interface_name) == 1:
-                return self._claim_ip6_address_optimistic(ip6_host=candidate)
-            ok = self._perform_ip6_nd_dad(ip6_unicast_candidate=candidate.address)
+                return await self._claim_ip6_address_optimistic(ip6_host=candidate)
+            ok = await self._perform_ip6_nd_dad(ip6_unicast_candidate=candidate.address)
             if ok:
                 self._assign_ip6_host(ip6_host=candidate)
             return ok
 
-        def _worker() -> None:
+        async def _worker() -> None:
             max_retries = (
                 sysctl_iface.get_for_iface("icmp6.idgen_retries", self._interface_name) if regenerate is not None else 0
             )
             current = ip6_host
             for attempt in range(max_retries + 1):
-                ok = _attempt_claim(current)
+                ok = await _attempt_claim(current)
                 if ok:
                     __debug__ and log("stack", f"Successfully claimed IPv6 address {current}")
                     return
@@ -3118,23 +3168,17 @@ class PacketHandlerL2(
                 )
                 self._ip6_support = False
 
-        thread = threading.Thread(
-            target=_worker,
-            daemon=True,
-            name=f"DAD-{ip6_host.address}",
-        )
-        thread.start()
-        return thread
+        return self._spawn_task(_worker(), name=f"DAD-{ip6_host.address}")
 
     @override
-    def _create_stack_ip6_addressing(self) -> None:
+    async def _create_stack_ip6_addressing(self) -> None:
         """
         Create lists of IPv6 unicast and multicast addresses stack
         should listen on.
 
-        Each address claim spawns a daemon DAD worker thread via
+        Each address claim spawns a DAD worker task via
         '_claim_ip6_address_async'. With 'icmp6.optimistic_dad=0'
-        the boot path '.join()'s every worker (preserving today's
+        the boot path awaits every worker (preserving today's
         "address available only after DAD passes" semantic but
         permitting parallel DAD across candidates); with =1 the
         boot path fires-and-forgets so the workers transition
@@ -3150,14 +3194,14 @@ class PacketHandlerL2(
         one.
         """
 
-        def _claim_ip6_address(
+        async def _claim_ip6_address(
             ip6_host: Ip6IfAddr,
             *,
             regenerate: Callable[[], Ip6IfAddr] | None = None,
         ) -> None:
-            thread = self._claim_ip6_address_async(ip6_host=ip6_host, regenerate=regenerate)
+            task = self._claim_ip6_address_async(ip6_host=ip6_host, regenerate=regenerate)
             if sysctl_iface.get_for_iface("icmp6.optimistic_dad", self._interface_name) == 0:
-                thread.join()
+                await task
 
         # Assign IPv6 All Nodes multicast address.
         self._assign_ip6_multicast(Ip6Address("ff02::1"))
@@ -3166,13 +3210,13 @@ class PacketHandlerL2(
         for ip6_host in list(self._ip6_ifaddr_candidate):
             if ip6_host.address.is_link_local:
                 self._ip6_ifaddr_candidate.remove(ip6_host)
-                _claim_ip6_address(ip6_host)
+                await _claim_ip6_address(ip6_host)
 
         # Configure Link Local address automatically.
         if self._ip6_lla_autoconfig:
             lla_network = Ip6Network("fe80::/64")
             ip6_host = self._derive_ip6_host(ip6_network=lla_network)
-            _claim_ip6_address(
+            await _claim_ip6_address(
                 ip6_host,
                 regenerate=self._make_rfc7217_regenerator(ip6_network=lla_network),
             )
@@ -3190,13 +3234,13 @@ class PacketHandlerL2(
         # Check if there are any statically configures GUA addresses.
         for ip6_host in list(self._ip6_ifaddr_candidate):
             self._ip6_ifaddr_candidate.remove(ip6_host)
-            _claim_ip6_address(ip6_host)
+            await _claim_ip6_address(ip6_host)
 
         # Send out IPv6 Router Solicitation messages with
         # RFC 7559 §2 exponential backoff and wait for an RA
         # so SLAAC can pick up the advertised prefix.
         if self._ip6_gua_autoconfig:
-            self._send_icmp6_nd_router_solicitations_with_backoff()
+            await self._send_icmp6_nd_router_solicitations_with_backoff()
             # The RA source (tuple's 2nd element) no longer feeds
             # a per-IfAddr gateway: the default route was already
             # installed in the FIB by '_update_icmp6_default_router'
@@ -3208,7 +3252,7 @@ class PacketHandlerL2(
                     f"Attempting IPv6 address auto configuration for RA " f"prefix {prefix}",
                 )
                 ip6_address = self._derive_ip6_host(ip6_network=prefix)
-                _claim_ip6_address(
+                await _claim_ip6_address(
                     ip6_address,
                     regenerate=self._make_rfc7217_regenerator(ip6_network=prefix),
                 )
@@ -3223,7 +3267,7 @@ class PacketHandlerL2(
         self._ip6_addressing_complete = True
 
     @override
-    def _create_stack_ip4_addressing(self) -> None:
+    async def _create_stack_ip4_addressing(self) -> None:
         """
         Create lists of IPv4 unicast, multicast and broadcast addresses stack
         should listen on.
@@ -3255,8 +3299,8 @@ class PacketHandlerL2(
         for ip4_host in list(self._ip4_ifaddr_candidate):
             self._ip4_ifaddr_candidate.remove(ip4_host)
             acd = Ip4Acd(mac_address=self._mac_unicast, ifindex=self._ifindex)
-            if acd.probe(address=ip4_host.address).success:
-                acd.announce(address=ip4_host.address)
+            if (await acd.probe(address=ip4_host.address)).success:
+                await acd.announce(address=ip4_host.address)
                 self._assign_ip4_host(ip4_host=ip4_host)
                 __debug__ and log(
                     "stack",
@@ -3287,8 +3331,7 @@ class PacketHandlerL2(
         Assign IPv6 multicast address to the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
+        self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
 
         __debug__ and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
 
@@ -3302,8 +3345,7 @@ class PacketHandlerL2(
         Remove IPv6 multicast address from the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
+        self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
 
         __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
@@ -3315,24 +3357,23 @@ class PacketHandlerL2(
         Assign IPv4 multicast group to the list stack listens on.
         """
 
-        with self._lock__multicast:
-            # Materialize the merged §3.2 reception filter (EXCLUDE{} for a
-            # directly-assigned / any-source group, the merged contributors'
-            # filter for a source-specific join).
-            new = self._ip4_multicast_filter_for(ip4_multicast)
-            self._ip4_multicast_filters[ip4_multicast] = new
+        # Materialize the merged §3.2 reception filter (EXCLUDE{} for a
+        # directly-assigned / any-source group, the merged contributors'
+        # filter for a source-specific join).
+        new = self._ip4_multicast_filter_for(ip4_multicast)
+        self._ip4_multicast_filters[ip4_multicast] = new
 
-            __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
-            # RFC 1112 §6.4 — the IPv4 multicast group maps to the Ethernet
-            # multicast MAC 01:00:5e + low 23 bits of the group address.
-            self._assign_mac_multicast(ip4_multicast.multicast_mac)
+        # RFC 1112 §6.4 — the IPv4 multicast group maps to the Ethernet
+        # multicast MAC 01:00:5e + low 23 bits of the group address.
+        self._assign_mac_multicast(ip4_multicast.multicast_mac)
 
-            # RFC 3376 §5.1 — announce the new membership with an unsolicited
-            # state-change Report describing the INCLUDE{}→'new' transition
-            # (the all-systems group is exempt, handled inside the TX method
-            # per RFC 3376 §6).
-            self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
+        # RFC 3376 §5.1 — announce the new membership with an unsolicited
+        # state-change Report describing the INCLUDE{}→'new' transition
+        # (the all-systems group is exempt, handled inside the TX method
+        # per RFC 3376 §6).
+        self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3340,18 +3381,17 @@ class PacketHandlerL2(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
-        with self._lock__multicast:
-            old = self._ip4_multicast_filters[ip4_multicast]
-            del self._ip4_multicast_filters[ip4_multicast]
+        old = self._ip4_multicast_filters[ip4_multicast]
+        del self._ip4_multicast_filters[ip4_multicast]
 
-            __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
-            self._remove_mac_multicast(ip4_multicast.multicast_mac)
+        self._remove_mac_multicast(ip4_multicast.multicast_mac)
 
-            # RFC 3376 §5.1 — announce the departure with a state-change
-            # Report describing the 'old'→INCLUDE{} transition (no longer a
-            # member).
-            self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
+        # RFC 3376 §5.1 — announce the departure with a state-change
+        # Report describing the 'old'→INCLUDE{} transition (no longer a
+        # member).
+        self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
 
     def _assign_mac_multicast(self, /, mac_multicast: MacAddress) -> None:
         """
@@ -3372,13 +3412,13 @@ class PacketHandlerL2(
         __debug__ and log("stack", f"Removed MAC multicast {mac_multicast}")
 
     @override
-    def _log_stack_address_info(self) -> None:
+    async def _log_stack_address_info(self) -> None:
         """
         Log all the addresses stack will listen on
         """
 
         for _ in (self._ip6_support, self._ip4_support):
-            self._ip_configuration_in_progress.acquire(timeout=15)
+            await acquire_semaphore(self._ip_configuration_in_progress, 15)
 
         if __debug__:
             log(
@@ -3396,8 +3436,12 @@ class PacketHandlerL2(
                 f"{self._mac_broadcast}</>",
             )
 
-        self._ip_configuration_in_progress.release(2)
-        super()._log_stack_address_info()
+        # 'asyncio.Semaphore.release()' takes no count — re-release
+        # the two permits consumed above one at a time so the base
+        # 'super()._log_stack_address_info()' can re-acquire them.
+        self._ip_configuration_in_progress.release()
+        self._ip_configuration_in_progress.release()
+        await super()._log_stack_address_info()
 
 
 class PacketHandlerL3(
@@ -3410,29 +3454,27 @@ class PacketHandlerL3(
     _interface_layer = InterfaceLayer.L3
 
     @override
-    def _subsystem_loop(self) -> None:
+    def _rx_frame_entry(self, packet_rx: PacketRx, /) -> None:
         """
-        Pick up incoming packets from RX Ring and processes them.
+        Process one inbound frame delivered by the RX ring —
+        TUN PI-header EtherType -> handler demux via the
+        per-interface dispatch registry. The L3 registry holds
+        only the support-gated IPv4 / IPv6 entries (no ARP), so a
+        miss is an unhandled EtherType. The 4-byte TUN PI header
+        is stripped before the IP handler sees the frame.
+        Installed as the ring's deliver callback by 'start()'.
         """
 
-        assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
-
-        if (packet_rx := self._rx_ring.dequeue()) is not None:
-            # TUN PI-header EtherType -> handler demux via the
-            # per-interface dispatch registry. The L3 registry holds
-            # only the support-gated IPv4 / IPv6 entries (no ARP), so a
-            # miss is an unhandled EtherType. The 4-byte TUN PI header
-            # is stripped before the IP handler sees the frame.
-            ethertype = EtherType.from_bytes(packet_rx.frame[2:4])
-            handler = self._ethertype_registry.get(ethertype)
-            if handler is None:
-                __debug__ and log(
-                    "stack",
-                    f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
-                )
-            else:
-                packet_rx.frame = packet_rx.frame[4:]
-                handler(packet_rx)
+        ethertype = EtherType.from_bytes(packet_rx.frame[2:4])
+        handler = self._ethertype_registry.get(ethertype)
+        if handler is None:
+            __debug__ and log(
+                "stack",
+                f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
+            )
+        else:
+            packet_rx.frame = packet_rx.frame[4:]
+            handler(packet_rx)
 
     @override
     def _claim_ip6_address_async(
@@ -3441,24 +3483,27 @@ class PacketHandlerL3(
         ip6_host: Ip6IfAddr,
         regenerate: Callable[[], Ip6IfAddr] | None = None,
         on_conflict: Callable[[Ip6Address], None] | None = None,
-    ) -> threading.Thread:
+    ) -> "asyncio.Task[None]":
         """
         L3 has no DAD — claims complete synchronously via
         '_assign_ip6_host'. The 'regenerate' and 'on_conflict'
         callbacks are accepted for signature parity with L2 but
         never invoked (no DAD, so no failure to retry or report).
-        The returned Thread is a no-op helper that has already
-        finished, so callers '.join()'ing it return immediately.
+        The returned Task is a no-op helper that finishes on its
+        first loop turn, so callers awaiting it return
+        immediately.
         """
 
         del regenerate, on_conflict  # unused on L3 — no DAD, no retry, no conflict
         self._assign_ip6_host(ip6_host=ip6_host)
-        thread = threading.Thread(target=lambda: None, daemon=True, name=f"DAD-{ip6_host.address}")
-        thread.start()
-        return thread
+
+        async def _noop() -> None:
+            return None
+
+        return self._spawn_task(_noop(), name=f"DAD-{ip6_host.address}")
 
     @override
-    def _create_stack_ip6_addressing(self) -> None:
+    async def _create_stack_ip6_addressing(self) -> None:
         """
         Create lists of IPv6 unicast and multicast addresses stack
         should listen on.
@@ -3478,7 +3523,7 @@ class PacketHandlerL3(
             self._ip6_support = False
 
     @override
-    def _create_stack_ip4_addressing(self) -> None:
+    async def _create_stack_ip4_addressing(self) -> None:
         """
         Create lists of IPv4 unicast, multicast and broadcast addresses stack
         should listen on.
@@ -3506,8 +3551,7 @@ class PacketHandlerL3(
         Assign IPv6 multicast address to the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
+        self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
 
         __debug__ and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
 
@@ -3519,8 +3563,7 @@ class PacketHandlerL3(
         Remove IPv6 multicast address from the list stack listens on.
         """
 
-        with self._lock__addr_config:
-            self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
+        self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
 
         __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
@@ -3532,19 +3575,18 @@ class PacketHandlerL3(
         programmed.
         """
 
-        with self._lock__multicast:
-            # Materialize the merged §3.2 reception filter (EXCLUDE{} for an
-            # any-source group, the merged contributors' filter otherwise).
-            new = self._ip4_multicast_filter_for(ip4_multicast)
-            self._ip4_multicast_filters[ip4_multicast] = new
+        # Materialize the merged §3.2 reception filter (EXCLUDE{} for an
+        # any-source group, the merged contributors' filter otherwise).
+        new = self._ip4_multicast_filter_for(ip4_multicast)
+        self._ip4_multicast_filters[ip4_multicast] = new
 
-            __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
-            # RFC 3376 §5.1 — announce the new membership with an unsolicited
-            # state-change Report describing the INCLUDE{}→'new' transition
-            # (the all-systems group is exempt per RFC 3376 §6, handled inside
-            # the TX method).
-            self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
+        # RFC 3376 §5.1 — announce the new membership with an unsolicited
+        # state-change Report describing the INCLUDE{}→'new' transition
+        # (the all-systems group is exempt per RFC 3376 §6, handled inside
+        # the TX method).
+        self._send_igmp_state_change(ip4_multicast, old=_IP4_MULTICAST__NONMEMBER, new=new)
 
     @override
     def _remove_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3552,12 +3594,11 @@ class PacketHandlerL3(
         Remove IPv4 multicast group from the list stack listens on.
         """
 
-        with self._lock__multicast:
-            old = self._ip4_multicast_filters[ip4_multicast]
-            del self._ip4_multicast_filters[ip4_multicast]
+        old = self._ip4_multicast_filters[ip4_multicast]
+        del self._ip4_multicast_filters[ip4_multicast]
 
-            __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
-            # RFC 3376 §5.1 — announce the departure with a state-change
-            # Report describing the 'old'→INCLUDE{} transition.
-            self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)
+        # RFC 3376 §5.1 — announce the departure with a state-change
+        # Report describing the 'old'→INCLUDE{} transition.
+        self._send_igmp_state_change(ip4_multicast, old=old, new=_IP4_MULTICAST__NONMEMBER)

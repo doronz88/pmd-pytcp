@@ -32,9 +32,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import os
-import threading
 import time
 from collections import deque
 from collections.abc import Iterable
@@ -69,6 +69,7 @@ from pmd_pytcp.socket import (
     UDP_NO_CHECK6_TX,
     AddressFamily,
     SocketType,
+    _sem_acquire,
     gaierror,
     socket,
 )
@@ -121,13 +122,13 @@ class UdpSocket(socket):
         self._local_port = 0
         self._remote_port = 0
         self._packet_rx_md: list[UdpMetadata] = []
-        self._packet_rx_md_ready = threading.Semaphore(0)
+        self._packet_rx_md_ready = asyncio.Semaphore(0)
         self._unreachable = False
         # Per-socket ICMP error queue (RFC 1122 §4.1.3.3 surface
         # via Linux IP_RECVERR / IPV6_RECVERR). FIFO-drop on
         # overflow at 'ERROR_QUEUE__MAX_LEN'.
         self._error_queue: deque[ErrorQueueEntry] = deque(maxlen=ERROR_QUEUE__MAX_LEN)
-        self._error_queue_ready = threading.Semaphore(0)
+        self._error_queue_ready = asyncio.Semaphore(0)
         # RFC 6935 §5 per-port zero-checksum opt-in for the
         # IPv6 alternative mode (tunnel encapsulations: LISP,
         # MPLS-in-UDP, Geneve, GTP-U, GRE-in-UDP, NSH-in-UDP).
@@ -377,7 +378,7 @@ class UdpSocket(socket):
         __debug__ and log("socket", f"<g>[{self}]</> - Bound")
 
     @override
-    def connect(self, address: tuple[str, int]) -> None:
+    async def connect(self, address: tuple[str, int]) -> None:
         """
         Connect local socket to remote socket.
         """
@@ -430,7 +431,7 @@ class UdpSocket(socket):
         return stack.egress_packet_handler(remote_ip_address)
 
     @override
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send the data to connected remote host.
         """
@@ -497,7 +498,7 @@ class UdpSocket(socket):
         return sent_data_len
 
     @override
-    def sendto(self, data: bytes, address: tuple[str, int]) -> int:
+    async def sendto(self, data: bytes, address: tuple[str, int]) -> int:
         """
         Send the data to remote host.
         """
@@ -565,7 +566,7 @@ class UdpSocket(socket):
         return sent_data_len
 
     @override
-    def sendmsg(
+    async def sendmsg(
         self,
         buffers: Iterable[bytes | bytearray | memoryview],
         ancdata: Iterable[tuple[int, int, bytes | bytearray | memoryview]] = (),
@@ -590,19 +591,19 @@ class UdpSocket(socket):
         payload = b"".join(bytes(buffer) for buffer in buffers)
 
         if address is not None:
-            return self.sendto(payload, address)
-        return self.send(payload)
+            return await self.sendto(payload, address)
+        return await self.send(payload)
 
     @override
-    def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
+    async def recv(self, bufsize: int | None = None, timeout: float | None = None) -> bytes:
         """
         Read data from socket.
         """
 
-        return bytes(self.recv__mv(bufsize=bufsize, timeout=timeout))
+        return bytes(await self.recv__mv(bufsize=bufsize, timeout=timeout))
 
     @override
-    def recv__mv(self, bufsize: int | None = None, timeout: float | None = None) -> memoryview:
+    async def recv__mv(self, bufsize: int | None = None, timeout: float | None = None) -> memoryview:
         """
         Read data from socket as a memoryview.
         """
@@ -619,9 +620,9 @@ class UdpSocket(socket):
         # blocking-forever vs non-blocking-EAGAIN.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
             data_rx = self._packet_rx_md.pop(0).udp__data
@@ -630,13 +631,6 @@ class UdpSocket(socket):
             # the entire datagram is consumed regardless.
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            if not self._packet_rx_md:
-                self._drain_readable()
-                # Producer race: a packet handler may have appended
-                # between the empty-check and the drain; re-check
-                # under the GIL and re-signal so the selector wakes.
-                if self._packet_rx_md:
-                    self._signal_readable()
             __debug__ and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
@@ -648,17 +642,17 @@ class UdpSocket(socket):
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
     @override
-    def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
+    async def recvfrom(self, bufsize: int | None = None, timeout: float | None = None) -> tuple[bytes, tuple[str, int]]:
         """
         Read data from socket.
         """
 
-        _bytes, (remote_ip, remote_port) = self.recvfrom__mv(bufsize=bufsize, timeout=timeout)
+        _bytes, (remote_ip, remote_port) = await self.recvfrom__mv(bufsize=bufsize, timeout=timeout)
 
         return bytes(_bytes), (remote_ip, remote_port)
 
     @override
-    def recvfrom__mv(
+    async def recvfrom__mv(
         self, bufsize: int | None = None, timeout: float | None = None
     ) -> tuple[memoryview, tuple[str, int]]:
         """
@@ -670,19 +664,15 @@ class UdpSocket(socket):
         # blocking-forever vs non-blocking-EAGAIN.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
             data_rx = packet_rx_md.udp__data
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            if not self._packet_rx_md:
-                self._drain_readable()
-                if self._packet_rx_md:
-                    self._signal_readable()
             __debug__ and log(
                 "socket",
                 f"<B><g>[{self}]</> - <lg>Received</> {len(data_rx)} bytes of data",
@@ -700,7 +690,7 @@ class UdpSocket(socket):
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
     @override
-    def recvmsg(
+    async def recvmsg(
         self,
         bufsize: int | None = None,
         ancbufsize: int = 0,
@@ -732,26 +722,22 @@ class UdpSocket(socket):
         """
 
         if flags & MSG_ERRQUEUE:
-            return self._recvmsg_errqueue(ancbufsize=ancbufsize, timeout=timeout)
+            return await self._recvmsg_errqueue(ancbufsize=ancbufsize, timeout=timeout)
 
         # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
         # supplies the default; otherwise the blocking flag picks
         # blocking-forever vs non-blocking-EAGAIN.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._packet_rx_md_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, blocking=False)
         else:
-            acquired = self._packet_rx_md_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
             packet_rx_md = self._packet_rx_md.pop(0)
             data_rx = packet_rx_md.udp__data
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            if not self._packet_rx_md:
-                self._drain_readable()
-                if self._packet_rx_md:
-                    self._signal_readable()
 
             ancdata: list[tuple[int, int, bytes]] = []
             if self._ip_recvopts and packet_rx_md.ip4__options is not None and ancbufsize > 0:
@@ -814,7 +800,7 @@ class UdpSocket(socket):
             raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
         raise TimeoutError("UDP Socket - Receive operation timed out.")
 
-    def _recvmsg_errqueue(
+    async def _recvmsg_errqueue(
         self,
         *,
         ancbufsize: int,
@@ -839,9 +825,9 @@ class UdpSocket(socket):
 
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
-            acquired = self._error_queue_ready.acquire(blocking=False)
+            acquired = await _sem_acquire(self._error_queue_ready, blocking=False)
         else:
-            acquired = self._error_queue_ready.acquire(timeout=effective_timeout)
+            acquired = await _sem_acquire(self._error_queue_ready, timeout=effective_timeout)
 
         if not acquired:
             if effective_timeout is None and not self._blocking:
@@ -887,12 +873,10 @@ class UdpSocket(socket):
         already been closed.
         """
 
-        with self._lock__io:
-            if self._closed:
-                return
-            self._packet_rx_md.append(packet_rx_md)
-            self._packet_rx_md_ready.release()
-        self._signal_readable()
+        if self._closed:
+            return
+        self._packet_rx_md.append(packet_rx_md)
+        self._packet_rx_md_ready.release()
 
     def _is_recverr_enabled(self) -> bool:
         """
@@ -1031,10 +1015,12 @@ class UdpSocket(socket):
         )
         return self._plpmtud_adapter
 
-    def probe_pmtu(self, *, size: int | None = None) -> int | None:
+    async def probe_pmtu(self, *, size: int | None = None) -> int | None:
         """
         Emit a PLPMTUD probe datagram to the socket's connected
-        peer. Returns the probe size (in bytes, including IP +
+        peer. A coroutine because it awaits 'sendto' on the
+        pure-asyncio send path. Returns the probe size (in bytes,
+        including IP +
         UDP headers) if a probe was emitted, or None when:
 
         - The socket has no connected destination
@@ -1066,7 +1052,7 @@ class UdpSocket(socket):
         udp_payload_size = max(chosen_size - ip_overhead - 8, 0)
         payload = b"\x00" * udp_payload_size
         try:
-            self.sendto(payload, (str(self._remote_ip_address), self._remote_port))
+            await self.sendto(payload, (str(self._remote_ip_address), self._remote_port))
         except OSError:
             # Sendto failed (e.g. routing); clear the in-flight
             # slot so the application can retry.

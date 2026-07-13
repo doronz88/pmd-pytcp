@@ -38,6 +38,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
 
 from pmd_pytcp.ipc.ipc__client import IpcClient
@@ -53,16 +54,16 @@ class TestIpcSocketSession(IpcControlTestCase):
     The daemon-side per-client socket-session integration tests.
     """
 
-    def _raw_client(self) -> IpcClient:
+    async def _raw_client(self) -> IpcClient:
         """
         Open a raw IPC client against the server and register its close.
         """
 
-        client = IpcClient(socket_path=self._socket_path)
+        client = await IpcClient(socket_path=self._socket_path).open()
         self.addCleanup(client.close)
         return client
 
-    def _open(
+    async def _open(
         self,
         client: IpcClient,
         /,
@@ -75,7 +76,7 @@ class TestIpcSocketSession(IpcControlTestCase):
         and its passed data-channel fd.
         """
 
-        return client.request_with_fd(
+        return await client.request_with_fd(
             IpcOp.SOCKET_CALL,
             body=encode_socket_request(
                 method="socket",
@@ -84,7 +85,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             ),
         )
 
-    def _call(
+    async def _call(
         self,
         client: IpcClient,
         /,
@@ -98,12 +99,12 @@ class TestIpcSocketSession(IpcControlTestCase):
         response message.
         """
 
-        return client.request(
+        return await client.request(
             IpcOp.SOCKET_CALL,
             body=encode_socket_request(method=method, handle=handle, args=args),
         )
 
-    def test__ipc__socket__open_returns_handle_and_fd(self) -> None:
+    async def test__ipc__socket__open_returns_handle_and_fd(self) -> None:
         """
         Ensure the 'socket' call returns an integer handle and passes a
         working data-channel descriptor, so the client gets a real fd
@@ -112,8 +113,8 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._raw_client()
-        response, fd = self._open(client)
+        client = await self._raw_client()
+        response, fd = await self._open(client)
         self.assertIsNotNone(fd, msg="The 'socket' call must pass a data-channel fd.")
         assert fd is not None
         data_end = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=fd)
@@ -125,7 +126,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="The 'socket' call must return handle 0 with a working AF_UNIX data-channel fd.",
         )
 
-    def test__ipc__socket__dgram_open_returns_dgram_fd(self) -> None:
+    async def test__ipc__socket__dgram_open_returns_dgram_fd(self) -> None:
         """
         Ensure a DGRAM 'socket' call returns a handle and passes a
         working SOCK_DGRAM data-channel descriptor.
@@ -133,8 +134,8 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._raw_client()
-        response, fd = self._open(client, socket_type=SocketType.DGRAM)
+        client = await self._raw_client()
+        response, fd = await self._open(client, socket_type=SocketType.DGRAM)
         self.assertIsNotNone(fd, msg="The DGRAM 'socket' call must pass a data-channel fd.")
         assert fd is not None
         data_end = socket.socket(fileno=fd)
@@ -146,7 +147,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="A DGRAM socket() must return handle 0 with a working SOCK_DGRAM data-channel fd.",
         )
 
-    def test__ipc__socket__dgram_bind_then_getsockname(self) -> None:
+    async def test__ipc__socket__dgram_bind_then_getsockname(self) -> None:
         """
         Ensure a bind on a DGRAM handle is reflected by a subsequent
         getsockname over the same handle.
@@ -154,13 +155,13 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: RFC 768 (UDP — local socket addressing).
         """
 
-        client = self._raw_client()
-        _, fd = self._open(client, socket_type=SocketType.DGRAM)
+        client = await self._raw_client()
+        _, fd = await self._open(client, socket_type=SocketType.DGRAM)
         assert fd is not None
         self.addCleanup(socket.socket(fileno=fd).close)
 
-        self._call(client, method="bind", handle=0, args={"address": ("0.0.0.0", 41001)})
-        response = self._call(client, method="getsockname", handle=0, args={})
+        await self._call(client, method="bind", handle=0, args={"address": ("0.0.0.0", 41001)})
+        response = await self._call(client, method="getsockname", handle=0, args={})
 
         self.assertEqual(
             decode_socket_value(response.body),
@@ -168,7 +169,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="getsockname must reflect the address bound on a DGRAM handle.",
         )
 
-    def test__ipc__socket__bind_then_getsockname(self) -> None:
+    async def test__ipc__socket__bind_then_getsockname(self) -> None:
         """
         Ensure a bind on a handle is reflected by a subsequent
         getsockname over the same handle.
@@ -176,13 +177,13 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
-        client = self._raw_client()
-        _, fd = self._open(client)
+        client = await self._raw_client()
+        _, fd = await self._open(client)
         assert fd is not None
         self.addCleanup(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=fd).close)
 
-        self._call(client, method="bind", handle=0, args={"address": ("0.0.0.0", 40001)})
-        response = self._call(client, method="getsockname", handle=0, args={})
+        await self._call(client, method="bind", handle=0, args={"address": ("0.0.0.0", 40001)})
+        response = await self._call(client, method="getsockname", handle=0, args={})
 
         self.assertEqual(
             decode_socket_value(response.body),
@@ -190,7 +191,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="getsockname must reflect the address bound over the same handle.",
         )
 
-    def test__ipc__socket__setsockopt_getsockopt_round_trip(self) -> None:
+    async def test__ipc__socket__setsockopt_getsockopt_round_trip(self) -> None:
         """
         Ensure a setsockopt on a handle is observable via getsockopt over
         the same handle.
@@ -198,15 +199,15 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: RFC 1122 §4.2.3.6 (TCP keep-alive SO_KEEPALIVE).
         """
 
-        client = self._raw_client()
-        _, fd = self._open(client)
+        client = await self._raw_client()
+        _, fd = await self._open(client)
         assert fd is not None
         self.addCleanup(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=fd).close)
 
-        self._call(
+        await self._call(
             client, method="setsockopt", handle=0, args={"level": SOL_SOCKET, "optname": SO_KEEPALIVE, "value": 1}
         )
-        response = self._call(
+        response = await self._call(
             client, method="getsockopt", handle=0, args={"level": SOL_SOCKET, "optname": SO_KEEPALIVE}
         )
 
@@ -216,7 +217,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="getsockopt must read back the value set by setsockopt over the same handle.",
         )
 
-    def test__ipc__socket__unknown_handle_errors(self) -> None:
+    async def test__ipc__socket__unknown_handle_errors(self) -> None:
         """
         Ensure a handle-keyed call against an unallocated handle returns
         a RESPONSE_ERROR rather than acting on an unrelated socket.
@@ -224,8 +225,8 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._raw_client()
-        response = self._call(client, method="getsockname", handle=999, args={})
+        client = await self._raw_client()
+        response = await self._call(client, method="getsockname", handle=999, args={})
 
         self.assertEqual(
             response.kind,
@@ -233,7 +234,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="A call against an unknown handle must return a RESPONSE_ERROR.",
         )
 
-    def test__ipc__socket__close_releases_handle(self) -> None:
+    async def test__ipc__socket__close_releases_handle(self) -> None:
         """
         Ensure closing a handle frees it, so a later call against the
         same handle errors.
@@ -241,14 +242,14 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._raw_client()
-        _, fd = self._open(client)
+        client = await self._raw_client()
+        _, fd = await self._open(client)
         assert fd is not None
         data_end = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=fd)
         self.addCleanup(data_end.close)
 
-        close_response = self._call(client, method="close", handle=0, args={})
-        reuse_response = self._call(client, method="getsockname", handle=0, args={})
+        close_response = await self._call(client, method="close", handle=0, args={})
+        reuse_response = await self._call(client, method="getsockname", handle=0, args={})
 
         self.assertEqual(
             (close_response.kind, reuse_response.kind),
@@ -256,7 +257,7 @@ class TestIpcSocketSession(IpcControlTestCase):
             msg="close must succeed and release the handle so a later call against it errors.",
         )
 
-    def test__ipc__socket__disconnect_reaps_open_sockets(self) -> None:
+    async def test__ipc__socket__disconnect_reaps_open_sockets(self) -> None:
         """
         Ensure a client disconnect reaps its still-open sockets: the
         daemon-side bridge end closes, surfacing as EOF on the client's
@@ -265,17 +266,22 @@ class TestIpcSocketSession(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._raw_client()
-        _, fd = self._open(client)
+        client = await self._raw_client()
+        _, fd = await self._open(client)
         assert fd is not None
         data_end = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=fd)
-        data_end.settimeout(5.0)
+        data_end.setblocking(False)
         self.addCleanup(data_end.close)
 
         client.close()
 
+        # The daemon reaps the socket on its own per-client task, so the
+        # recv must run on the loop (not block it) for the EOF to surface.
+        loop = asyncio.get_running_loop()
+        received = await asyncio.wait_for(loop.sock_recv(data_end, 8), timeout=5.0)
+
         self.assertEqual(
-            data_end.recv(8),
+            received,
             b"",
             msg="Disconnect must reap the socket, closing the daemon bridge end (EOF on the client fd).",
         )

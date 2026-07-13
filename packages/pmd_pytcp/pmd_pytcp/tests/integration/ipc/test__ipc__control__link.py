@@ -41,7 +41,7 @@ class TestIpcControlLink(IpcControlTestCase):
     The out-of-process link control-mirror tests.
     """
 
-    def test__ipc__control__link_list_interfaces_matches_in_process(self) -> None:
+    async def test__ipc__control__link_list_interfaces_matches_in_process(self) -> None:
         """
         Ensure an out-of-process list_interfaces returns the same
         ifindex set the in-process link API reports.
@@ -49,15 +49,15 @@ class TestIpcControlLink(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.link.list_interfaces(),
+            await client.link.list_interfaces(),
             stack.link.list_interfaces(),
             msg="A client list_interfaces must match the in-process ifindex set.",
         )
 
-    def test__ipc__control__link_read_properties_match_in_process(self) -> None:
+    async def test__ipc__control__link_read_properties_match_in_process(self) -> None:
         """
         Ensure the per-interface read properties (mtu, mac_address,
         is_running, interface_layer, flags, stats) read out of process
@@ -67,18 +67,18 @@ class TestIpcControlLink(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
         remote = client.link.interface(self._ifindex)
         local = stack.link.interface(self._ifindex)
 
         self.assertEqual(
             (
-                remote.mtu,
-                remote.mac_address,
-                remote.is_running,
-                remote.interface_layer,
-                remote.flags,
-                remote.stats,
+                await remote.mtu,
+                await remote.mac_address,
+                await remote.is_running,
+                await remote.interface_layer,
+                await remote.flags,
+                await remote.stats,
             ),
             (
                 local.mtu,
@@ -91,7 +91,7 @@ class TestIpcControlLink(IpcControlTestCase):
             msg="The client link read properties must match the in-process values.",
         )
 
-    def test__ipc__control__link_set_mtu_mutates_daemon_state(self) -> None:
+    async def test__ipc__control__link_set_mtu_mutates_daemon_state(self) -> None:
         """
         Ensure an out-of-process set_mtu mutates the real daemon
         interface, visible to a subsequent in-process mtu read.
@@ -99,9 +99,9 @@ class TestIpcControlLink(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
-        client.link.interface(self._ifindex).set_mtu(mtu=1400)
+        await client.link.interface(self._ifindex).set_mtu(mtu=1400)
 
         self.assertEqual(
             stack.link.interface(self._ifindex).mtu,

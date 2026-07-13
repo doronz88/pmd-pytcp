@@ -44,7 +44,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -56,7 +56,7 @@ _ADDR_B = Ip4Address("10.0.0.2")
 _MAC_A = MacAddress("02:00:00:00:00:01")
 
 
-class _PerIfaceFixture(TestCase):
+class _PerIfaceFixture(IsolatedAsyncioTestCase):
     """
     Two NeighborCache instances — one bound to '_iface_name =
     "tap_a"', the other to '"tap_b"' — let each test pin the
@@ -169,8 +169,8 @@ class TestNeighborSysctlPerInterface(_PerIfaceFixture):
         # 6 s elapsed. Cache A's per-iface threshold (5) has
         # passed; cache B's default (30) has not.
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1006.0):
-            self._cache_a._subsystem_loop()
-            self._cache_b._subsystem_loop()
+            self._cache_a.run_maintenance_once()
+            self._cache_b.run_maintenance_once()
 
         self.assertIs(
             self._cache_a._entries[_ADDR_A].state,

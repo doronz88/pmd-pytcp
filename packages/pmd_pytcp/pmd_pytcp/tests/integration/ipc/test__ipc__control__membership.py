@@ -44,7 +44,7 @@ class TestIpcControlMembership(IpcControlTestCase):
     The out-of-process membership control-mirror tests.
     """
 
-    def test__ipc__control__membership_list_matches_in_process(self) -> None:
+    async def test__ipc__control__membership_list_matches_in_process(self) -> None:
         """
         Ensure an out-of-process list_memberships returns the same group
         set the in-process API reports.
@@ -52,15 +52,15 @@ class TestIpcControlMembership(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.membership.interface(self._ifindex).list_memberships(),
+            await client.membership.interface(self._ifindex).list_memberships(),
             stack.membership.interface(self._ifindex).list_memberships(),
             msg="A client list_memberships must match the in-process group set.",
         )
 
-    def test__ipc__control__membership_join_reflected_in_process(self) -> None:
+    async def test__ipc__control__membership_join_reflected_in_process(self) -> None:
         """
         Ensure an out-of-process join adds the operator hold on the real
         daemon interface, visible to a subsequent in-process membership
@@ -69,9 +69,9 @@ class TestIpcControlMembership(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
-        client.membership.interface(self._ifindex).join(group=_GROUP)
+        await client.membership.interface(self._ifindex).join(group=_GROUP)
 
         self.assertIn(
             _GROUP,
@@ -79,7 +79,7 @@ class TestIpcControlMembership(IpcControlTestCase):
             msg="A client join must add the group to the daemon interface.",
         )
 
-    def test__ipc__control__membership_leave_reflected_in_process(self) -> None:
+    async def test__ipc__control__membership_leave_reflected_in_process(self) -> None:
         """
         Ensure an out-of-process leave drops the operator hold on the
         real daemon interface, removing the group from a subsequent
@@ -88,10 +88,10 @@ class TestIpcControlMembership(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
-        client.membership.interface(self._ifindex).join(group=_GROUP)
+        client = await self._connect()
+        await client.membership.interface(self._ifindex).join(group=_GROUP)
 
-        client.membership.interface(self._ifindex).leave(group=_GROUP)
+        await client.membership.interface(self._ifindex).leave(group=_GROUP)
 
         self.assertNotIn(
             _GROUP,

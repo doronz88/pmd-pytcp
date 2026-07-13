@@ -79,19 +79,18 @@ class Ip4TxHandler:
     def _next_ip4_id(self) -> int:
         """
         Generate the next IPv4 Identification value for this
-        interface — an atomic, 16-bit-masked pre-increment of the
+        interface — a 16-bit-masked pre-increment of the
         per-interface counter. Masking wraps 0xFFFF -> 0 instead of
-        overflowing the 16-bit wire field; the lock makes the
-        read-modify-write atomic so concurrent fragmented sends never
-        collide on an Identification (which would corrupt reassembly
-        at the peer).
+        overflowing the 16-bit wire field; the read-modify-write is
+        single-writer by construction (every send runs on the one
+        stack event loop), so fragmented sends never collide on an
+        Identification (which would corrupt reassembly at the peer).
 
         Reference: RFC 791 §2.3 (Identification field).
         """
 
-        with self._if._lock__ip4_id:
-            self._if._ip4_id = (self._if._ip4_id + 1) & 0xFFFF
-            return self._if._ip4_id
+        self._if._ip4_id = (self._if._ip4_id + 1) & 0xFFFF
+        return self._if._ip4_id
 
     def _phtx_ip4(
         self,

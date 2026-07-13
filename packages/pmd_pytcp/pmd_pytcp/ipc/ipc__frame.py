@@ -33,6 +33,17 @@ codec core — it depends only on the standard library and 'pmd_net_proto'
 into a standalone dist (see docs/refactor/kernel_userspace_separation.md
 §2).
 
+Pure-asyncio transport ('docs/refactor/pure_asyncio.md'): each helper
+comes in two flavours. The daemon side runs over asyncio streams
+('recv_frame' on a 'StreamReader', 'send_frame' on a 'StreamWriter') —
+its inbound requests never carry descriptors, so stream buffering is
+safe there. The client side runs over a raw non-blocking socket via the
+loop's sock APIs ('recv_frame_from_socket', 'send_frame_to_socket'):
+the response stream can carry SCM_RIGHTS descriptors, which an
+eagerly-buffering 'StreamReader' would silently drop (the transport's
+plain 'recv' discards ancillary data), so no transport may own the
+client's connection socket.
+
 pmd_pytcp/ipc/ipc__frame.py
 
 ver 3.0.7
@@ -40,6 +51,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import struct
 
@@ -66,17 +78,45 @@ def pack_frame(payload: Buffer, /) -> bytes:
     return struct.pack(IPC__FRAME__LENGTH_PREFIX_STRUCT, length) + bytes(payload)
 
 
-def send_frame(sock: socket.socket, payload: Buffer, /) -> None:
+def unpack_frame_length(prefix: bytes, /) -> int:
     """
-    Write a single length-prefixed frame to the stream socket.
+    Decode and bound-check the 4-byte length prefix, shared by every
+    read flavour (stream, socket, fd-bearing).
     """
 
-    sock.sendall(pack_frame(payload))
+    length = int(struct.unpack(IPC__FRAME__LENGTH_PREFIX_STRUCT, prefix)[0])
+
+    if length > IPC__FRAME__MAX_PAYLOAD_LEN:
+        raise IpcFrameError(
+            f"Frame length prefix {length} exceeds the maximum " f"of {IPC__FRAME__MAX_PAYLOAD_LEN} bytes.",
+        )
+
+    return length
 
 
-def recv_frame(sock: socket.socket, /) -> bytes | None:
+async def send_frame(writer: asyncio.StreamWriter, payload: Buffer, /) -> None:
     """
-    Read a single length-prefixed frame from the stream socket.
+    Write a single length-prefixed frame to the stream writer (the
+    daemon side).
+    """
+
+    writer.write(pack_frame(payload))
+    await writer.drain()
+
+
+async def send_frame_to_socket(sock: socket.socket, payload: Buffer, /) -> None:
+    """
+    Write a single length-prefixed frame to the non-blocking stream
+    socket via the loop's 'sock_sendall' (the client side, where no
+    transport may own the socket — see the module docstring).
+    """
+
+    await asyncio.get_running_loop().sock_sendall(sock, pack_frame(payload))
+
+
+async def recv_frame(reader: asyncio.StreamReader, /) -> bytes | None:
+    """
+    Read a single length-prefixed frame from the stream reader.
 
     Returns the payload bytes, or None when the peer closes the stream
     cleanly at a frame boundary (end of stream). Raises 'IpcFrameError'
@@ -84,7 +124,39 @@ def recv_frame(sock: socket.socket, /) -> bytes | None:
     the maximum.
     """
 
-    prefix = recv_exactly(sock, IPC__FRAME__LENGTH_PREFIX_LEN)
+    try:
+        prefix = await reader.readexactly(IPC__FRAME__LENGTH_PREFIX_LEN)
+    except asyncio.IncompleteReadError as error:
+        if not error.partial:
+            return None
+        raise IpcFrameError(
+            "Stream closed mid-frame while reading the 4-byte length prefix.",
+        ) from error
+
+    length = unpack_frame_length(prefix)
+
+    try:
+        payload = await reader.readexactly(length)
+    except asyncio.IncompleteReadError as error:
+        raise IpcFrameError(
+            f"Stream closed mid-frame: expected {length} payload bytes, " f"got {len(error.partial)}.",
+        ) from error
+
+    return payload
+
+
+async def recv_frame_from_socket(sock: socket.socket, /) -> bytes | None:
+    """
+    Read a single length-prefixed frame from a non-blocking stream
+    socket via the loop's sock APIs — the client-side flavour, used on
+    connections whose inbound stream can also carry SCM_RIGHTS
+    descriptors (so no 'StreamReader' may own the socket).
+
+    Same contract as 'recv_frame': the payload bytes, None on a clean
+    boundary EOF, 'IpcFrameError' on truncation / oversize.
+    """
+
+    prefix = await recv_exactly(sock, IPC__FRAME__LENGTH_PREFIX_LEN)
 
     if len(prefix) == 0:
         return None
@@ -94,14 +166,9 @@ def recv_frame(sock: socket.socket, /) -> bytes | None:
             "Stream closed mid-frame while reading the 4-byte length prefix.",
         )
 
-    length = int(struct.unpack(IPC__FRAME__LENGTH_PREFIX_STRUCT, prefix)[0])
+    length = unpack_frame_length(prefix)
 
-    if length > IPC__FRAME__MAX_PAYLOAD_LEN:
-        raise IpcFrameError(
-            f"Frame length prefix {length} exceeds the maximum " f"of {IPC__FRAME__MAX_PAYLOAD_LEN} bytes.",
-        )
-
-    payload = recv_exactly(sock, length)
+    payload = await recv_exactly(sock, length)
 
     if len(payload) < length:
         raise IpcFrameError(
@@ -111,20 +178,23 @@ def recv_frame(sock: socket.socket, /) -> bytes | None:
     return payload
 
 
-def recv_exactly(sock: socket.socket, count: int, /) -> bytes:
+async def recv_exactly(sock: socket.socket, count: int, /) -> bytes:
     """
-    Read exactly 'count' bytes from the stream, looping over partial
-    reads. Returns fewer than 'count' bytes only when the peer closes
-    the stream before 'count' bytes arrive — the caller distinguishes a
-    clean boundary EOF (zero bytes) from a mid-frame truncation (a
-    non-zero short read) by the returned length.
+    Read exactly 'count' bytes from the non-blocking stream socket,
+    looping over partial reads via the loop's 'sock_recv'. Returns fewer
+    than 'count' bytes only when the peer closes the stream before
+    'count' bytes arrive — the caller distinguishes a clean boundary EOF
+    (zero bytes) from a mid-frame truncation (a non-zero short read) by
+    the returned length.
     """
+
+    loop = asyncio.get_running_loop()
 
     chunks: list[bytes] = []
     remaining = count
 
     while remaining > 0:
-        chunk = sock.recv(remaining)
+        chunk = await loop.sock_recv(sock, remaining)
         if not chunk:
             break
         chunks.append(chunk)

@@ -35,7 +35,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
+import asyncio
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr
 from pmd_pytcp.stack import sysctl as sysctl_module
@@ -60,7 +60,7 @@ class TestIcmp6Nd__DadConflictCallback(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__dad_conflict_callback__fires_on_collision(self) -> None:
+    async def test__icmp6__nd__dad_conflict_callback__fires_on_collision(self) -> None:
         """
         Ensure the 'on_conflict' callback is invoked with the
         conflicting address when DAD fails for a claimed host.
@@ -82,12 +82,12 @@ class TestIcmp6Nd__DadConflictCallback(NdTestCase):
 
         with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                threading.Timer(0.005, _trigger_conflict).start()
-                thread = self._packet_handler._claim_ip6_address_async(
+                asyncio.get_running_loop().call_later(0.005, _trigger_conflict)
+                task = self._packet_handler._claim_ip6_address_async(
                     ip6_host=_CANDIDATE_HOST,
                     on_conflict=_on_conflict,
                 )
-                thread.join(timeout=5.0)
+                await task
 
         self.assertEqual(
             conflicts,
@@ -95,7 +95,7 @@ class TestIcmp6Nd__DadConflictCallback(NdTestCase):
             msg="on_conflict must fire once with the conflicting address on DAD failure.",
         )
 
-    def test__icmp6__nd__dad_conflict_callback__silent_on_success(self) -> None:
+    async def test__icmp6__nd__dad_conflict_callback__silent_on_success(self) -> None:
         """
         Ensure the 'on_conflict' callback is not invoked when DAD
         succeeds (no peer conflict during the probe window).
@@ -110,11 +110,11 @@ class TestIcmp6Nd__DadConflictCallback(NdTestCase):
 
         with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
-                thread = self._packet_handler._claim_ip6_address_async(
+                task = self._packet_handler._claim_ip6_address_async(
                     ip6_host=_CANDIDATE_HOST,
                     on_conflict=_on_conflict,
                 )
-                thread.join(timeout=5.0)
+                await task
 
         self.assertEqual(conflicts, [], msg="on_conflict must stay silent when DAD succeeds.")
         self.assertIn(

@@ -49,6 +49,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import time
 from enum import Enum
 from typing import Callable
@@ -155,7 +156,7 @@ class Ip4LinkLocal(Subsystem):
             self._state = Ip4LinkLocalState.INIT
 
     @override
-    def _subsystem_loop(self) -> None:
+    async def _subsystem_loop(self) -> None:
         """
         One FSM tick. The DHCPv4 reconciler (RFC 3927 §1.9 /
         §2.11) runs first so a fresh DHCP-bind / DHCP-loss
@@ -166,15 +167,15 @@ class Ip4LinkLocal(Subsystem):
         if self._state == Ip4LinkLocalState.INIT:
             self._do_init()
         elif self._state == Ip4LinkLocalState.CLAIMING:
-            self._do_claiming()
+            await self._do_claiming()
         elif self._state == Ip4LinkLocalState.BOUND:
             # RFC 3927 §2.5 ongoing defense — poll the ACD engine's
             # packet socket for a post-claim conflict and run the
             # defend / abandon decision (no longer callback-driven
             # from the stack's ARP RX path; the ACD socket is the
             # Linux conflict-detection surface).
-            if (peer_mac := self._acd.poll_conflict()) is not None:
-                self._handle_bound_conflict(peer_mac)
+            if (peer_mac := await self._acd.poll_conflict()) is not None:
+                await self._handle_bound_conflict(peer_mac)
         elif self._state == Ip4LinkLocalState.HALTED:
             pass
 
@@ -201,7 +202,7 @@ class Ip4LinkLocal(Subsystem):
         )
         self._state = Ip4LinkLocalState.CLAIMING
 
-    def _do_claiming(self) -> None:
+    async def _do_claiming(self) -> None:
         """
         Run the RFC 3927 §2.2 probe + §2.4 announce via the ACD
         engine ('Ip4Acd.claim'). On clean claim the engine holds
@@ -216,7 +217,7 @@ class Ip4LinkLocal(Subsystem):
 
         assert self._candidate is not None, "_do_claiming requires a candidate from _do_init"
 
-        result = self._acd.claim(address=self._candidate.address)
+        result = await self._acd.claim(address=self._candidate.address)
         if result.success:
             self._conflict_count = 0
             self._defend_history = []
@@ -228,9 +229,9 @@ class Ip4LinkLocal(Subsystem):
             )
             return
 
-        self._on_claim_conflict()
+        await self._on_claim_conflict()
 
-    def _on_claim_conflict(self) -> None:
+    async def _on_claim_conflict(self) -> None:
         """
         Probe-conflict retry handler. Bumps the conflict
         counter, clears the candidate so the next INIT tick
@@ -252,11 +253,11 @@ class Ip4LinkLocal(Subsystem):
                 f"<lg>Link-Local</>: MAX_CONFLICTS reached; sleeping "
                 f"{ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL}s",
             )
-            time.sleep(ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL)
+            await asyncio.sleep(ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL)
             self._conflict_count = 0
         self._state = Ip4LinkLocalState.INIT
 
-    def _handle_bound_conflict(self, peer_mac: MacAddress) -> None:
+    async def _handle_bound_conflict(self, peer_mac: MacAddress) -> None:
         """
         Handle a post-claim ARP conflict for our BOUND address,
         detected by polling the ACD engine ('Ip4Acd.poll_conflict').
@@ -274,8 +275,8 @@ class Ip4LinkLocal(Subsystem):
             the ACD claim, clear the candidate, bump the conflict
             counter, and transition to INIT for a fresh reconfigure.
 
-        Runs on the subsystem-loop thread (the BOUND tick polls),
-        so there is no cross-thread race with the FSM state.
+        Runs on the subsystem-loop task (the BOUND tick polls),
+        so there is no concurrent access to the FSM state.
         """
 
         assert self._candidate is not None, "_handle_bound_conflict requires a bound candidate"
@@ -287,7 +288,7 @@ class Ip4LinkLocal(Subsystem):
         if not recent:
             # §2.5(b): defend.
             self._defend_history.append(now)
-            self._acd.defend()
+            await self._acd.defend()
             __debug__ and log(
                 "stack",
                 f"<lg>Link-Local</>: defended {address} " f"against {peer_mac} (RFC 3927 §2.5(b))",

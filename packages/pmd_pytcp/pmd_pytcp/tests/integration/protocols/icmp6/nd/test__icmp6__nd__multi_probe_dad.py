@@ -40,7 +40,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
+import asyncio
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_net_addr import Ip6Address
 from pmd_net_proto import (
@@ -98,7 +99,7 @@ class TestIcmp6Nd__MultiProbeDad__Default(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__dad__default_emits_one_probe(self) -> None:
+    async def test__icmp6__nd__dad__default_emits_one_probe(self) -> None:
         """
         Ensure 'icmp6.dad_transmits = 1' (the registered
         default) drives a single DAD probe through the
@@ -108,7 +109,7 @@ class TestIcmp6Nd__MultiProbeDad__Default(NdTestCase):
         """
 
         with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
-            result = self._packet_handler._perform_ip6_nd_dad(
+            result = await self._packet_handler._perform_ip6_nd_dad(
                 ip6_unicast_candidate=_CANDIDATE,
             )
 
@@ -137,7 +138,7 @@ class TestIcmp6Nd__MultiProbeDad__TransmitsTwo(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__dad__dad_transmits_2_emits_two_probes(self) -> None:
+    async def test__icmp6__nd__dad__dad_transmits_2_emits_two_probes(self) -> None:
         """
         Ensure 'icmp6.dad_transmits = 2' produces exactly two
         DAD probes — the multi-probe form §5.1 admits.
@@ -147,7 +148,7 @@ class TestIcmp6Nd__MultiProbeDad__TransmitsTwo(NdTestCase):
 
         with sysctl_module.override("icmp6.default.dad_transmits", 2):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 10):
-                result = self._packet_handler._perform_ip6_nd_dad(
+                result = await self._packet_handler._perform_ip6_nd_dad(
                     ip6_unicast_candidate=_CANDIDATE,
                 )
 
@@ -177,7 +178,7 @@ class TestIcmp6Nd__MultiProbeDad__ConflictAbortsLoop(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__dad__conflict_during_loop_short_circuits(self) -> None:
+    async def test__icmp6__nd__dad__conflict_during_loop_short_circuits(self) -> None:
         """
         Ensure releasing the DAD conflict event before the
         second probe times out short-circuits the multi-probe
@@ -187,10 +188,10 @@ class TestIcmp6Nd__MultiProbeDad__ConflictAbortsLoop(NdTestCase):
         Reference: RFC 4862 §5.4.5 (DAD failure on duplicate detection).
         """
 
-        # Set the conflict event from a background thread ~5ms
-        # after the DAD call starts. Using a long retrans timer
+        # Set the conflict event from a loop callback ~5ms after
+        # the DAD coroutine starts. Using a long retrans timer
         # (200ms) so the wait actually blocks long enough for the
-        # background set to land before the first probe's wait
+        # scheduled signal to land before the first probe's wait
         # would otherwise time out.
         def _trigger_conflict() -> None:
             self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
@@ -201,8 +202,8 @@ class TestIcmp6Nd__MultiProbeDad__ConflictAbortsLoop(NdTestCase):
 
         with sysctl_module.override("icmp6.default.dad_transmits", 3):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                threading.Timer(0.005, _trigger_conflict).start()
-                result = self._packet_handler._perform_ip6_nd_dad(
+                asyncio.get_running_loop().call_later(0.005, _trigger_conflict)
+                result = await self._packet_handler._perform_ip6_nd_dad(
                     ip6_unicast_candidate=_CANDIDATE,
                 )
 

@@ -40,7 +40,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -52,7 +52,7 @@ from pmd_pytcp.runtime.tx_ring import TxRing
 from pmd_pytcp.stack import sysctl as sysctl_module
 
 
-class _ArpCacheFixture(TestCase):
+class _ArpCacheFixture(IsolatedAsyncioTestCase):
     """
     Build a fresh ArpCache, silence subsystem logs, restore
     sysctl defaults on tearDown.
@@ -182,7 +182,7 @@ class TestArpCacheKwargAPI(_ArpCacheFixture):
                     "wait",
                     return_value=False,
                 ):
-                    self._cache._subsystem_loop()
+                    self._cache.run_maintenance_once()
 
         self.assertIs(
             self._cache._entries[ip].state,

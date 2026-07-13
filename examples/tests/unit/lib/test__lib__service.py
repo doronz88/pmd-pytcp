@@ -30,17 +30,17 @@ examples/tests/unit/lib/test__lib__service.py
 ver 3.0.7
 """
 
-import threading
+import asyncio
 from typing import override
-from unittest import TestCase
-from unittest.mock import create_autospec, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, Mock, create_autospec, patch
 
 from examples.lib import service as service_module
 from examples.lib.service import Service
 from examples.lib.tcp_service import TcpService
 from examples.lib.udp_service import UdpService
-from net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
-from pytcp.socket import socket
+from pmd_net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr
+from pmd_pytcp.socket import socket
 
 
 class _StubService(Service):
@@ -53,13 +53,13 @@ class _StubService(Service):
     _protocol_name = "TCP"
 
     @override
-    def _thread__service(self) -> None:
+    async def _task__service(self) -> None:
         """
-        No-op service thread.
+        No-op service task.
         """
 
     @override
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         No-op service handler.
         """
@@ -74,7 +74,7 @@ class _StubTcpService(TcpService):
     _service_name = "Stub"
 
     @override
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         No-op service handler.
         """
@@ -89,13 +89,13 @@ class _StubUdpService(UdpService):
     _service_name = "Stub"
 
     @override
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         No-op service handler.
         """
 
 
-class TestServiceAcquireSocket(TestCase):
+class TestServiceAcquireSocket(IsolatedAsyncioTestCase):
     """
     The 'Service._acquire_service_socket' retry-until-available tests.
     """
@@ -103,16 +103,22 @@ class TestServiceAcquireSocket(TestCase):
     @override
     def setUp(self) -> None:
         """
-        Build a stub service with a mocked stop event and logger.
+        Build a stub service with a mocked stop event and logger. The
+        stop event is exercised only through its sync 'is_set()'; the
+        inter-attempt sleep is the async 'wait_event' helper in the
+        service module's namespace, patched per-test as an 'AsyncMock'.
         """
 
         self._service = _StubService()
-        self._event = create_autospec(threading.Event, spec_set=True)
+        self._event = Mock(spec_set=asyncio.Event)
         self._service._event__stop_subsystem = self._event
+        self._wait_event = self.enterContext(
+            patch.object(service_module, "wait_event", new=AsyncMock(return_value=False)),
+        )
         self._log = self.enterContext(patch.object(_StubService, "_log"))
         self._socket = create_autospec(socket, spec_set=True)
 
-    def test__lib__service__acquire_retries_until_socket_available(self) -> None:
+    async def test__lib__service__acquire_retries_until_socket_available(self) -> None:
         """
         Ensure '_acquire_service_socket' keeps retrying the bind and
         returns the socket once the stack finally owns the address,
@@ -127,7 +133,7 @@ class TestServiceAcquireSocket(TestCase):
             "_get_service_socket",
             side_effect=[None, None, self._socket],
         ) as get_socket:
-            result = self._service._acquire_service_socket()
+            result = await self._service._acquire_service_socket()
 
         self.assertIs(
             result,
@@ -139,11 +145,12 @@ class TestServiceAcquireSocket(TestCase):
             3,
             msg="Must retry '_get_service_socket' until it succeeds.",
         )
-        self._event.wait.assert_called_with(
-            timeout=service_module.SERVICE_SOCKET_RETRY__SEC,
+        self._wait_event.assert_awaited_with(
+            self._event,
+            service_module.SERVICE_SOCKET_RETRY__SEC,
         )
 
-    def test__lib__service__acquire_returns_none_when_stopped_first(self) -> None:
+    async def test__lib__service__acquire_returns_none_when_stopped_first(self) -> None:
         """
         Ensure '_acquire_service_socket' returns None without
         attempting a bind when the subsystem is already stopping.
@@ -153,7 +160,7 @@ class TestServiceAcquireSocket(TestCase):
 
         self._event.is_set.return_value = True
         with patch.object(_StubService, "_get_service_socket") as get_socket:
-            result = self._service._acquire_service_socket()
+            result = await self._service._acquire_service_socket()
 
         self.assertIsNone(
             result,
@@ -161,7 +168,7 @@ class TestServiceAcquireSocket(TestCase):
         )
         get_socket.assert_not_called()
 
-    def test__lib__service__acquire_stops_mid_retry(self) -> None:
+    async def test__lib__service__acquire_stops_mid_retry(self) -> None:
         """
         Ensure '_acquire_service_socket' breaks out of the retry
         loop and returns None when the stop event fires between
@@ -176,7 +183,7 @@ class TestServiceAcquireSocket(TestCase):
             "_get_service_socket",
             return_value=None,
         ) as get_socket:
-            result = self._service._acquire_service_socket()
+            result = await self._service._acquire_service_socket()
 
         self.assertIsNone(
             result,
@@ -189,14 +196,14 @@ class TestServiceAcquireSocket(TestCase):
         )
 
 
-class TestServiceThreadUsesRetry(TestCase):
+class TestServiceThreadUsesRetry(IsolatedAsyncioTestCase):
     """
-    The TCP/UDP service threads use the retrying acquire helper.
+    The TCP/UDP service tasks use the retrying acquire helper.
     """
 
-    def test__lib__tcp_service__thread_uses_acquire_helper(self) -> None:
+    async def test__lib__tcp_service__task_uses_acquire_helper(self) -> None:
         """
-        Ensure 'TcpService._thread__service' obtains its listening
+        Ensure 'TcpService._task__service' obtains its listening
         socket through the retrying '_acquire_service_socket' helper,
         not the one-shot '_get_service_socket'.
 
@@ -207,15 +214,15 @@ class TestServiceThreadUsesRetry(TestCase):
         with patch.object(
             _StubTcpService,
             "_acquire_service_socket",
-            return_value=None,
+            new=AsyncMock(return_value=None),
         ) as acquire:
-            svc._thread__service()
+            await svc._task__service()
 
-        acquire.assert_called_once_with()
+        acquire.assert_awaited_once_with()
 
-    def test__lib__udp_service__thread_uses_acquire_helper(self) -> None:
+    async def test__lib__udp_service__task_uses_acquire_helper(self) -> None:
         """
-        Ensure 'UdpService._thread__service' obtains its socket
+        Ensure 'UdpService._task__service' obtains its socket
         through the retrying '_acquire_service_socket' helper, not
         the one-shot '_get_service_socket'.
 
@@ -226,11 +233,11 @@ class TestServiceThreadUsesRetry(TestCase):
         with patch.object(
             _StubUdpService,
             "_acquire_service_socket",
-            return_value=None,
+            new=AsyncMock(return_value=None),
         ) as acquire:
-            svc._thread__service()
+            await svc._task__service()
 
-        acquire.assert_called_once_with()
+        acquire.assert_awaited_once_with()
 
 
 class _EchoStub(Service):
@@ -252,13 +259,13 @@ class _EchoStub(Service):
         super().__init__()
 
     @override
-    def _thread__service(self) -> None:
+    async def _task__service(self) -> None:
         """
-        No-op service thread.
+        No-op service task.
         """
 
     @override
-    def _service(self, *, socket: socket) -> None:
+    async def _service(self, *, socket: socket) -> None:
         """
         No-op service handler.
         """

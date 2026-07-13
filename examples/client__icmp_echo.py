@@ -37,7 +37,6 @@ ver 3.0.7
 
 import os
 import struct
-import threading
 from typing import Any, override
 
 import click
@@ -45,13 +44,14 @@ import click
 from examples.lib.client import Client
 from examples.lib.payload import payload
 from examples.stack import cli as stack_cli
-from net_addr import (
+from pmd_pytcp._compat import wait_event
+from pmd_net_addr import (
     ClickTypeIpAddress,
     Ip4Address,
     Ip6Address,
     IpVersion,
 )
-from net_proto.lib.inet_cksum import inet_cksum
+from pmd_net_proto.lib.inet_cksum import inet_cksum
 
 ICMP4__ECHO_REQUEST__TYPE = 8
 ICMP4__ECHO_REQUEST__CODE = 0
@@ -66,8 +66,6 @@ class IcmpEchoClient(Client):
 
     _protocol_name = "ICMP"
     _subsystem_name = f"{_protocol_name} Echo Client"
-
-    _event__stop_subsystem: threading.Event
 
     def __init__(
         self,
@@ -114,13 +112,12 @@ class IcmpEchoClient(Client):
         Create ICMP Echo Request message.
         """
 
-        match ip_version:
-            case IpVersion.IP6:
-                icmp_type = ICMP6_ECHO_REQUEST_TYPE
-                icmp_code = ICMP6_ECHO_REQUEST_CODE
-            case IpVersion.IP4:
-                icmp_type = ICMP4__ECHO_REQUEST__TYPE
-                icmp_code = ICMP4__ECHO_REQUEST__CODE
+        if ip_version is IpVersion.IP6:
+            icmp_type = ICMP6_ECHO_REQUEST_TYPE
+            icmp_code = ICMP6_ECHO_REQUEST_CODE
+        else:  # IpVersion.IP4
+            icmp_type = ICMP4__ECHO_REQUEST__TYPE
+            icmp_code = ICMP4__ECHO_REQUEST__CODE
 
         data = payload(length=message_size)
 
@@ -154,12 +151,12 @@ class IcmpEchoClient(Client):
         return header + data
 
     @override
-    def _thread__sender(self) -> None:
+    async def _task__sender(self) -> None:
         """
-        Thread used to send data.
+        Task used to send data.
         """
 
-        self._log("Started the sender thread.")
+        self._log("Started the sender task.")
 
         identifier = os.getpid() & 0xFFFF
 
@@ -175,7 +172,7 @@ class IcmpEchoClient(Client):
                 )
 
                 try:
-                    self._client_socket.send(icmp_message)
+                    await self._client_socket.send(icmp_message)
                 except OSError as error:
                     self._log(f"The 'send()' method failed. Error: {error!r}.")
                     break
@@ -190,7 +187,7 @@ class IcmpEchoClient(Client):
                 # until stopped; a positive count counts down to 0.
                 message_count -= 1
 
-                if self._event__stop_subsystem.wait(timeout=self._message_delay):
+                if await wait_event(self._event__stop_subsystem, self._message_delay):
                     break
 
             self._client_socket.close()
@@ -200,20 +197,20 @@ class IcmpEchoClient(Client):
 
             self._event__stop_subsystem.set()
 
-            self._log("Stopped the sender thread.")
+            self._log("Stopped the sender task.")
 
     @override
-    def _thread__receiver(self) -> None:
+    async def _task__receiver(self) -> None:
         """
-        Thread used to receive data.
+        Task used to receive data.
         """
 
         if self._client_socket:
-            self._log("Started the receiver thread.")
+            self._log("Started the receiver task.")
 
             while not self._event__stop_subsystem.is_set():
                 try:
-                    if data := self._client_socket.recv(
+                    if data := await self._client_socket.recv(
                         timeout=1,
                     ):
                         identifier, sequence, payload = self._parse_icmp_echo_reply_message(data=data)
@@ -224,7 +221,7 @@ class IcmpEchoClient(Client):
                 except TimeoutError:
                     pass
 
-            self._log("Stopped the receiver thread.")
+            self._log("Stopped the receiver task.")
 
 
 @click.command()

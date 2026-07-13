@@ -37,7 +37,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import cast
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import MacAddress
@@ -58,7 +58,7 @@ from pmd_pytcp.socket.packet__socket import PacketSocket
 from pmd_pytcp.socket.sockaddr_ll import SockAddrLl
 
 
-class TestPacketSocket(TestCase):
+class TestPacketSocket(IsolatedAsyncioTestCase):
     """
     The AF_PACKET 'PacketSocket' skeleton + RX-side tests.
     """
@@ -222,7 +222,7 @@ class TestPacketSocket(TestCase):
             msg="close() must unregister the packet socket from stack.packet_sockets.",
         )
 
-    def test__packet_socket__recv_returns_queued_frame(self) -> None:
+    async def test__packet_socket__recv_returns_queued_frame(self) -> None:
         """
         Ensure 'recv' returns the raw bytes of a frame previously
         delivered to the socket via 'process_packet'.
@@ -235,12 +235,12 @@ class TestPacketSocket(TestCase):
         sock.process_packet(PacketMetadata(frame=frame, sockaddr_ll=SockAddrLl(ifindex=1, ethertype=ETH_P_ARP)))
 
         self.assertEqual(
-            sock.recv(),
+            await sock.recv(),
             frame,
             msg="recv() must return the raw bytes of the queued frame.",
         )
 
-    def test__packet_socket__recvfrom_returns_frame_and_sockaddr(self) -> None:
+    async def test__packet_socket__recvfrom_returns_frame_and_sockaddr(self) -> None:
         """
         Ensure 'recvfrom' returns the frame bytes paired with the
         originating 'sockaddr_ll' describing the arrival interface,
@@ -259,12 +259,12 @@ class TestPacketSocket(TestCase):
         )
         sock.process_packet(PacketMetadata(frame=frame, sockaddr_ll=sockaddr))
 
-        data, addr = sock.recvfrom()
+        data, addr = await sock.recvfrom()
 
         self.assertEqual(data, frame, msg="recvfrom() must return the raw frame bytes.")
         self.assertEqual(addr, sockaddr, msg="recvfrom() must return the originating sockaddr_ll.")
 
-    def test__packet_socket__recv_truncates_to_bufsize(self) -> None:
+    async def test__packet_socket__recv_truncates_to_bufsize(self) -> None:
         """
         Ensure 'recv(bufsize)' truncates the returned frame to 'bufsize'
         bytes, matching POSIX recv(2) on SOCK_RAW.
@@ -277,12 +277,12 @@ class TestPacketSocket(TestCase):
         sock.process_packet(PacketMetadata(frame=frame, sockaddr_ll=SockAddrLl()))
 
         self.assertEqual(
-            sock.recv(4),
+            await sock.recv(4),
             b"0123",
             msg="recv(bufsize) must truncate the frame to bufsize bytes.",
         )
 
-    def test__packet_socket__recv_nonblocking_empty_raises_eagain(self) -> None:
+    async def test__packet_socket__recv_nonblocking_empty_raises_eagain(self) -> None:
         """
         Ensure a non-blocking 'recv' on an empty queue raises
         'BlockingIOError(EAGAIN)' rather than blocking.
@@ -296,7 +296,7 @@ class TestPacketSocket(TestCase):
         sock.setblocking(False)
 
         with self.assertRaises(BlockingIOError) as context:
-            sock.recv()
+            await sock.recv()
 
         self.assertEqual(
             context.exception.errno,

@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from pmd_pytcp import socket, stack
 
-__version__: str = "0.0.6"
+__version__: str = "0.1.0"
 
 __all__ = [
     "stack",

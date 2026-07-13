@@ -23,9 +23,9 @@
 
 
 """
-This module contains the lock-guarded registry of open AF_PACKET
-sockets — the fan-out lookup the Ethernet RX tap uses to deliver a
-copy of each matching frame to every bound packet socket.
+This module contains the registry of open AF_PACKET sockets — the
+fan-out lookup the Ethernet RX tap uses to deliver a copy of each
+matching frame to every bound packet socket.
 
 pmd_pytcp/socket/packet__socket_table.py
 
@@ -34,7 +34,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from typing import TYPE_CHECKING
 
 from pmd_net_proto.lib.enums import EtherType
@@ -54,20 +53,19 @@ class PacketSocketTable:
     frame gets its own copy. The registry is therefore a flat list of
     sockets with a 'matching()' fan-out query, not a unique-key map.
 
-    Every operation is guarded by a single lock — the RX-side packet
-    handler iterates the set (delivery fan-out) while app threads
-    register / unregister sockets at construct / close time, and
-    free-threaded builds need the explicit guard. 'matching()' /
-    'snapshot()' return detached lists taken under the lock so an RX
-    thread can iterate while another thread mutates the registry.
+    The RX-side packet handler iterates the set (delivery fan-out)
+    while application code registers / unregisters sockets at
+    construct / close time — all on the one stack event loop, so no
+    guarding lock is needed. 'matching()' / 'snapshot()' return
+    detached lists so a caller can iterate while a loop callback it
+    invokes mutates the registry.
     """
 
     def __init__(self) -> None:
         """
-        Initialize an empty registry and its guarding lock.
+        Initialize an empty registry.
         """
 
-        self._lock = threading.Lock()
         self._sockets: list[PacketSocket] = []
 
     def register(self, sock: "PacketSocket", /) -> None:
@@ -75,17 +73,15 @@ class PacketSocketTable:
         Add 'sock' to the registry (its capture filter becomes live).
         """
 
-        with self._lock:
-            self._sockets.append(sock)
+        self._sockets.append(sock)
 
     def unregister(self, sock: "PacketSocket", /) -> None:
         """
         Remove 'sock' from the registry; a no-op when it is absent.
         """
 
-        with self._lock:
-            if sock in self._sockets:
-                self._sockets.remove(sock)
+        if sock in self._sockets:
+            self._sockets.remove(sock)
 
     def matching(self, *, ifindex: int, ethertype: EtherType | int) -> list["PacketSocket"]:
         """
@@ -98,36 +94,32 @@ class PacketSocketTable:
         """
 
         target = int(ethertype)
-        with self._lock:
-            return [
-                sock
-                for sock in self._sockets
-                if sock.ifindex in (0, ifindex) and int(sock.ethertype) in (ETH_P_ALL, target)
-            ]
+        return [
+            sock
+            for sock in self._sockets
+            if sock.ifindex in (0, ifindex) and int(sock.ethertype) in (ETH_P_ALL, target)
+        ]
 
     def snapshot(self) -> list["PacketSocket"]:
         """
         Return a detached snapshot list of the registered sockets.
         """
 
-        with self._lock:
-            return list(self._sockets)
+        return list(self._sockets)
 
     def clear(self) -> None:
         """
         Remove every registered socket.
         """
 
-        with self._lock:
-            self._sockets.clear()
+        self._sockets.clear()
 
     def __len__(self) -> int:
         """
         Return the number of registered sockets.
         """
 
-        with self._lock:
-            return len(self._sockets)
+        return len(self._sockets)
 
     def __bool__(self) -> bool:
         """
@@ -135,5 +127,4 @@ class PacketSocketTable:
         cheap "is anything bound?" short-circuit guard.
         """
 
-        with self._lock:
-            return bool(self._sockets)
+        return bool(self._sockets)

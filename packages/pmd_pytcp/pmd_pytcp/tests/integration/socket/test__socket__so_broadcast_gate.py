@@ -48,6 +48,7 @@ ver 3.0.7
 from __future__ import annotations
 
 import errno
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.socket import (
@@ -64,13 +65,13 @@ from pmd_pytcp.tests.lib.network_testcase import (
 STACK__IP: Ip4Address = STACK__IP4_HOST.address
 
 
-class TestSocketSoBroadcastGate(NetworkTestCase):
+class TestSocketSoBroadcastGate(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     UDP 'sendto' to a limited-broadcast destination must
     have 'SO_BROADCAST' enabled first or fail with EACCES.
     """
 
-    def test__udp_sendto_limited_broadcast_without_so_broadcast_raises_eaccess(self) -> None:
+    async def test__udp_sendto_limited_broadcast_without_so_broadcast_raises_eaccess(self) -> None:
         """
         Ensure 'sendto' to '255.255.255.255' on a socket
         with 'SO_BROADCAST = 0' (the default) raises
@@ -85,14 +86,14 @@ class TestSocketSoBroadcastGate(NetworkTestCase):
         sock.bind((str(STACK__IP), 0))
 
         with self.assertRaises(OSError) as ctx:
-            sock.sendto(b"x", ("255.255.255.255", 67))
+            await sock.sendto(b"x", ("255.255.255.255", 67))
         self.assertEqual(
             ctx.exception.errno,
             errno.EACCES,
             msg="sendto to limited broadcast without SO_BROADCAST must raise EACCES.",
         )
 
-    def test__udp_sendto_limited_broadcast_with_so_broadcast_succeeds(self) -> None:
+    async def test__udp_sendto_limited_broadcast_with_so_broadcast_succeeds(self) -> None:
         """
         Ensure 'sendto' to '255.255.255.255' on a socket
         with 'SO_BROADCAST = 1' succeeds — the gate only
@@ -105,7 +106,7 @@ class TestSocketSoBroadcastGate(NetworkTestCase):
         sock.bind((str(STACK__IP), 0))
         sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 
-        sent = sock.sendto(b"x", ("255.255.255.255", 67))
+        sent = await sock.sendto(b"x", ("255.255.255.255", 67))
 
         self.assertEqual(
             sent,
@@ -113,7 +114,7 @@ class TestSocketSoBroadcastGate(NetworkTestCase):
             msg="sendto with SO_BROADCAST=1 must return the sent byte count.",
         )
 
-    def test__udp_sendto_unicast_without_so_broadcast_succeeds(self) -> None:
+    async def test__udp_sendto_unicast_without_so_broadcast_succeeds(self) -> None:
         """
         Ensure 'sendto' to a unicast destination on a socket
         with 'SO_BROADCAST = 0' (default) is unaffected by
@@ -126,7 +127,7 @@ class TestSocketSoBroadcastGate(NetworkTestCase):
         sock = UdpSocket(family=AddressFamily.INET4)
         sock.bind((str(STACK__IP), 0))
 
-        sent = sock.sendto(b"x", ("10.0.1.91", 9999))
+        sent = await sock.sendto(b"x", ("10.0.1.91", 9999))
 
         self.assertEqual(
             sent,
@@ -134,7 +135,7 @@ class TestSocketSoBroadcastGate(NetworkTestCase):
             msg="sendto to a unicast peer must not be affected by SO_BROADCAST.",
         )
 
-    def test__udp_connected_send_to_broadcast_without_so_broadcast_raises_eaccess(self) -> None:
+    async def test__udp_connected_send_to_broadcast_without_so_broadcast_raises_eaccess(self) -> None:
         """
         Ensure 'send' on a socket connected to a broadcast
         peer (via 'connect((255.255.255.255, port))') with
@@ -147,10 +148,10 @@ class TestSocketSoBroadcastGate(NetworkTestCase):
 
         sock = UdpSocket(family=AddressFamily.INET4)
         sock.bind((str(STACK__IP), 0))
-        sock.connect(("255.255.255.255", 67))
+        await sock.connect(("255.255.255.255", 67))
 
         with self.assertRaises(OSError) as ctx:
-            sock.send(b"x")
+            await sock.send(b"x")
         self.assertEqual(
             ctx.exception.errno,
             errno.EACCES,

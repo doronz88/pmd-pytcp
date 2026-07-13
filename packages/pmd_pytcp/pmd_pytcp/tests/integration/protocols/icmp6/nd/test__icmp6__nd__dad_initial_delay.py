@@ -48,6 +48,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import patch
 
@@ -126,7 +127,7 @@ class TestIcmp6Nd__DadInitialDelay__SysctlRegistration(NdTestCase):
 
 class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
     """
-    '_perform_ip6_nd_dad' calls 'time.sleep' once before
+    '_perform_ip6_nd_dad' calls 'asyncio.sleep' once before
     starting the probe loop, with a duration in
     [0, max_rtr_solicitation_delay_ms / 1000.0). Setting the
     sysctl to 0 suppresses the call entirely.
@@ -140,7 +141,7 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__dad_initial_delay__sleeps_before_probe(self) -> None:
+    async def test__icmp6__nd__dad_initial_delay__sleeps_before_probe(self) -> None:
         """
         Ensure the DAD function sleeps for a random duration in
         [0, max_rtr_solicitation_delay_ms / 1000.0) before the
@@ -151,21 +152,21 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
 
         sleeps: list[float] = []
 
-        def _no_op_sleep(duration: float) -> None:
+        async def _no_op_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        with patch("pmd_pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
+        with patch("pmd_pytcp.runtime.packet_handler.asyncio.sleep", side_effect=_no_op_sleep):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 1000):
                 with sysctl_module.override("icmp6.default.dad_transmits", 0):
-                    self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
+                    await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         # 'dad_transmits=0' skips the probe loop, so the only
-        # 'time.sleep' call must be the initial RFC 4862 §5.4.2
+        # 'asyncio.sleep' call must be the initial RFC 4862 §5.4.2
         # delay.
         self.assertEqual(
             len(sleeps),
             1,
-            msg=f"Expected exactly one 'time.sleep' call (initial delay). Got: {sleeps!r}",
+            msg=f"Expected exactly one 'asyncio.sleep' call (initial delay). Got: {sleeps!r}",
         )
         self.assertGreaterEqual(
             sleeps[0],
@@ -178,23 +179,23 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
             msg=f"Initial delay must be < MAX_RTR_SOLICITATION_DELAY (1s). Got: {sleeps[0]!r}",
         )
 
-    def test__icmp6__nd__dad_initial_delay__sysctl_zero_disables(self) -> None:
+    async def test__icmp6__nd__dad_initial_delay__sysctl_zero_disables(self) -> None:
         """
         Ensure setting 'icmp6.max_rtr_solicitation_delay_ms=0'
-        suppresses the 'time.sleep' call entirely.
+        suppresses the 'asyncio.sleep' call entirely.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         sleeps: list[float] = []
 
-        def _no_op_sleep(duration: float) -> None:
+        async def _no_op_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        with patch("pmd_pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
+        with patch("pmd_pytcp.runtime.packet_handler.asyncio.sleep", side_effect=_no_op_sleep):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 with sysctl_module.override("icmp6.default.dad_transmits", 0):
-                    self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
+                    await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertEqual(
             sleeps,
@@ -202,7 +203,7 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
             msg=f"sysctl=0 must suppress the initial delay. Got sleeps: {sleeps!r}",
         )
 
-    def test__icmp6__nd__dad_initial_delay__custom_ceiling(self) -> None:
+    async def test__icmp6__nd__dad_initial_delay__custom_ceiling(self) -> None:
         """
         Ensure the random delay's upper bound matches the
         sysctl-configured value. Set the ceiling to 200 ms;
@@ -213,13 +214,13 @@ class TestIcmp6Nd__DadInitialDelay__BeforeFirstProbe(NdTestCase):
 
         sleeps: list[float] = []
 
-        def _no_op_sleep(duration: float) -> None:
+        async def _no_op_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        with patch("pmd_pytcp.runtime.packet_handler.time.sleep", side_effect=_no_op_sleep):
+        with patch("pmd_pytcp.runtime.packet_handler.asyncio.sleep", side_effect=_no_op_sleep):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 200):
                 with sysctl_module.override("icmp6.default.dad_transmits", 0):
-                    self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
+                    await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertEqual(len(sleeps), 1)
         self.assertGreaterEqual(sleeps[0], 0.0)

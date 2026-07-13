@@ -34,6 +34,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.socket import (
@@ -61,7 +62,7 @@ _MTU = 1500
 _ETH_IP4_HDR = 34
 
 
-class TestUdpIp4Fragmentation(UdpTestCase):
+class TestUdpIp4Fragmentation(UdpTestCase, IsolatedAsyncioTestCase):
     """
     A UDP datagram larger than the link MTU is fragmented, not
     silently dropped.
@@ -82,7 +83,7 @@ class TestUdpIp4Fragmentation(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp__ip4__oversized_datagram_is_fragmented(self) -> None:
+    async def test__udp__ip4__oversized_datagram_is_fragmented(self) -> None:
         """
         Ensure a UDP 'sendto' whose datagram exceeds the link MTU
         is IPv4-fragmented and emitted on the wire, with the full
@@ -96,7 +97,7 @@ class TestUdpIp4Fragmentation(UdpTestCase):
 
         payload = b"M" * 4000
 
-        sent = self._socket.sendto(payload, (str(_HOST_A_IP4), _REMOTE_PORT))
+        sent = await self._socket.sendto(payload, (str(_HOST_A_IP4), _REMOTE_PORT))
 
         self.assertEqual(
             sent,
@@ -127,14 +128,14 @@ class TestUdpIp4Fragmentation(UdpTestCase):
         )
 
 
-class TestUdpFragmentationDscp(UdpTestCase):
+class TestUdpFragmentationDscp(UdpTestCase, IsolatedAsyncioTestCase):
     """
     A per-socket DSCP / ECN marking is preserved on every IP fragment
     of an over-MTU datagram, not zeroed on the second and later
     fragments.
     """
 
-    def test__udp__ip4__dscp_ecn_preserved_on_every_fragment(self) -> None:
+    async def test__udp__ip4__dscp_ecn_preserved_on_every_fragment(self) -> None:
         """
         Ensure an over-MTU IPv4 UDP datagram from a socket carrying
         IP_TOS keeps the DSCP (high 6 bits) and ECN (low 2 bits) on
@@ -151,7 +152,7 @@ class TestUdpFragmentationDscp(UdpTestCase):
         )
         sock.setsockopt(IPPROTO_IP, IP_TOS, (46 << 2) | 2)
 
-        sock.sendto(b"M" * 4000, (str(_HOST_A_IP4), _REMOTE_PORT))
+        await sock.sendto(b"M" * 4000, (str(_HOST_A_IP4), _REMOTE_PORT))
 
         self.assertGreaterEqual(len(self._frames_tx), 2, msg="Datagram must fragment into 2+ frames.")
         for index, frame in enumerate(self._frames_tx):
@@ -168,7 +169,7 @@ class TestUdpFragmentationDscp(UdpTestCase):
                 msg=f"Fragment {index} must carry ECN 2 in its IPv4 TOS byte.",
             )
 
-    def test__udp__ip6__dscp_ecn_preserved_on_every_fragment(self) -> None:
+    async def test__udp__ip6__dscp_ecn_preserved_on_every_fragment(self) -> None:
         """
         Ensure an over-MTU IPv6 UDP datagram from a socket carrying
         IPV6_TCLASS keeps the DSCP and ECN on the outer IPv6 header of
@@ -185,7 +186,7 @@ class TestUdpFragmentationDscp(UdpTestCase):
         )
         sock.setsockopt(IPPROTO_IPV6, IPV6_TCLASS, (46 << 2) | 2)
 
-        sock.sendto(b"M" * 4000, (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
+        await sock.sendto(b"M" * 4000, (str(HOST_A__IP6_ADDRESS), _REMOTE_PORT))
 
         self.assertGreaterEqual(len(self._frames_tx), 2, msg="Datagram must fragment into 2+ frames.")
         for index, frame in enumerate(self._frames_tx):
@@ -223,7 +224,7 @@ class TestUdpSendtoArpQueued(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp__sendto_reports_success_when_arp_queued(self) -> None:
+    async def test__udp__sendto_reports_success_when_arp_queued(self) -> None:
         """
         Ensure 'sendto' to a destination whose MAC is not yet
         resolved returns the full payload length — the datagram
@@ -234,7 +235,7 @@ class TestUdpSendtoArpQueued(UdpTestCase):
         Reference: RFC 1122 §2.3.2.2 (save unresolved packets, transmit on resolution).
         """
 
-        sent = self._socket.sendto(b"hello", (str(_HOST_B_IP4), _REMOTE_PORT))
+        sent = await self._socket.sendto(b"hello", (str(_HOST_B_IP4), _REMOTE_PORT))
 
         self.assertEqual(
             sent,

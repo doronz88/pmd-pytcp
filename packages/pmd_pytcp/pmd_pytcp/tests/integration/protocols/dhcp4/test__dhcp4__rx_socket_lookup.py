@@ -54,7 +54,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 
 from pmd_net_addr import Ip4Address, Ip4Mask, MacAddress
 from pmd_net_proto.lib.buffer import Buffer
@@ -170,12 +170,12 @@ def _build_dhcp4_reply_frame(
     return b"".join(bytes(buf) for buf in buffers)
 
 
-class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
+class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     Wire-level RX-path delivery tests for the DHCPv4 client socket.
     """
 
-    def test__dhcp4__rx__init_broadcast_reply_delivered(self) -> None:
+    async def test__dhcp4__rx__init_broadcast_reply_delivered(self) -> None:
         """
         Ensure a broadcast DHCP reply (server -> 255.255.255.255:68)
         is delivered to a client socket bound to 0.0.0.0:68 and
@@ -195,7 +195,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect(("255.255.255.255", 67))
+            await client_socket.connect(("255.255.255.255", 67))
 
             frame = _build_dhcp4_reply_frame(
                 eth_src=_DHCP_SERVER_MAC,
@@ -208,7 +208,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
 
             self._packet_handler._phrx_ethernet(PacketRx(frame))
 
-            data = bytes(client_socket.recv__mv(timeout=0.5))
+            data = bytes(await client_socket.recv__mv(timeout=0.5))
         finally:
             client_socket.close()
 
@@ -221,7 +221,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
             ),
         )
 
-    def test__dhcp4__rx__renew_unicast_reply_delivered(self) -> None:
+    async def test__dhcp4__rx__renew_unicast_reply_delivered(self) -> None:
         """
         Ensure a unicast DHCP reply (server -> owned_ip:68) is
         delivered to a client socket bound to 0.0.0.0:68 and
@@ -237,7 +237,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect((str(_DHCP_SERVER_IP), 67))
+            await client_socket.connect((str(_DHCP_SERVER_IP), 67))
 
             frame = _build_dhcp4_reply_frame(
                 eth_src=_DHCP_SERVER_MAC,
@@ -250,7 +250,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
 
             self._packet_handler._phrx_ethernet(PacketRx(frame))
 
-            data = bytes(client_socket.recv__mv(timeout=0.5))
+            data = bytes(await client_socket.recv__mv(timeout=0.5))
         finally:
             client_socket.close()
 
@@ -264,7 +264,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
             ),
         )
 
-    def test__dhcp4__rx__rebind_broadcast_reply_delivered(self) -> None:
+    async def test__dhcp4__rx__rebind_broadcast_reply_delivered(self) -> None:
         """
         Ensure a broadcast DHCP reply (server -> 255.255.255.255:68)
         is delivered to a client socket bound to 0.0.0.0:68 and
@@ -281,7 +281,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
         client_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
         try:
             client_socket.bind(("0.0.0.0", 68))
-            client_socket.connect(("255.255.255.255", 67))
+            await client_socket.connect(("255.255.255.255", 67))
 
             frame = _build_dhcp4_reply_frame(
                 eth_src=_DHCP_SERVER_MAC,
@@ -294,7 +294,7 @@ class TestDhcp4ClientSocketRxDelivery(NetworkTestCase, TestCase):
 
             self._packet_handler._phrx_ethernet(PacketRx(frame))
 
-            data = bytes(client_socket.recv__mv(timeout=0.5))
+            data = bytes(await client_socket.recv__mv(timeout=0.5))
         finally:
             client_socket.close()
 
