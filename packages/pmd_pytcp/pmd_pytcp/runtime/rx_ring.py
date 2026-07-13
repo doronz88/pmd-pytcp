@@ -32,18 +32,13 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import collections
-import os
-import select
-import selectors
-import time
-from typing_extensions import override
+import asyncio
+from collections.abc import Callable
 
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp.lib import io_backend
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx
-from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 
 # Per-read kernel-buffer headroom over the configured L3 MTU. Sized
 # to accommodate the largest L2 framing PyTCP supports plus slack:
@@ -57,26 +52,37 @@ from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 RX_RING__READ_HEADROOM: int = 64
 
 
-class RxRing(Subsystem):
+class RxRing:
     """
     Support for receiving packets from the network.
+
+    Pure-asyncio ingress ('docs/refactor/pure_asyncio.md'): the fd
+    is registered with 'loop.add_reader' and every readiness
+    callback burst-drains the kernel buffer, delivering each parsed
+    'PacketRx' synchronously to the deliver callback the packet
+    handler installs. There is no rx queue, no eventfd and no
+    worker — the whole rx→parse→FSM→tx pipeline runs inline on the
+    loop callback. On the socket-I/O path (Windows /
+    'PYTCP_FORCE_SOCK_IO', where proactor loops lack 'add_reader'
+    for arbitrary fds) a reader task drives 'loop.sock_recv'
+    instead.
     """
 
     _subsystem_name = "RX Ring"
 
     _fd: int
     _mtu: int
-    _queue_max_size: int
+    _burst_max: int
 
-    _rx_deque: collections.deque[PacketRx]
-    _selector: selectors.DefaultSelector
-    _rx_event_fd: int
-    _queue_full_drop_count: int
+    _deliver: "Callable[[PacketRx], None] | None"
+    _loop: asyncio.AbstractEventLoop | None
+    _reader_task: "asyncio.Task[None] | None"
+    _reader_armed: bool
+    _no_deliver_drop_count: int
     _os_error_drop_count: int
     _packet_stats: PacketStatsRx | None
     _link_stats: LinkStatsCounters | None
 
-    @override
     def __init__(
         self,
         *,
@@ -87,28 +93,25 @@ class RxRing(Subsystem):
         link_stats: LinkStatsCounters | None = None,
     ) -> None:
         """
-        Initialize access to RX file descriptor and the inbound queue.
+        Initialize access to the RX file descriptor. The former
+        'queue_max_size' now bounds the per-readiness-callback
+        drain burst so one hot interface cannot starve the loop.
         """
 
         self._fd = fd
         self._mtu = mtu
-        self._queue_max_size = queue_max_size
+        self._burst_max = queue_max_size
 
-        super().__init__(info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}")
+        __debug__ and log(
+            "stack",
+            f"Initializing {self._subsystem_name} [fd={fd}, mtu={mtu}, burst_max={queue_max_size}]",
+        )
 
-        # 'collections.deque' append/popleft are atomic under the
-        # GIL, no kernel mutex calls per op. The producer (the
-        # rx-ring '_subsystem_loop') and consumer (packet-handler
-        # thread calling 'dequeue') synchronise via 'os.eventfd':
-        # producer signals on append, consumer waits via
-        # 'select.select' on the eventfd. Net per packet: ~5-8 µs
-        # saved over the prior 'queue.Queue' that used 'Lock +
-        # Condition' on every put/get.
-        self._rx_deque = collections.deque()
-        self._selector = selectors.DefaultSelector()
-        self._selector.register(self._fd, selectors.EVENT_READ)
-        self._rx_event_fd = io_backend.eventfd(0, io_backend.EFD_NONBLOCK | io_backend.EFD_CLOEXEC)
-        self._queue_full_drop_count = 0
+        self._deliver = None
+        self._loop = None
+        self._reader_task = None
+        self._reader_armed = False
+        self._no_deliver_drop_count = 0
         self._os_error_drop_count = 0
         # Optional shared 'PacketStatsRx' object — when set, ring
         # drop counters live as fields on the shared stats instead
@@ -118,203 +121,181 @@ class RxRing(Subsystem):
         # to whichever source is authoritative.
         self._packet_stats = packet_stats
         # Optional shared 'LinkStatsCounters' object — when set,
-        # 'rx_bytes' is bumped here per successful 'os.read'. The
+        # 'rx_bytes' is bumped here per successful read. The
         # PacketHandler owns the canonical instance; sharing it
         # mirrors the 'packet_stats' pattern above and gives the
         # Link API a single source of truth for 'stats.rx_bytes'.
         self._link_stats = link_stats
 
+    def set_deliver_callback(self, deliver: "Callable[[PacketRx], None] | None", /) -> None:
+        """
+        Install the per-frame deliver callback (the packet
+        handler's rx entry point). Frames read while no callback
+        is installed are dropped and counted.
+        """
+
+        self._deliver = deliver
+
     @property
     def queue_full_drop_count(self) -> int:
         """
         Get the cumulative count of inbound frames dropped because
-        the RX ring was at capacity. Useful as a saturation signal
-        for monitoring — a non-zero rate-of-change indicates the
-        consumer is not keeping up with kernel-side packet arrivals.
-        Sources from the shared 'PacketStatsRx' field when wired,
-        falls back to the internal counter otherwise.
+        no deliver callback was installed (the queue-full slot of
+        the threaded design; kept under the same name so
+        unified-stats consumers keep their field). Sources from the
+        shared 'PacketStatsRx' field when wired, falls back to the
+        internal counter otherwise.
         """
 
         if self._packet_stats is not None:
             return self._packet_stats.rx_ring__queue_full__drop
-        return self._queue_full_drop_count
+        return self._no_deliver_drop_count
 
     @property
     def os_error_drop_count(self) -> int:
         """
         Get the cumulative count of inbound frames dropped because
-        'os.read' raised 'OSError' (transient kernel errors: EINTR
+        the read raised 'OSError' (transient kernel errors: EINTR
         on signal, EBADF on shutdown race, EIO on hardware glitches,
         ENOMEM on tight memory). Without the counter, these errors
-        would silently kill the RX subsystem thread.
+        would silently disarm the RX ingress.
         """
 
         if self._packet_stats is not None:
             return self._packet_stats.rx_ring__os_error__drop
         return self._os_error_drop_count
 
-    @property
-    def qsize(self) -> int:
+    def start(self) -> None:
         """
-        Get the current depth of the RX deque (analogous to
-        'queue.Queue.qsize'). Useful for live observability —
-        steady-state qsize > 0 indicates the consumer is falling
-        behind the producer.
+        Arm the ingress on the running event loop: 'add_reader' on
+        the fd path, a 'sock_recv' reader task on the socket-I/O
+        path.
         """
 
-        return len(self._rx_deque)
+        __debug__ and log("stack", f"Starting {self._subsystem_name}")
 
-    def _select_readable(self, *, timeout: float) -> bool:
+        self._loop = asyncio.get_running_loop()
+
+        sock = io_backend.sock_for_fd(self._fd)
+        if sock is not None:
+            sock.setblocking(False)
+            self._reader_task = self._loop.create_task(self._task__sock_reader(), name=self._subsystem_name)
+            return
+
+        io_backend.set_nonblocking(self._fd)
+        self._loop.add_reader(self._fd, self._on_readable)
+        self._reader_armed = True
+
+    def stop(self) -> None:
         """
-        Poll the selector for readability, tolerating the interface
-        fd being closed under us mid-teardown: a host embedding the
-        stack may close the fd to unblock this thread before 'stop()'
-        is observed, and a closed descriptor makes 'select' RAISE
-        (WinError 10038 on Windows, EBADF elsewhere; 'ValueError'
-        once the selector itself is closed) instead of returning.
-        Count the error like a read-side 'OSError', pace the loop at
-        the subsystem cadence so it idles (rather than hot-spins)
-        until the stop event is seen, and report 'not readable' —
-        instead of killing the RX thread with an unhandled exception.
+        Disarm the ingress. The fd itself belongs to the embedding
+        host and is not closed here.
         """
 
-        try:
-            return bool(self._selector.select(timeout=timeout))
-        except (OSError, ValueError) as error:
+        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+
+        if self._reader_armed and self._loop is not None:
+            try:
+                self._loop.remove_reader(self._fd)
+            except (OSError, ValueError):
+                pass  # fd already closed by the host — nothing to disarm.
+            self._reader_armed = False
+        if self._reader_task is not None and not self._reader_task.done():
+            self._reader_task.cancel()
+
+    def _handle_frame(self, frame: bytes, /) -> None:
+        """
+        Parse one raw frame and deliver it synchronously to the
+        packet handler. A raising handler is logged and swallowed
+        so it cannot disarm the ingress.
+        """
+
+        packet_rx = PacketRx(frame)
+
+        __debug__ and log(
+            "rx-ring",
+            f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
+        )
+
+        # Link API rx_bytes: count wire-level frame bytes received
+        # from the kernel regardless of which protocol consumes
+        # them. Bumped here at the canonical RX entry point so both
+        # L2 (TAP) and L3 (TUN) paths are covered uniformly.
+        if self._link_stats is not None:
+            self._link_stats.rx_bytes += len(packet_rx.frame)
+
+        if self._deliver is None:
             if self._packet_stats is not None:
-                self._packet_stats.rx_ring__os_error__drop += 1
+                self._packet_stats.rx_ring__queue_full__drop += 1
             else:
-                self._os_error_drop_count += 1
+                self._no_deliver_drop_count += 1
             __debug__ and log(
                 "rx-ring",
-                f"<CRIT>RX select failed, {type(error).__name__}: {error}</>",
+                f"{packet_rx.tracker} - no deliver callback installed, dropping packet",
             )
-            time.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
-            return False
-
-    @override
-    def _subsystem_loop(self) -> None:
-        """
-        Receive and enqueue the incoming packets. After the outer
-        'selector.select' wake-up, drain every additional frame the
-        kernel TAP / TUN buffer holds via a 'select(timeout=0)'
-        inner peek so a single wake-up amortises across the whole
-        pending burst — at line rate the kernel queue can hold many
-        frames between two selector polls, and reading them one-
-        wake-up-at-a-time wastes outer-loop overhead. Each successful
-        append signals the consumer-side eventfd so the packet
-        handler's blocking 'dequeue()' wakes immediately.
-        """
-
-        if not self._select_readable(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
             return
+
+        try:
+            self._deliver(packet_rx)
+        except Exception as error:  # pylint: disable=broad-exception-caught
+            __debug__ and log(
+                "rx-ring",
+                f"<CRIT>Deliver callback raised: {error!r}</>",
+            )
+
+    def _count_os_error(self, error: OSError, /) -> None:
+        """
+        Count a transient read 'OSError' (EINTR / EBADF on shutdown
+        race / EIO / ENOMEM).
+        """
+
+        if self._packet_stats is not None:
+            self._packet_stats.rx_ring__os_error__drop += 1
+        else:
+            self._os_error_drop_count += 1
+        __debug__ and log(
+            "rx-ring",
+            f"<CRIT>RX read failed, OSError: {error}</>",
+        )
+
+    def _on_readable(self) -> None:
+        """
+        Readiness callback: burst-drain the kernel buffer up to
+        '_burst_max' frames so one wake-up amortises across the
+        whole pending burst without starving the rest of the loop.
+        """
+
+        for _ in range(self._burst_max):
+            try:
+                frame = io_backend.read(self._fd, self._mtu + RX_RING__READ_HEADROOM)
+            except (BlockingIOError, InterruptedError):
+                return  # kernel buffer drained.
+            except OSError as error:
+                self._count_os_error(error)
+                return
+            self._handle_frame(frame)
+
+    async def _task__sock_reader(self) -> None:
+        """
+        Socket-I/O-path reader: 'loop.sock_recv' works on both
+        selector and proactor loops, covering Windows where
+        'add_reader' cannot take an arbitrary fd.
+        """
+
+        assert self._loop is not None
+        sock = io_backend.sock_for_fd(self._fd)
+        assert sock is not None
 
         while True:
             try:
-                packet_rx = PacketRx(io_backend.read(self._fd, self._mtu + RX_RING__READ_HEADROOM))
+                frame = await self._loop.sock_recv(sock, self._mtu + RX_RING__READ_HEADROOM)
+            except asyncio.CancelledError:
+                return
             except OSError as error:
-                # Transient kernel errors (EINTR / EBADF on
-                # shutdown race / EIO / ENOMEM) — drop the read
-                # attempt, count it, and break the inner drain so
-                # the outer loop can take a fresh tick (and check
-                # the stop event).
-                if self._packet_stats is not None:
-                    self._packet_stats.rx_ring__os_error__drop += 1
-                else:
-                    self._os_error_drop_count += 1
-                __debug__ and log(
-                    "rx-ring",
-                    f"<CRIT>RX read failed, OSError: {error}</>",
-                )
-                break
-
-            __debug__ and log(
-                "rx-ring",
-                f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
-            )
-
-            # Link API rx_bytes: count wire-level frame bytes
-            # received from the kernel regardless of which
-            # protocol consumes them. Bumped here at the canonical
-            # RX entry point so both L2 (TAP) and L3 (TUN) paths
-            # are covered uniformly.
-            if self._link_stats is not None:
-                self._link_stats.rx_bytes += len(packet_rx.frame)
-
-            if len(self._rx_deque) >= self._queue_max_size:
-                if self._packet_stats is not None:
-                    self._packet_stats.rx_ring__queue_full__drop += 1
-                else:
-                    self._queue_full_drop_count += 1
-                __debug__ and log(
-                    "rx-ring",
-                    f"{packet_rx.tracker} - RX Queue is full, dropping packet",
-                )
-                # Stop draining the moment the consumer falls
-                # behind — further reads would just keep dropping.
-                break
-
-            self._rx_deque.append(packet_rx)
-            try:
-                io_backend.eventfd_write(self._rx_event_fd, 1)
-            except OSError:
-                # Eventfd closed (stop in progress) — packet sits
-                # on the deque, will not be drained. Acceptable
-                # during shutdown.
-                pass
-
-            # Peek for more readable data without blocking. Empty
-            # list => kernel buffer drained; exit and let the
-            # outer Subsystem driver re-enter on the next wake-up.
-            if not self._select_readable(timeout=0):
-                break
-
-    @override
-    def _stop(self) -> None:
-        """
-        Release the OS-level epoll/poll/kqueue resource backing the
-        'selectors.DefaultSelector' AND the consumer-wakeup eventfd
-        so 'stack.stop()' returns both descriptors to the kernel.
-        Idempotent.
-        """
-
-        self._selector.close()
-        try:
-            io_backend.eventfd_close(self._rx_event_fd)
-        except OSError:
-            pass
-
-    def dequeue(self) -> PacketRx | None:
-        """
-        Dequeue inbound frame from RX Ring. Fast path: if the deque
-        already has packets, popleft and return immediately —
-        single-consumer means the eventfd counter doesn't need to
-        match deque length. Slow path: wait on the eventfd for up
-        to SUBSYSTEM_SLEEP_TIME__SEC for a producer signal.
-        """
-
-        # Fast path: deque has data → popleft without syscall.
-        if self._rx_deque:
-            try:
-                return self._rx_deque.popleft()
-            except IndexError:
-                pass  # producer preempted; fall through to wait.
-
-        # Slow path: block on the eventfd until a producer signals
-        # an arrival (or the timeout expires).
-        ready, _, _ = select.select([self._rx_event_fd], [], [], SUBSYSTEM_SLEEP_TIME__SEC)
-        if not ready:
-            return None
-
-        # Drain the eventfd counter — it accumulates one signal
-        # per producer enqueue; a single read clears the kernel-
-        # side ready bit. We don't care about the exact count.
-        try:
-            io_backend.eventfd_read(self._rx_event_fd)
-        except OSError:
-            pass
-
-        try:
-            return self._rx_deque.popleft()
-        except IndexError:
-            return None  # spurious wake-up (signal arrived after consumer drained).
+                self._count_os_error(error)
+                # EBADF and friends during teardown — bail out; a
+                # transient error would recur immediately anyway,
+                # so yield a beat before retrying.
+                await asyncio.sleep(0.1)
+                continue
+            self._handle_frame(frame)

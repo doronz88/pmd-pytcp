@@ -31,10 +31,64 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from typing import TypeVar
 
 _T = TypeVar("_T")
+
+
+async def wait_event(event: asyncio.Event, timeout: float | None = None) -> bool:
+    """
+    Await 'event' with the 'threading.Event.wait(timeout)' contract:
+    True when the event is set, False on timeout. Uses
+    'asyncio.wait_for' (Python-3.9-compatible; 'asyncio.timeout' is
+    3.11+).
+
+    An already-set event returns True immediately — matching
+    'threading.Event.wait' and, crucially, covering 'timeout=0.0':
+    'asyncio.wait_for(coro, 0.0)' times out even when the awaitable
+    is already ready, which would otherwise drop an already-signalled
+    event on a zero (poll) timeout.
+    """
+
+    if event.is_set():
+        return True
+    if timeout is None:
+        await event.wait()
+        return True
+    try:
+        await asyncio.wait_for(event.wait(), timeout)
+    except asyncio.TimeoutError:
+        return False
+    return True
+
+
+async def acquire_semaphore(semaphore: asyncio.Semaphore, timeout: float | None = None) -> bool:
+    """
+    Await 'semaphore' with the 'threading.Semaphore.acquire(timeout)'
+    contract: True when acquired, False on timeout.
+
+    A non-locked semaphore is acquired immediately without going
+    through 'asyncio.wait_for', so 'timeout=0.0' behaves like a
+    non-blocking 'acquire(blocking=False)' rather than always timing
+    out (see 'wait_event' for the same 'wait_for(..., 0.0)' pitfall).
+    """
+
+    if not semaphore.locked():
+        # Fast path: a free slot is available now — take it without a
+        # scheduler round-trip. 'acquire()' on an unlocked semaphore
+        # completes synchronously, so this cannot block.
+        await semaphore.acquire()
+        return True
+    if timeout is None:
+        await semaphore.acquire()
+        return True
+    try:
+        await asyncio.wait_for(semaphore.acquire(), timeout)
+    except asyncio.TimeoutError:
+        return False
+    return True
 
 if sys.version_info >= (3, 10):
     # Python 3.10+ has native `slots=` and `kw_only=` on `dataclasses.dataclass`,
@@ -122,4 +176,4 @@ else:  # pragma: no cover - exercised only on the Python 3.9 back-compat path
         return bytes(obj) if hasattr(type(obj), "__bytes__") else obj
 
 
-__all__ = ["dataclass", "as_buffer"]
+__all__ = ["dataclass", "as_buffer", "wait_event", "acquire_semaphore"]

@@ -23,8 +23,8 @@
 
 
 """
-This module contains the lock-guarded registry of stack network
-interfaces, keyed by ifindex.
+This module contains the registry of stack network interfaces,
+keyed by ifindex.
 
 pmd_pytcp/runtime/interface_table.py
 
@@ -33,7 +33,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING
 
@@ -58,28 +57,25 @@ class InterfaceTable:
     interface). Linux keys interfaces (and their per-ifindex ARP / ND
     caches, addresses, MTU) by ifindex; this registry mirrors that.
 
-    A lock-guarded, dict-compatible replacement for the former bare
+    A dict-compatible replacement for the former bare
     'dict[int, PacketHandler]'. The daemon mutates the registry at
     runtime ('add_interface' / 'remove_interface' = RTNETLINK
-    'RTM_NEWLINK' / 'RTM_DELLINK') while the RX / TX / timer threads
-    read it; compound access (and free-threaded / no-GIL builds) need
-    the explicit lock. 'add' allocates the next ifindex and stores the
-    handler under the lock so two concurrent adds cannot collide on the
-    same index.
+    'RTM_NEWLINK' / 'RTM_DELLINK') on the same stack event loop the
+    RX / TX / timer callbacks read it from, so no lock is needed
+    ('docs/refactor/pure_asyncio.md').
 
     Iteration accessors ('values' / 'keys' / 'items' / '__iter__')
-    return detached snapshots taken under the lock, so a reader can
-    iterate the interface set while another thread mutates it without
-    risking 'RuntimeError: dictionary changed size during iteration'.
+    return detached snapshots, so a caller can iterate the interface
+    set while its own loop body mutates the registry without risking
+    'RuntimeError: dictionary changed size during iteration'.
     """
 
     def __init__(self, *, first_ifindex: int = 1) -> None:
         """
-        Initialize an empty registry, its guarding lock, and the base
-        ifindex the first 'add' allocates.
+        Initialize an empty registry and the base ifindex the first
+        'add' allocates.
         """
 
-        self._lock = threading.Lock()
         self._first_ifindex = first_ifindex
         self._interfaces: dict[int, "PacketHandlerL2 | PacketHandlerL3"] = {}
 
@@ -91,15 +87,15 @@ class InterfaceTable:
         The first add into an empty table takes 'first_ifindex';
         thereafter the index is 'max(existing) + 1' — freed indexes are
         never reused, matching the monotonic allocation Linux uses for
-        netdev ifindexes. Allocation and store happen under the lock so
-        concurrent adds receive distinct indexes.
+        netdev ifindexes. Allocation and store are atomic by
+        construction on the single stack loop, so concurrent adds
+        receive distinct indexes.
         """
 
-        with self._lock:
-            ifindex = self._first_ifindex if not self._interfaces else max(self._interfaces) + 1
-            handler._ifindex = ifindex
-            self._interfaces[ifindex] = handler
-            return ifindex
+        ifindex = self._first_ifindex if not self._interfaces else max(self._interfaces) + 1
+        handler._ifindex = ifindex
+        self._interfaces[ifindex] = handler
+        return ifindex
 
     def get(
         self,
@@ -110,8 +106,7 @@ class InterfaceTable:
         Return the interface registered under 'ifindex', or 'default'.
         """
 
-        with self._lock:
-            return self._interfaces.get(ifindex, default)
+        return self._interfaces.get(ifindex, default)
 
     def pop(
         self,
@@ -122,72 +117,63 @@ class InterfaceTable:
         Remove and return the interface under 'ifindex', or 'default'.
         """
 
-        with self._lock:
-            return self._interfaces.pop(ifindex, default)
+        return self._interfaces.pop(ifindex, default)
 
     def __getitem__(self, ifindex: int) -> "PacketHandlerL2 | PacketHandlerL3":
         """
         Return the interface registered under 'ifindex' (or raise).
         """
 
-        with self._lock:
-            return self._interfaces[ifindex]
+        return self._interfaces[ifindex]
 
     def __setitem__(self, ifindex: int, handler: "PacketHandlerL2 | PacketHandlerL3") -> None:
         """
         Register 'handler' under 'ifindex', replacing any prior entry.
         """
 
-        with self._lock:
-            self._interfaces[ifindex] = handler
+        self._interfaces[ifindex] = handler
 
     def __delitem__(self, ifindex: int) -> None:
         """
         Remove the interface registered under 'ifindex' (or raise).
         """
 
-        with self._lock:
-            del self._interfaces[ifindex]
+        del self._interfaces[ifindex]
 
     def __contains__(self, ifindex: int) -> bool:
         """
         Return whether an interface is registered under 'ifindex'.
         """
 
-        with self._lock:
-            return ifindex in self._interfaces
+        return ifindex in self._interfaces
 
     def __len__(self) -> int:
         """
         Return the number of registered interfaces.
         """
 
-        with self._lock:
-            return len(self._interfaces)
+        return len(self._interfaces)
 
     def __iter__(self) -> Iterator[int]:
         """
         Return an iterator over a snapshot of the registered ifindexes.
         """
 
-        with self._lock:
-            return iter(list(self._interfaces))
+        return iter(list(self._interfaces))
 
     def keys(self) -> list[int]:
         """
         Return a snapshot list of the registered ifindexes.
         """
 
-        with self._lock:
-            return list(self._interfaces.keys())
+        return list(self._interfaces.keys())
 
     def values(self) -> list["PacketHandlerL2 | PacketHandlerL3"]:
         """
         Return a snapshot list of the registered interfaces.
         """
 
-        with self._lock:
-            return list(self._interfaces.values())
+        return list(self._interfaces.values())
 
     def items(self) -> list[tuple[int, "PacketHandlerL2 | PacketHandlerL3"]]:
         """
@@ -195,21 +181,18 @@ class InterfaceTable:
         pairs.
         """
 
-        with self._lock:
-            return list(self._interfaces.items())
+        return list(self._interfaces.items())
 
     def clear(self) -> None:
         """
         Remove every registered interface.
         """
 
-        with self._lock:
-            self._interfaces.clear()
+        self._interfaces.clear()
 
     def update(self, other: "Mapping[int, PacketHandlerL2 | PacketHandlerL3]") -> None:
         """
         Bulk-install the mappings from 'other' into the registry.
         """
 
-        with self._lock:
-            self._interfaces.update(other)
+        self._interfaces.update(other)

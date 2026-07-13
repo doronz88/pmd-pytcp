@@ -142,25 +142,23 @@ class IgmpRxHandler:
         self._if._packet_stats_rx.igmp__membership_report += 1
 
         message = packet_rx.igmp.message
-        # Hold the interface IGMP/multicast lock across the query-response
-        # state access (the pending-response scalar + suppressed-group
-        # set) so the RX and timer threads cannot corrupt it on a no-GIL
-        # build. Reentrant: '_ip4_multicast' re-acquires the same lock.
-        with self._if._lock__multicast:
-            if (
-                self._if._igmp_host_compatibility_mode() is not IgmpVersion.V3
-                and self._if._igmp_query__pending_response_at_ms is not None
-                and isinstance(message, (IgmpMessageV1Report, IgmpMessageV2Report))
-                and message.group_address in self._if._ip4_multicast
-                and message.group_address not in self._if._igmp_query__suppressed_groups
-            ):
-                self._if._igmp_query__suppressed_groups.add(message.group_address)
-                self._if._packet_stats_rx.igmp__membership_query__suppressed += 1
-                __debug__ and log(
-                    "igmp",
-                    f"{packet_rx.tracker} - Suppressing pending Report for {message.group_address}",
-                )
-                return
+        # The query-response state (the pending-response scalar +
+        # suppressed-group set) is only ever touched from the one
+        # stack loop, so this RX access cannot race the timer fire.
+        if (
+            self._if._igmp_host_compatibility_mode() is not IgmpVersion.V3
+            and self._if._igmp_query__pending_response_at_ms is not None
+            and isinstance(message, (IgmpMessageV1Report, IgmpMessageV2Report))
+            and message.group_address in self._if._ip4_multicast
+            and message.group_address not in self._if._igmp_query__suppressed_groups
+        ):
+            self._if._igmp_query__suppressed_groups.add(message.group_address)
+            self._if._packet_stats_rx.igmp__membership_query__suppressed += 1
+            __debug__ and log(
+                "igmp",
+                f"{packet_rx.tracker} - Suppressing pending Report for {message.group_address}",
+            )
+            return
 
         __debug__ and log(
             "igmp",
@@ -192,25 +190,22 @@ class IgmpRxHandler:
         message = packet_rx.igmp.message
         assert isinstance(message, IgmpMessageQuery)
 
-        # Hold the interface IGMP/multicast lock across the whole
-        # query-response scheduling (compatibility-mode update + pending
-        # scalar / per-group map writes + timer arming) so the RX and
-        # timer threads cannot corrupt the IGMP query-response state on a
-        # no-GIL build. Reentrant — the scheduling reads '_ip4_multicast'
-        # and emits reports that re-acquire the same lock.
-        with self._if._lock__multicast:
-            # RFC 3376 §7.2.1 — arm the Older Version Querier Present
-            # timer and, on a mode change, cancel pending IGMP timers,
-            # before scheduling this Query's response.
-            self._igmp_update_compatibility_mode(message)
+        # The whole query-response scheduling (compatibility-mode
+        # update + pending scalar / per-group map writes + timer
+        # arming) runs on the one stack loop, so the RX path and the
+        # timer fires cannot corrupt the IGMP query-response state.
+        # RFC 3376 §7.2.1 — arm the Older Version Querier Present
+        # timer and, on a mode change, cancel pending IGMP timers,
+        # before scheduling this Query's response.
+        self._igmp_update_compatibility_mode(message)
 
-            max_resp_ms = message.max_response_time * IGMP__MAX_RESP_TIME__UNIT_MS
-            delay_ms = self._igmp_query__pick_response_delay_ms(max_resp_ms)
+        max_resp_ms = message.max_response_time * IGMP__MAX_RESP_TIME__UNIT_MS
+        delay_ms = self._igmp_query__pick_response_delay_ms(max_resp_ms)
 
-            if message.is_general_query:
-                self._igmp_query__schedule_general(delay_ms)
-            else:
-                self._igmp_query__schedule_group(message.group_address, frozenset(message.source_addresses), delay_ms)
+        if message.is_general_query:
+            self._igmp_query__schedule_general(delay_ms)
+        else:
+            self._igmp_query__schedule_group(message.group_address, frozenset(message.source_addresses), delay_ms)
 
     def _igmp_query__schedule_general(self, delay_ms: int, /) -> None:
         """
@@ -315,9 +310,8 @@ class IgmpRxHandler:
         response using its recorded source list.
         """
 
-        with self._if._lock__multicast:
-            pending = self._if._igmp_group_query__pending.pop(group, None)
-            self._igmp_group_query__send_now(group, pending.sources if pending is not None else frozenset())
+        pending = self._if._igmp_group_query__pending.pop(group, None)
+        self._igmp_group_query__send_now(group, pending.sources if pending is not None else frozenset())
 
     def _igmp_group_query__send_now(self, group: Ip4Address, sources: frozenset[Ip4Address], /) -> None:
         """
@@ -385,11 +379,9 @@ class IgmpRxHandler:
             stack.timer.cancel(self._if._igmp_query__handle)
             self._if._igmp_query__handle = None
         self._if._igmp_query__pending_response_at_ms = None
-        # Snapshot the pending map before iterating: a Group-Specific
-        # Query deferred-send fires on the timer thread and pops its own
-        # entry, so iterating the live dict here would race that pop and
-        # raise 'dictionary changed size during iteration' on the RX
-        # thread (matches the snapshot idiom used on the TX side).
+        # Snapshot the pending map before iterating so the loop body
+        # can clear it without mutating the object being iterated
+        # (matches the snapshot idiom used on the TX side).
         for pending in list(self._if._igmp_group_query__pending.values()):
             stack.timer.cancel(pending.handle)
         self._if._igmp_group_query__pending.clear()
@@ -410,10 +402,9 @@ class IgmpRxHandler:
         clears the per-interface pending-response state.
         """
 
-        with self._if._lock__multicast:
-            self._if._igmp_query__pending_response_at_ms = None
-            self._if._igmp_query__handle = None
-            self._igmp_query__send_now()
+        self._if._igmp_query__pending_response_at_ms = None
+        self._if._igmp_query__handle = None
+        self._igmp_query__send_now()
 
     def _igmp_query__send_now(self) -> None:
         """

@@ -36,7 +36,6 @@ import os
 import secrets
 import struct
 import sys
-import threading
 from enum import IntFlag
 from typing import TYPE_CHECKING, Any
 
@@ -509,14 +508,11 @@ pmtu_cache: dict[Ip4Address | Ip6Address, int] = {}
 # 'next_probe_size' / 'confirm_current').
 pmtu_state: dict[Ip4Address | Ip6Address, PmtuSearch[Ip4Address] | PmtuSearch[Ip6Address]] = {}
 
-# Guards every read / write of 'pmtu_cache' and 'pmtu_state'. The maps
-# are written by the RX (ICMP Frag-Needed / Packet-Too-Big) thread and
-# the application / TX (UDP / TCP) threads, and read by 'current_pmtu';
-# GIL atomicity is not relied upon — PyTCP targets free-threaded
-# CPython, where an unguarded dict write racing another access tears
-# the map. All access goes through 'current_pmtu' /
+# 'pmtu_cache' / 'pmtu_state' are mutated only from event-loop
+# callbacks (RX ICMP handlers, TX paths) — the pure-asyncio runtime
+# ('docs/refactor/pure_asyncio.md') runs the whole stack on one loop,
+# so no lock is needed. All access goes through 'current_pmtu' /
 # 'record_classical_pmtu' / 'record_pmtu_engine' below.
-_pmtu_lock: threading.Lock = threading.Lock()
 
 
 def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
@@ -528,21 +524,19 @@ def current_pmtu(dst: Ip4Address | Ip6Address, /) -> int | None:
     caller should fall back to 'egress_interface_mtu(dst)'.
     """
 
-    with _pmtu_lock:
-        engine = pmtu_state.get(dst)
-        if engine is not None:
-            return engine.current_mtu
-        return pmtu_cache.get(dst)
+    engine = pmtu_state.get(dst)
+    if engine is not None:
+        return engine.current_mtu
+    return pmtu_cache.get(dst)
 
 
 def record_classical_pmtu(dst: Ip4Address | Ip6Address, next_hop_mtu: int, /) -> None:
     """
     Record a classical-PMTUD (RFC 1191 / RFC 8201) per-destination
-    next-hop MTU into 'pmtu_cache' under the shared pmtu lock.
+    next-hop MTU into 'pmtu_cache'.
     """
 
-    with _pmtu_lock:
-        pmtu_cache[dst] = next_hop_mtu
+    pmtu_cache[dst] = next_hop_mtu
 
 
 def record_pmtu_engine(
@@ -552,11 +546,10 @@ def record_pmtu_engine(
 ) -> None:
     """
     Record / replace the PLPMTUD engine state for 'dst' in
-    'pmtu_state' under the shared pmtu lock.
+    'pmtu_state'.
     """
 
-    with _pmtu_lock:
-        pmtu_state[dst] = engine
+    pmtu_state[dst] = engine
 
 
 def _is_link_scoped(destination: Ip4Address | Ip6Address, /) -> bool:

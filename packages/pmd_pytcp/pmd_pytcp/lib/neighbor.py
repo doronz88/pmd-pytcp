@@ -57,11 +57,10 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 import time
 from collections import deque
 from dataclasses import field
-from pmd_pytcp._compat import dataclass
+from pmd_pytcp._compat import dataclass, wait_event
 from enum import auto
 from typing import Callable, Generic, Union
 from typing_extensions import TypeAliasType, TypeVar, override
@@ -144,7 +143,6 @@ class NeighborCache(Subsystem, Generic[A, P]):
     _entries: dict[A, NeighborEntry[A, P]]
     _solicit_callback: SolicitCallback[A]
     _flush_callback: FlushCallback[P] | None
-    _lock: threading.Lock
 
     # Per-cache REACHABLE-state timeout override. Defaults to
     # None — the FSM falls back to the operator-configured
@@ -186,7 +184,6 @@ class NeighborCache(Subsystem, Generic[A, P]):
         self._entries = {}
         self._solicit_callback = solicit_callback
         self._flush_callback = flush_callback
-        self._lock = threading.Lock()
 
     def set_reachable_time_override_ms(self, value_ms: int | None) -> None:
         """
@@ -218,36 +215,35 @@ class NeighborCache(Subsystem, Generic[A, P]):
             PERMANENT → return MAC.
         """
 
-        with self._lock:
-            entry = self._entries.get(address)
-            now = time.monotonic()
-            if entry is None:
-                self._entries[address] = NeighborEntry(
-                    address=address,
-                    state=NudState.INCOMPLETE,
-                    state_changed_at=now,
-                    probe_count=1,
-                    last_used_at=now,
-                )
-                __debug__ and log(
-                    "stack",
-                    f"NUD: {address} INCOMPLETE — first solicit",
-                )
-                self._solicit_callback(address, None)
-                return None
-
-            object.__setattr__(entry, "last_used_at", now)
-
-            if entry.state in (NudState.REACHABLE, NudState.DELAY, NudState.PROBE, NudState.PERMANENT):
-                return entry.mac_address
-            if entry.state is NudState.STALE:
-                # First TX after staleness → DELAY (grace
-                # window for upper-layer reachability confirm
-                # to fire before we send a unicast probe).
-                self._transition(entry, NudState.DELAY, now)
-                return entry.mac_address
-            # INCOMPLETE / FAILED: no MAC available.
+        entry = self._entries.get(address)
+        now = time.monotonic()
+        if entry is None:
+            self._entries[address] = NeighborEntry(
+                address=address,
+                state=NudState.INCOMPLETE,
+                state_changed_at=now,
+                probe_count=1,
+                last_used_at=now,
+            )
+            __debug__ and log(
+                "stack",
+                f"NUD: {address} INCOMPLETE — first solicit",
+            )
+            self._solicit_callback(address, None)
             return None
+
+        object.__setattr__(entry, "last_used_at", now)
+
+        if entry.state in (NudState.REACHABLE, NudState.DELAY, NudState.PROBE, NudState.PERMANENT):
+            return entry.mac_address
+        if entry.state is NudState.STALE:
+            # First TX after staleness → DELAY (grace
+            # window for upper-layer reachability confirm
+            # to fire before we send a unicast probe).
+            self._transition(entry, NudState.DELAY, now)
+            return entry.mac_address
+        # INCOMPLETE / FAILED: no MAC available.
+        return None
 
     def _add_entry(self, address: A, mac_address: MacAddress) -> None:
         """
@@ -258,45 +254,44 @@ class NeighborCache(Subsystem, Generic[A, P]):
         configured static neighbours win over dynamic learning.
         """
 
-        with self._lock:
-            now = time.monotonic()
-            entry = self._entries.get(address)
+        now = time.monotonic()
+        entry = self._entries.get(address)
 
-            if entry is not None and entry.state is NudState.PERMANENT:
-                __debug__ and log(
-                    "stack",
-                    f"NUD: {address} add_entry skipped — entry is PERMANENT",
-                )
-                return
+        if entry is not None and entry.state is NudState.PERMANENT:
+            __debug__ and log(
+                "stack",
+                f"NUD: {address} add_entry skipped — entry is PERMANENT",
+            )
+            return
 
-            if entry is None:
-                entry = NeighborEntry(
-                    address=address,
-                    mac_address=mac_address,
-                    state=NudState.REACHABLE,
-                    state_changed_at=now,
-                    last_used_at=now,
-                )
-                self._entries[address] = entry
-                __debug__ and log(
-                    "stack",
-                    f"NUD: {address} → {mac_address} (REACHABLE, fresh)",
-                )
-                return
+        if entry is None:
+            entry = NeighborEntry(
+                address=address,
+                mac_address=mac_address,
+                state=NudState.REACHABLE,
+                state_changed_at=now,
+                last_used_at=now,
+            )
+            self._entries[address] = entry
+            __debug__ and log(
+                "stack",
+                f"NUD: {address} → {mac_address} (REACHABLE, fresh)",
+            )
+            return
 
-            queued_packets = list(entry.queued_packets)
-            entry.queued_packets.clear()
-            object.__setattr__(entry, "mac_address", mac_address)
-            object.__setattr__(entry, "probe_count", 0)
-            self._transition(entry, NudState.REACHABLE, now)
+        queued_packets = list(entry.queued_packets)
+        entry.queued_packets.clear()
+        object.__setattr__(entry, "mac_address", mac_address)
+        object.__setattr__(entry, "probe_count", 0)
+        self._transition(entry, NudState.REACHABLE, now)
 
-            if queued_packets and self._flush_callback is not None:
-                __debug__ and log(
-                    "stack",
-                    f"NUD: {address} resolved → flushing {len(queued_packets)} queued packet(s)",
-                )
-                for queued_packet in queued_packets:
-                    self._flush_callback(queued_packet, mac_address)
+        if queued_packets and self._flush_callback is not None:
+            __debug__ and log(
+                "stack",
+                f"NUD: {address} resolved → flushing {len(queued_packets)} queued packet(s)",
+            )
+            for queued_packet in queued_packets:
+                self._flush_callback(queued_packet, mac_address)
 
     def _add_permanent_entry(self, address: A, mac_address: MacAddress) -> None:
         """
@@ -305,56 +300,49 @@ class NeighborCache(Subsystem, Generic[A, P]):
         dynamic learning never overrides.
         """
 
-        with self._lock:
-            now = time.monotonic()
-            self._entries[address] = NeighborEntry(
-                address=address,
-                mac_address=mac_address,
-                state=NudState.PERMANENT,
-                state_changed_at=now,
-                last_used_at=now,
-            )
-            __debug__ and log(
-                "stack",
-                f"NUD: {address} → {mac_address} (PERMANENT)",
-            )
+        now = time.monotonic()
+        self._entries[address] = NeighborEntry(
+            address=address,
+            mac_address=mac_address,
+            state=NudState.PERMANENT,
+            state_changed_at=now,
+            last_used_at=now,
+        )
+        __debug__ and log(
+            "stack",
+            f"NUD: {address} → {mac_address} (PERMANENT)",
+        )
 
     def _remove_entry(self, address: A) -> bool:
         """
         Remove the cache entry for 'address' if present. Returns
         True when an entry was removed, False when none existed.
         The control-plane Neighbor API ('ip neighbor del')
-        consumes this; lock-guarded so it is safe against the
-        RX / TX threads walking '_entries'.
+        consumes this.
         """
 
-        with self._lock:
-            return self._entries.pop(address, None) is not None
+        return self._entries.pop(address, None) is not None
 
     def _flush(self) -> int:
         """
         Drop every cache entry — the control-plane Neighbor API
         ('ip neighbor flush') consumes this. Returns the number of
-        entries removed. Lock-guarded against the RX / TX threads.
+        entries removed.
         """
 
-        with self._lock:
-            count = len(self._entries)
-            self._entries = {}
-            return count
+        count = len(self._entries)
+        self._entries = {}
+        return count
 
     def _snapshot(self) -> tuple[NeighborEntry[A, P], ...]:
         """
         Return an immutable point-in-time copy of the cache
         entries — the read side of the Neighbor introspection API
-        ('ip neighbor show'). Lock-guarded so the caller sees a
-        consistent set, never a mid-mutation view; the entries are
-        frozen dataclasses, so the tuple is copy-by-value at the
-        public boundary.
+        ('ip neighbor show'). The entries are frozen dataclasses,
+        so the tuple is copy-by-value at the public boundary.
         """
 
-        with self._lock:
-            return tuple(self._entries.values())
+        return tuple(self._entries.values())
 
     def _confirm_reachability(self, address: A) -> None:
         """
@@ -366,13 +354,12 @@ class NeighborCache(Subsystem, Generic[A, P]):
         nothing useful to do with the confirm in those states.
         """
 
-        with self._lock:
-            entry = self._entries.get(address)
-            if entry is None:
-                return
-            if entry.state in (NudState.STALE, NudState.DELAY, NudState.PROBE):
-                self._transition(entry, NudState.REACHABLE, time.monotonic())
-                object.__setattr__(entry, "probe_count", 0)
+        entry = self._entries.get(address)
+        if entry is None:
+            return
+        if entry.state in (NudState.STALE, NudState.DELAY, NudState.PROBE):
+            self._transition(entry, NudState.REACHABLE, time.monotonic())
+            object.__setattr__(entry, "probe_count", 0)
 
     def _enqueue_pending(self, address: A, packet: P) -> None:
         """
@@ -386,30 +373,44 @@ class NeighborCache(Subsystem, Generic[A, P]):
         newest within the limit).
         """
 
-        with self._lock:
-            entry = self._entries.get(address)
-            if entry is None:
-                # No outstanding INCOMPLETE entry — caller
-                # forgot to 'find_entry' first. Silently
-                # ignore rather than raise; the protocol's
-                # next find will create the entry.
-                return
-            # Re-resolve the bound on every enqueue so a live
-            # sysctl override takes effect immediately. Per-iface
-            # slot wins; 'self._iface_name' is None for harness
-            # fixtures (resolves to '"default"' slot).
-            bound = sysctl_iface.get_for_iface("neighbor.unres_qlen", self._iface_name)
-            queue = entry.queued_packets
-            while len(queue) >= bound:
-                queue.popleft()
-            queue.append(packet)
+        entry = self._entries.get(address)
+        if entry is None:
+            # No outstanding INCOMPLETE entry — caller
+            # forgot to 'find_entry' first. Silently
+            # ignore rather than raise; the protocol's
+            # next find will create the entry.
+            return
+        # Re-resolve the bound on every enqueue so a live
+        # sysctl override takes effect immediately. Per-iface
+        # slot wins; 'self._iface_name' is None for harness
+        # fixtures (resolves to '"default"' slot).
+        bound = sysctl_iface.get_for_iface("neighbor.unres_qlen", self._iface_name)
+        queue = entry.queued_packets
+        while len(queue) >= bound:
+            queue.popleft()
+        queue.append(packet)
 
     # ------------------------------------------------------------
     # Subsystem loop — timer-driven transitions.
     # ------------------------------------------------------------
 
     @override
-    def _subsystem_loop(self) -> None:
+    async def _subsystem_loop(self) -> None:
+        """
+        One maintenance pass followed by the inter-iteration sleep.
+        The pass itself is factored into 'run_maintenance_once' so
+        tests can drive a single deterministic tick (e.g. under a
+        frozen 'time.monotonic') without the trailing real-time
+        sleep, which would otherwise never wake when the clock is
+        patched to a constant.
+        """
+
+        self.run_maintenance_once()
+
+        # Inter-iteration sleep — Subsystem-base convention.
+        await wait_event(self._event__stop_subsystem, SUBSYSTEM_SLEEP_TIME__SEC)
+
+    def run_maintenance_once(self) -> None:
         """
         Per-iteration timer-driven transitions:
             REACHABLE → STALE  after REACHABLE_TIME.
@@ -436,65 +437,58 @@ class NeighborCache(Subsystem, Generic[A, P]):
 
         now = time.monotonic()
         # Snapshot keys to allow mutation during iteration.
-        with self._lock:
-            addresses = list(self._entries.keys())
+        addresses = list(self._entries.keys())
 
         for address in addresses:
-            with self._lock:
-                entry = self._entries.get(address)
-                if entry is None:
+            entry = self._entries.get(address)
+            if entry is None:
+                continue
+
+            state = entry.state
+            age = now - entry.state_changed_at
+
+            # RFC 4861 §6.3.4 RA-driven Reachable Time wins
+            # over the operator default when set; ARP leaves
+            # the override None.
+            effective_reachable_time = (
+                self._reachable_time_override_s
+                if self._reachable_time_override_s is not None
+                else sysctl_reachable_time
+            )
+            if state is NudState.REACHABLE and age >= effective_reachable_time:
+                self._transition(entry, NudState.STALE, now)
+                continue
+
+            if state is NudState.DELAY and age >= delay_first_probe_time:
+                self._transition(entry, NudState.PROBE, now)
+                object.__setattr__(entry, "probe_count", 1)
+                cached_mac = entry.mac_address
+            elif state is NudState.INCOMPLETE:
+                if entry.probe_count >= max_multicast_solicit:
+                    self._transition(entry, NudState.FAILED, now)
                     continue
-
-                state = entry.state
-                age = now - entry.state_changed_at
-
-                # RFC 4861 §6.3.4 RA-driven Reachable Time wins
-                # over the operator default when set; ARP leaves
-                # the override None.
-                effective_reachable_time = (
-                    self._reachable_time_override_s
-                    if self._reachable_time_override_s is not None
-                    else sysctl_reachable_time
-                )
-                if state is NudState.REACHABLE and age >= effective_reachable_time:
-                    self._transition(entry, NudState.STALE, now)
-                    continue
-
-                if state is NudState.DELAY and age >= delay_first_probe_time:
-                    self._transition(entry, NudState.PROBE, now)
-                    object.__setattr__(entry, "probe_count", 1)
-                    cached_mac = entry.mac_address
-                # Note: the unicast solicit fires below, OUTSIDE
-                # the lock, to avoid holding the lock through the
-                # callback (the protocol-side TX path may itself
-                # take other locks).
-                elif state is NudState.INCOMPLETE:
-                    if entry.probe_count >= max_multicast_solicit:
-                        self._transition(entry, NudState.FAILED, now)
-                        continue
-                    if age >= retrans_timer:
-                        object.__setattr__(entry, "probe_count", entry.probe_count + 1)
-                        object.__setattr__(entry, "state_changed_at", now)
-                        cached_mac = None
-                    else:
-                        continue
-                elif state is NudState.PROBE:
-                    if entry.probe_count >= max_unicast_solicit:
-                        self._transition(entry, NudState.FAILED, now)
-                        continue
-                    if age >= retrans_timer:
-                        object.__setattr__(entry, "probe_count", entry.probe_count + 1)
-                        object.__setattr__(entry, "state_changed_at", now)
-                        cached_mac = entry.mac_address
-                    else:
-                        continue
+                if age >= retrans_timer:
+                    object.__setattr__(entry, "probe_count", entry.probe_count + 1)
+                    object.__setattr__(entry, "state_changed_at", now)
+                    cached_mac = None
                 else:
                     continue
+            elif state is NudState.PROBE:
+                if entry.probe_count >= max_unicast_solicit:
+                    self._transition(entry, NudState.FAILED, now)
+                    continue
+                if age >= retrans_timer:
+                    object.__setattr__(entry, "probe_count", entry.probe_count + 1)
+                    object.__setattr__(entry, "state_changed_at", now)
+                    cached_mac = entry.mac_address
+                else:
+                    continue
+            else:
+                continue
 
-            # Outside the lock — fire the solicit. The
-            # 'cached_mac' local was set above for the three
-            # branches that need to solicit (DELAY → PROBE,
-            # INCOMPLETE retrans, PROBE retrans).
+            # Fire the solicit. The 'cached_mac' local was set
+            # above for the three branches that need to solicit
+            # (DELAY → PROBE, INCOMPLETE retrans, PROBE retrans).
             self._solicit_callback(address, cached_mac)
 
         # Phase 5 — bounded-cache GC pass. Runs after the
@@ -502,9 +496,6 @@ class NeighborCache(Subsystem, Generic[A, P]):
         # entries are immediately eviction-eligible at the
         # current cache size.
         self._gc_pass(now)
-
-        # Inter-iteration sleep — Subsystem-base convention.
-        self._event__stop_subsystem.wait(SUBSYSTEM_SLEEP_TIME__SEC)
 
     def _gc_pass(self, now: float) -> None:
         """
@@ -532,76 +523,75 @@ class NeighborCache(Subsystem, Generic[A, P]):
         by 'last_used_at' LRU (active flows survive longest).
         """
 
-        with self._lock:
-            size = len(self._entries)
-            thresh1 = nbr_const.NEIGHBOR__GC_THRESH1
-            thresh2 = nbr_const.NEIGHBOR__GC_THRESH2
-            thresh3 = nbr_const.NEIGHBOR__GC_THRESH3
-            stale_time = nbr_const.NEIGHBOR__GC_STALE_TIME
+        size = len(self._entries)
+        thresh1 = nbr_const.NEIGHBOR__GC_THRESH1
+        thresh2 = nbr_const.NEIGHBOR__GC_THRESH2
+        thresh3 = nbr_const.NEIGHBOR__GC_THRESH3
+        stale_time = nbr_const.NEIGHBOR__GC_STALE_TIME
 
-            if size <= thresh1:
-                return
+        if size <= thresh1:
+            return
 
-            evictable = [
-                entry
-                for entry in self._entries.values()
-                if entry.state is not NudState.PERMANENT and not entry.queued_packets
-            ]
+        evictable = [
+            entry
+            for entry in self._entries.values()
+            if entry.state is not NudState.PERMANENT and not entry.queued_packets
+        ]
 
-            # Tier 1 — FAILED entries (oldest first).
-            failed = sorted(
-                (e for e in evictable if e.state is NudState.FAILED),
+        # Tier 1 — FAILED entries (oldest first).
+        failed = sorted(
+            (e for e in evictable if e.state is NudState.FAILED),
+            key=lambda e: e.state_changed_at,
+        )
+        for entry in failed:
+            del self._entries[entry.address]
+            size -= 1
+            __debug__ and log(
+                "stack",
+                f"NUD: GC evicted FAILED entry {entry.address}",
+            )
+
+        # Tier 2 — STALE entries past gc_stale_time (only
+        # when above gc_thresh2).
+        if size > thresh2:
+            stale_eligible = sorted(
+                (
+                    e
+                    for e in evictable
+                    if e.state is NudState.STALE
+                    and now - e.state_changed_at >= stale_time
+                    and e.address in self._entries
+                ),
                 key=lambda e: e.state_changed_at,
             )
-            for entry in failed:
+            for entry in stale_eligible:
+                if size <= thresh2:
+                    break
                 del self._entries[entry.address]
                 size -= 1
                 __debug__ and log(
                     "stack",
-                    f"NUD: GC evicted FAILED entry {entry.address}",
+                    f"NUD: GC evicted STALE entry {entry.address}",
                 )
 
-            # Tier 2 — STALE entries past gc_stale_time (only
-            # when above gc_thresh2).
-            if size > thresh2:
-                stale_eligible = sorted(
-                    (
-                        e
-                        for e in evictable
-                        if e.state is NudState.STALE
-                        and now - e.state_changed_at >= stale_time
-                        and e.address in self._entries
-                    ),
-                    key=lambda e: e.state_changed_at,
+        # Tier 3 — hard cap. Evict any remaining entries
+        # in LRU order (oldest 'last_used_at' first) until
+        # size <= gc_thresh3. PERMANENT and queued-packet
+        # entries are still skipped.
+        if size > thresh3:
+            lru = sorted(
+                (e for e in evictable if e.address in self._entries),
+                key=lambda e: e.last_used_at,
+            )
+            for entry in lru:
+                if size <= thresh3:
+                    break
+                del self._entries[entry.address]
+                size -= 1
+                __debug__ and log(
+                    "stack",
+                    f"NUD: GC evicted (hard cap) {entry.address} state={entry.state}",
                 )
-                for entry in stale_eligible:
-                    if size <= thresh2:
-                        break
-                    del self._entries[entry.address]
-                    size -= 1
-                    __debug__ and log(
-                        "stack",
-                        f"NUD: GC evicted STALE entry {entry.address}",
-                    )
-
-            # Tier 3 — hard cap. Evict any remaining entries
-            # in LRU order (oldest 'last_used_at' first) until
-            # size <= gc_thresh3. PERMANENT and queued-packet
-            # entries are still skipped.
-            if size > thresh3:
-                lru = sorted(
-                    (e for e in evictable if e.address in self._entries),
-                    key=lambda e: e.last_used_at,
-                )
-                for entry in lru:
-                    if size <= thresh3:
-                        break
-                    del self._entries[entry.address]
-                    size -= 1
-                    __debug__ and log(
-                        "stack",
-                        f"NUD: GC evicted (hard cap) {entry.address} state={entry.state}",
-                    )
 
     # ------------------------------------------------------------
     # Internal helpers.

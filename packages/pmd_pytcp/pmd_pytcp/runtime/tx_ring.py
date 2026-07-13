@@ -32,13 +32,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import collections
-import os
-import select
-import threading
-import time
-from collections.abc import Callable
-from typing_extensions import TypeAliasType, override
+from typing_extensions import TypeAliasType
 
 from pmd_net_proto import (
     Ethernet8023Assembler,
@@ -55,14 +51,11 @@ from pmd_net_proto.protocols.ethernet_802_3.ethernet_802_3__header import (
 from pmd_pytcp.lib import io_backend
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsTx
-from pmd_pytcp.lib.tx_status import TxStatus
-from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
 from typing import Union
 
-# A fully-built outbound frame ready for 'os.writev'. The TX
-# deque carries these alongside '_TxRequest' marshaled-call
-# descriptors (see the ring-handoff design): the worker writes
-# a 'TxFrame' directly and runs a '_TxRequest' callable.
+# A fully-built outbound frame ready for the egress write. The TX
+# deque carries these alongside verbatim raw frames (AF_PACKET
+# egress): the drain writes both kinds in queue order.
 TxFrame = TypeAliasType("TxFrame", Union[EthernetAssembler, Ethernet8023Assembler, Ip6Assembler, Ip4Assembler, Ip4FragAssembler])
 
 # Per-protocol-class dispatch table mapping the TX-side Assembler
@@ -81,84 +74,20 @@ _TX_PROTO_DISPATCH: dict[type, tuple[bytes, int]] = {
 }
 
 
-class _TxRequest:
-    """
-    A marshaled '_phtx_*' pipeline call handed off to the TX
-    worker thread. The producing thread (an app 'send_*_packet'
-    caller, an RX-thread reply, a timer-thread retransmit) builds
-    the descriptor and blocks on its event; the single TX worker
-    thread runs the callable so every per-interface TX-state write
-    happens on one thread (single-writer). The callable's
-    'TxStatus' (or any exception) is handed back to the waiter.
-    """
-
-    __slots__ = ("_run", "_event", "_result", "_exc")
-
-    def __init__(self, run: Callable[[], TxStatus], /, *, blocking: bool = True) -> None:
-        """
-        Initialize the marshaled request from its callable. A
-        'blocking' request carries a 'threading.Event' the producer
-        waits on; a fire-and-forget request ('blocking=False', the
-        Phase 4b async-send path) has no event — the worker runs it
-        and discards the result.
-        """
-
-        self._run = run
-        self._event = threading.Event() if blocking else None
-        self._result: TxStatus | None = None
-        self._exc: BaseException | None = None
-
-    def execute(self) -> None:
-        """
-        Run the callable on the worker thread, capturing its result
-        or exception, and signal the waiting producer. For a blocking
-        request the event is set in a 'finally' so a raising callable
-        never strands the waiter; for a fire-and-forget request a
-        raise is logged (no caller to receive it) and swallowed so it
-        cannot kill the TX loop.
-        """
-
-        try:
-            self._result = self._run()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            self._exc = exc
-            if self._event is None:
-                __debug__ and log(
-                    "tx-ring",
-                    f"<CRIT>Fire-and-forget TX call raised, dropping: {exc!r}</>",
-                )
-        finally:
-            if self._event is not None:
-                self._event.set()
-
-    def wait(self, timeout: float | None = None) -> bool:
-        """
-        Block the producer until the worker has executed the call, or
-        'timeout' seconds elapse; return True when the call has been
-        executed. Only valid on a blocking request (one carrying an
-        event). The timeout exists so 'TxRing.dispatch' can re-check
-        worker liveness while waiting instead of parking forever on a
-        request the worker exited without servicing.
-        """
-
-        assert self._event is not None, "wait() called on a fire-and-forget TX request."
-        return self._event.wait(timeout)
-
-    def result(self) -> TxStatus:
-        """
-        Return the worker-side 'TxStatus', re-raising any exception
-        the callable raised on the worker thread.
-        """
-
-        if self._exc is not None:
-            raise self._exc
-        assert self._result is not None
-        return self._result
-
-
-class TxRing(Subsystem):
+class TxRing:
     """
     Support for sending packets to the network.
+
+    Pure-asyncio egress ('docs/refactor/pure_asyncio.md'): producers
+    run on the one stack loop, so 'enqueue' appends to the deque and
+    schedules a drain with 'loop.call_soon' — no worker thread, no
+    eventfd, and no '_TxRequest' marshaling (single-writer holds by
+    construction on a single loop; former 'dispatch(run)' callers
+    now just call 'run()'). The drain writes with 'io_backend.writev'
+    until the deque is empty or the fd would block, in which case it
+    re-arms via 'loop.add_writer'. On the socket-I/O path (Windows /
+    'PYTCP_FORCE_SOCK_IO') a writer task drives 'loop.sock_sendall'
+    instead — proactor loops lack 'add_writer' for arbitrary fds.
     """
 
     _subsystem_name = "TX Ring"
@@ -167,14 +96,18 @@ class TxRing(Subsystem):
     _mtu: int
     _queue_max_size: int
 
-    _tx_deque: collections.deque[TxFrame | _TxRequest | Buffer]
-    _tx_event_fd: int
+    _tx_deque: "collections.deque[TxFrame | Buffer]"
+    _loop: asyncio.AbstractEventLoop | None
+    _running: bool
+    _drain_scheduled: bool
+    _writer_armed: bool
+    _writer_task: "asyncio.Task[None] | None"
+    _writer_wakeup: asyncio.Event | None
     _queue_full_drop_count: int
     _os_error_drop_count: int
     _packet_stats: PacketStatsTx | None
     _link_stats: LinkStatsCounters | None
 
-    @override
     def __init__(
         self,
         *,
@@ -192,17 +125,18 @@ class TxRing(Subsystem):
         self._mtu = mtu
         self._queue_max_size = queue_max_size
 
-        super().__init__(info=f"fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}")
+        __debug__ and log(
+            "stack",
+            f"Initializing {self._subsystem_name} [fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}]",
+        )
 
-        # 'collections.deque' append/popleft are atomic under the
-        # GIL, no kernel mutex calls per op. The producer
-        # (packet-handler thread) and consumer (TX worker thread)
-        # synchronise via 'os.eventfd': producer signals on append,
-        # consumer waits via 'select.select' on the eventfd. Net per
-        # packet: ~5-8 µs saved over the prior 'queue.Queue' that
-        # used 'Lock + Condition' on every put/get.
         self._tx_deque = collections.deque()
-        self._tx_event_fd = io_backend.eventfd(0, io_backend.EFD_NONBLOCK | io_backend.EFD_CLOEXEC)
+        self._loop = None
+        self._running = False
+        self._drain_scheduled = False
+        self._writer_armed = False
+        self._writer_task = None
+        self._writer_wakeup = None
         self._queue_full_drop_count = 0
         self._os_error_drop_count = 0
         # Optional shared 'PacketStatsTx' object — see RxRing for
@@ -223,9 +157,9 @@ class TxRing(Subsystem):
         Get the cumulative count of outbound packets dropped because
         the TX ring was at capacity at 'enqueue' time. A non-zero
         rate signals the producer (the packet handler) is generating
-        packets faster than 'os.writev' can drain them. Sources from
-        the shared 'PacketStatsTx' field when wired, falls back to
-        the internal counter otherwise.
+        packets faster than the egress write can drain them. Sources
+        from the shared 'PacketStatsTx' field when wired, falls back
+        to the internal counter otherwise.
         """
 
         if self._packet_stats is not None:
@@ -236,10 +170,10 @@ class TxRing(Subsystem):
     def os_error_drop_count(self) -> int:
         """
         Get the cumulative count of outbound packets dropped because
-        'os.writev' raised 'OSError' (typically ENOBUFS, ENETDOWN,
-        EIO on link failure). A non-zero rate signals interface
-        trouble the application would otherwise have no visibility
-        into.
+        the egress write raised 'OSError' (typically ENOBUFS,
+        ENETDOWN, EIO on link failure). A non-zero rate signals
+        interface trouble the application would otherwise have no
+        visibility into.
         """
 
         if self._packet_stats is not None:
@@ -249,289 +183,229 @@ class TxRing(Subsystem):
     @property
     def qsize(self) -> int:
         """
-        Get the current depth of the TX deque (analogous to
-        'queue.Queue.qsize'). Useful for live observability —
-        steady-state qsize > 0 indicates the consumer is falling
-        behind the producer.
+        Get the current depth of the TX deque. Useful for live
+        observability — steady-state qsize > 0 indicates the egress
+        write is falling behind the producers.
         """
 
         return len(self._tx_deque)
 
-    @override
-    def _stop(self) -> None:
+    def start(self) -> None:
         """
-        Drain the deque of any marshaled requests the worker left
-        behind, then close the eventfd backing the producer/consumer
-        wakeup channel so 'stack.stop()' returns the descriptor to
-        the kernel.
+        Arm the egress on the running event loop. On the socket-I/O
+        path this spawns the writer task; on the fd path drains are
+        scheduled on demand by 'enqueue'.
         """
 
-        # A producer can enqueue between the worker's last drain and
-        # its exit; executing the leftovers here sets each blocking
-        # request's event so no producer stays parked (possibly
-        # holding a session FSM lock) across stack teardown. Plain
-        # frames are dropped — nothing is going to write them. The
-        # deque ops arbitrate ownership against 'dispatch's own
-        # liveness fallback, so a request runs exactly once.
-        while self._tx_deque:
-            try:
-                item = self._tx_deque.popleft()
-            except IndexError:
-                break
-            if isinstance(item, _TxRequest):
-                item.execute()
+        __debug__ and log("stack", f"Starting {self._subsystem_name}")
 
-        try:
-            io_backend.eventfd_close(self._tx_event_fd)
-        except OSError:
-            pass
+        self._loop = asyncio.get_running_loop()
+        self._running = True
 
-    @override
-    def _subsystem_loop(self) -> None:
-        """
-        Wait for a producer signal on the TX eventfd, then drain
-        every queued packet in one inner pass. The eventfd ack
-        ('os.eventfd_read') is called once per wake-up regardless
-        of how many packets the inner drain processes; if the
-        drain breaks early on 'os.writev' OSError, the eventfd is
-        re-armed so the next outer-loop iteration wakes immediately
-        rather than blocking on a stale empty signal.
-        """
-
-        try:
-            ready, _, _ = select.select([self._tx_event_fd], [], [], SUBSYSTEM_SLEEP_TIME__SEC)
-        except (OSError, ValueError):
-            # The eventfd was closed under us (teardown race — a
-            # '_stop' running while a wedged worker is still inside
-            # this loop). Pace and return so the outer driver
-            # observes the stop event instead of dying on an
-            # unhandled exception (WinError 10038 on Windows).
-            time.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
-            return
-        if not ready:
+        sock = io_backend.sock_for_fd(self._fd)
+        if sock is not None:
+            sock.setblocking(False)
+            self._writer_wakeup = asyncio.Event()
+            self._writer_task = self._loop.create_task(self._task__sock_writer(), name=self._subsystem_name)
             return
 
-        # Drain the eventfd counter — it accumulates one signal per
-        # producer enqueue; we only need 'queue is non-empty', so
-        # one read clears the kernel-side ready bit.
-        try:
-            io_backend.eventfd_read(self._tx_event_fd)
-        except OSError:
-            pass
+        io_backend.set_nonblocking(self._fd)
+        if self._tx_deque:
+            self._schedule_drain()
 
-        while self._tx_deque:
-            item = self._tx_deque.popleft()
-            if isinstance(item, _TxRequest):
-                # A marshaled '_phtx_*' call: run it here on the
-                # worker thread (single-writer). The callable itself
-                # enqueues the built frame back onto this deque, which
-                # the inner drain then writes in the same pass.
-                item.execute()
-                continue
-            if isinstance(item, (bytes, bytearray, memoryview)):
-                # A verbatim pre-built frame from an AF_PACKET socket:
-                # write it as-is, no assembler / ethertype framing.
-                if not self._send_raw_frame(item):
-                    if self._tx_deque:
-                        try:
-                            io_backend.eventfd_write(self._tx_event_fd, 1)
-                        except OSError:
-                            pass
-                    return
-                continue
-            if not self._send_one(item):
-                # 'os.writev' errored — stop draining. Re-arm the
-                # eventfd so the next outer pass picks up where we
-                # left off; otherwise pending packets would wait
-                # for a fresh producer signal.
-                if self._tx_deque:
-                    try:
-                        io_backend.eventfd_write(self._tx_event_fd, 1)
-                    except OSError:
-                        pass
-                return
-
-    def dispatch(self, run: Callable[[], TxStatus], /) -> TxStatus:
+    def stop(self) -> None:
         """
-        Run a '_phtx_*' pipeline call on the TX worker thread and
-        return its 'TxStatus' (ring-handoff single-writer). Marshals
-        the callable to the worker and blocks for the result, EXCEPT:
-
-        - No live worker (not started, or stopped) — run inline; the
-          unit-test path and the pre-'start()' boot path both hit
-          this, and there is no worker to hand off to.
-        - Called from the worker thread itself (a re-entrant
-          solicitation emitted mid-pipeline) — run inline; enqueuing
-          onto our own deque and waiting would deadlock.
+        Disarm the egress. Anything still queued is dropped with the
+        deque (acceptable during shutdown — same contract the
+        threaded worker had).
         """
 
-        worker = self._thread
-        if worker is None or not worker.is_alive() or threading.current_thread() is worker:
-            return run()
+        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
 
-        request = _TxRequest(run)
-        self._tx_deque.append(request)
-        try:
-            io_backend.eventfd_write(self._tx_event_fd, 1)
-        except OSError:
-            # Eventfd closed (stop in progress); the request will not
-            # be serviced. Reclaim it from the deque (so a later
-            # worker restart cannot execute it a second time) and run
-            # inline. Surfacing a drop is better than hanging.
+        self._running = False
+        if self._writer_armed and self._loop is not None:
             try:
-                self._tx_deque.remove(request)
-            except ValueError:
+                self._loop.remove_writer(self._fd)
+            except (OSError, ValueError):
                 pass
-            return run()
-        # Liveness-aware wait: the worker can exit ('stack.stop()'
-        # teardown race) between the 'is_alive()' check above and
-        # servicing this request, which would park the producer here
-        # FOREVER — and the producer may hold its session's FSM lock,
-        # wedging every later 'tcp_fsm()' entry (including 'close()'
-        # from an application thread). Poll the event at the
-        # subsystem cadence and fall back to inline execution the
-        # moment the worker is gone. The deque 'remove' arbitrates
-        # ownership: exactly one of {worker drain, '_stop' drain,
-        # this fallback} obtains the request, so the call runs once.
-        while not request.wait(timeout=SUBSYSTEM_SLEEP_TIME__SEC):
-            if worker.is_alive():
-                continue
-            try:
-                self._tx_deque.remove(request)
-            except ValueError:
-                # Someone else (the worker before it exited, or the
-                # '_stop' drain) owns the request; its event is set
-                # on execution, so keep waiting.
-                continue
-            return run()
-        return request.result()
+            self._writer_armed = False
+        if self._writer_task is not None and not self._writer_task.done():
+            self._writer_task.cancel()
 
-    def dispatch_async(self, run: Callable[[], TxStatus], /) -> None:
+    def _schedule_drain(self) -> None:
         """
-        Fire-and-forget variant of 'dispatch' (Phase 4b async send):
-        hand the '_phtx_*' call to the TX worker and return
-        immediately without waiting for the result. Used by the
-        UDP / raw socket send paths so the application thread is not
-        blocked on the worker; transmission failures are not surfaced
-        to the caller (the datagram is "accepted into the stack",
-        matching Linux's queued-on-send semantics). Same inline
-        fallback as 'dispatch' when there is no live worker or the
-        caller already IS the worker.
+        Ensure exactly one pending drain: 'call_soon' on the fd
+        path, a wakeup-event set on the socket-I/O path. No-op when
+        the ring is not started (pre-'start()' boot enqueues drain
+        on 'start()'; unit tests enqueue and assert on the deque).
         """
 
-        request = _TxRequest(run, blocking=False)
-        worker = self._thread
-        if worker is None or not worker.is_alive() or threading.current_thread() is worker:
-            request.execute()
+        if not self._running or self._loop is None:
+            return
+        if self._writer_wakeup is not None:
+            self._writer_wakeup.set()
+            return
+        if self._drain_scheduled or self._writer_armed:
+            return
+        self._drain_scheduled = True
+        self._loop.call_soon(self._drain)
+
+    def _drain(self) -> None:
+        """
+        Write queued frames until the deque is empty or the fd
+        would block; on EAGAIN re-arm via 'add_writer' so the drain
+        resumes on writability.
+        """
+
+        self._drain_scheduled = False
+        if not self._running:
             return
 
-        self._tx_deque.append(request)
-        try:
-            io_backend.eventfd_write(self._tx_event_fd, 1)
-        except OSError:
-            # Eventfd closed (stop in progress); reclaim the request
-            # from the deque (so a later worker restart cannot run it
-            # a second time) and run inline so the call is not
-            # silently lost on the dead deque.
+        while self._tx_deque:
+            item = self._tx_deque[0]
             try:
-                self._tx_deque.remove(request)
-            except ValueError:
+                self._send_item(item)
+            except (BlockingIOError, InterruptedError):
+                # Kernel buffer full — resume when writable.
+                assert self._loop is not None
+                if not self._writer_armed:
+                    self._loop.add_writer(self._fd, self._on_writable)
+                    self._writer_armed = True
                 return
-            request.execute()
+            self._tx_deque.popleft()
 
-    def _send_one(
-        self,
-        packet_tx: TxFrame,
-    ) -> bool:
+        if self._writer_armed and self._loop is not None:
+            self._loop.remove_writer(self._fd)
+            self._writer_armed = False
+
+    def _on_writable(self) -> None:
         """
-        Build the wire-buffer list for a single packet and call
-        'os.writev'. Returns True on a successful send (including
-        the silent oversized-frame and unknown-type drops which
-        are non-fatal log-only branches), and False on 'os.writev'
-        OSError so the inner drain can break early.
+        Writability callback (armed after EAGAIN): resume the drain.
         """
+
+        self._drain()
+
+    async def _task__sock_writer(self) -> None:
+        """
+        Socket-I/O-path writer: 'loop.sock_sendall' works on both
+        selector and proactor loops, covering Windows where
+        'add_writer' cannot take an arbitrary fd.
+        """
+
+        assert self._loop is not None and self._writer_wakeup is not None
+        sock = io_backend.sock_for_fd(self._fd)
+        assert sock is not None
+
+        while True:
+            await self._writer_wakeup.wait()
+            self._writer_wakeup.clear()
+            while self._tx_deque:
+                item = self._tx_deque[0]
+                buffers = self._wire_buffers(item)
+                if buffers is not None:
+                    try:
+                        await self._loop.sock_sendall(sock, b"".join(buffers))
+                    except asyncio.CancelledError:
+                        return
+                    except OSError as error:
+                        self._count_os_error(error)
+                self._tx_deque.popleft()
+
+    def _wire_buffers(self, item: "TxFrame | Buffer", /) -> "list[Buffer] | None":
+        """
+        Build the wire-buffer list for one queued item — the framing
+        prefix + assembled frame for an Assembler, the verbatim
+        bytes for a raw frame. Returns None for the silent drops
+        (unknown type, frame > MTU) which are non-fatal log-only
+        branches.
+        """
+
+        if isinstance(item, (bytes, bytearray, memoryview)):
+            return [item]
 
         # Production fast path: 'type(x)' dict lookup is O(1). For
         # 'MagicMock(spec=X)' fixtures whose 'type(mock)' is
         # 'MagicMock', fall back to an 'isinstance' walk so test
         # mocks resolve via '__class__' / '__instancecheck__'.
-        proto_info = _TX_PROTO_DISPATCH.get(type(packet_tx))
+        proto_info = _TX_PROTO_DISPATCH.get(type(item))
         if proto_info is None:
             for cls, info in _TX_PROTO_DISPATCH.items():
-                if isinstance(packet_tx, cls):
+                if isinstance(item, cls):
                     proto_info = info
                     break
         if proto_info is None:
             __debug__ and log(
                 "tx-ring",
-                f"{packet_tx.tracker} - <CRIT>Unknown packet type: " f"{type(packet_tx)!r}</>",
+                f"{item.tracker} - <CRIT>Unknown packet type: " f"{type(item)!r}</>",
             )
-            return True
+            return None
 
         prefix, mtu_extra = proto_info
         buffers: list[Buffer] = [prefix] if prefix else []
         mtu = self._mtu + mtu_extra
 
-        if (packet_tx_len := len(packet_tx)) > mtu:
+        if (packet_tx_len := len(item)) > mtu:
             __debug__ and log(
                 "tx-ring",
-                f"{packet_tx.tracker} - Unable to send frame, frame" f"len ({packet_tx_len}) > mtu ({mtu})",
+                f"{item.tracker} - Unable to send frame, frame" f"len ({packet_tx_len}) > mtu ({mtu})",
             )
-            return True
+            return None
 
-        packet_tx.assemble(buffers)
+        item.assemble(buffers)
+        return buffers
+
+    def _count_os_error(self, error: OSError, /) -> None:
+        """
+        Count an egress-write 'OSError' drop.
+        """
+
+        if self._packet_stats is not None:
+            self._packet_stats.tx_ring__os_error__drop += 1
+        else:
+            self._os_error_drop_count += 1
+        __debug__ and log(
+            "tx-ring",
+            f"<CRIT>Unable to send frame, OSError: {error}</>",
+        )
+
+    def _send_item(self, item: "TxFrame | Buffer", /) -> bool:
+        """
+        Write one queued item via 'io_backend.writev'. Returns True
+        on a successful write, False for the silent drops (unknown
+        type / oversized frame / non-blocking OSError). Re-raises
+        'BlockingIOError' so the drain can arm the writability
+        callback with the item still at the head of the queue.
+        """
+
+        buffers = self._wire_buffers(item)
+        if buffers is None:
+            return False
 
         try:
             io_backend.writev(self._fd, buffers)
+        except (BlockingIOError, InterruptedError):
+            raise
         except OSError as error:
-            if self._packet_stats is not None:
-                self._packet_stats.tx_ring__os_error__drop += 1
-            else:
-                self._os_error_drop_count += 1
-            __debug__ and log(
-                "tx-ring",
-                f"{packet_tx.tracker} - <CRIT>Unable to send frame, " f"OSError: {error}</>",
-            )
+            self._count_os_error(error)
             return False
 
-        __debug__ and log(
-            "tx-ring",
-            f"<B><lr>[TX]</> {packet_tx.tracker}<y>"
-            f"{packet_tx.tracker.latency}</> - sent frame, "
-            f"{len(packet_tx)} bytes",
-        )
-        return True
-
-    def _send_raw_frame(self, frame: Buffer, /) -> bool:
-        """
-        Write a verbatim pre-built link-layer frame (from an AF_PACKET
-        socket) to the TX fd via 'os.writev', adding no framing prefix.
-        Returns True on success (the contract '_subsystem_loop' expects)
-        and False on 'os.writev' OSError so the drain can break early.
-        """
-
-        try:
-            io_backend.writev(self._fd, [frame])
-        except OSError as error:
-            if self._packet_stats is not None:
-                self._packet_stats.tx_ring__os_error__drop += 1
-            else:
-                self._os_error_drop_count += 1
+        if isinstance(item, (bytes, bytearray, memoryview)):
+            __debug__ and log("tx-ring", f"<B><lr>[TX]</> - sent raw frame, {len(item)} bytes")
+        else:
             __debug__ and log(
                 "tx-ring",
-                f"<CRIT>Unable to send raw frame, OSError: {error}</>",
+                f"<B><lr>[TX]</> {item.tracker}<y>"
+                f"{item.tracker.latency}</> - sent frame, "
+                f"{len(item)} bytes",
             )
-            return False
-
-        __debug__ and log("tx-ring", f"<B><lr>[TX]</> - sent raw frame, {len(frame)} bytes")
         return True
 
     def enqueue_raw_frame(self, frame: Buffer, /) -> None:
         """
         Enqueue a verbatim pre-built link-layer frame for transmission —
         the AF_PACKET (SOCK_RAW) egress primitive. Unlike 'enqueue',
-        which takes an Assembler the worker serializes, this puts the
-        finished frame bytes straight on the ring; the worker writes
+        which takes an Assembler the drain serializes, this puts the
+        finished frame bytes straight on the ring; the drain writes
         them as-is, skipping the IP / assembler layers. Same full-queue
         drop and 'tx_bytes' accounting as 'enqueue'.
         """
@@ -545,10 +419,7 @@ class TxRing(Subsystem):
             return
 
         self._tx_deque.append(frame)
-        try:
-            io_backend.eventfd_write(self._tx_event_fd, 1)
-        except OSError:
-            pass
+        self._schedule_drain()
 
         if self._link_stats is not None:
             self._link_stats.tx_bytes += len(frame)
@@ -560,13 +431,9 @@ class TxRing(Subsystem):
         packet_tx: TxFrame,
     ) -> None:
         """
-        Enqueue a fully-built outbound frame into the TX Ring. The
-        'len() >= cap' check tolerates concurrent producers (the
-        worker re-enqueues built frames while app / RX / timer
-        threads also enqueue) — 'deque.append' is atomic, and an
-        occasional off-by-one against the cap only over/under-fills
-        by one slot. On a full deque the frame is dropped; the drop
-        counter increments so monitors can spot saturation.
+        Enqueue a fully-built outbound frame into the TX Ring. On a
+        full deque the frame is dropped; the drop counter increments
+        so monitors can spot saturation.
         """
 
         if len(self._tx_deque) >= self._queue_max_size:
@@ -581,13 +448,7 @@ class TxRing(Subsystem):
             return
 
         self._tx_deque.append(packet_tx)
-        try:
-            io_backend.eventfd_write(self._tx_event_fd, 1)
-        except OSError:
-            # Eventfd closed (stop in progress) — packet sits on
-            # the deque, will not be drained. Acceptable during
-            # shutdown.
-            pass
+        self._schedule_drain()
 
         # Link API tx_bytes: count wire-level frame bytes enqueued
         # for transmission regardless of whether the kernel write

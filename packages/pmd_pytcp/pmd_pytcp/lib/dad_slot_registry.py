@@ -33,10 +33,11 @@ only for bookkeeping + atomic RX-thread conflict signalling.
 
 Each candidate gets a slot consisting of:
 
-- 'threading.Event'   — set when conflict is observed by the
-                        RX path; the worker / boot thread
-                        polls via 'has_signal()' or waits on
-                        the returned 'Event' via 'wait()'.
+- 'asyncio.Event'     — set when conflict is observed by the
+                        RX path; the worker / boot task
+                        polls via 'has_signal()' or awaits
+                        the returned 'Event' (via the
+                        '_compat.wait_event' helper).
 - 'set[bytes]'        — nonces we have emitted for the
                         candidate; only meaningful for ND
                         (RFC 7527 §4.2 Enhanced DAD loop-
@@ -46,12 +47,12 @@ Each candidate gets a slot consisting of:
                         signalled (ND captures the peer
                         TLLA for logging; ARP leaves None).
 
-All cross-thread operations (install, register_nonce,
-teardown, has_signal, peer_info, try_signal_conflict) run
-under a single 'threading.Lock' so worker / boot threads
-cannot tear down a slot mid-RX-signal, and concurrent
+All operations (install, register_nonce, teardown,
+has_signal, peer_info, try_signal_conflict) run on the one
+stack event loop ('docs/refactor/pure_asyncio.md'), so a
+worker / boot task cannot tear down a slot mid-RX-signal and
 nonce-set mutation cannot interleave with the RX nonce-
-membership check.
+membership check — no lock is needed.
 
 pmd_pytcp/lib/dad_slot_registry.py
 
@@ -60,7 +61,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
+import asyncio
 from enum import Enum
 
 from pmd_net_addr import Ip4Address, Ip6Address, MacAddress
@@ -93,31 +94,28 @@ class DadSlotRegistry(Generic[A]):
 
     def __init__(self) -> None:
         """
-        Initialize an empty registry. All access uses the
-        internal lock — callers never need to take it
-        themselves.
+        Initialize an empty registry. All access runs on the one
+        stack event loop, so no internal lock is needed.
         """
 
-        self._events: dict[A, threading.Event] = {}
+        self._events: dict[A, asyncio.Event] = {}
         self._nonces: dict[A, set[bytes]] = {}
         self._peer_info: dict[A, MacAddress | None] = {}
-        self._lock: threading.Lock = threading.Lock()
 
-    def install(self, candidate: A, /) -> threading.Event:
+    def install(self, candidate: A, /) -> asyncio.Event:
         """
         Install a fresh slot for 'candidate' and return the
-        slot's Event so the worker / boot thread can poll
-        ('is_set()') or wait ('wait(timeout=...)') on it.
+        slot's Event so the worker / boot task can poll
+        ('is_set()') or await it (via '_compat.wait_event').
 
         Idempotent — overwrites any pre-existing slot for the
         same candidate so a re-claim restarts cleanly.
         """
 
-        event = threading.Event()
-        with self._lock:
-            self._events[candidate] = event
-            self._nonces[candidate] = set()
-            self._peer_info[candidate] = None
+        event = asyncio.Event()
+        self._events[candidate] = event
+        self._nonces[candidate] = set()
+        self._peer_info[candidate] = None
         return event
 
     def teardown(self, candidate: A, /) -> None:
@@ -128,10 +126,9 @@ class DadSlotRegistry(Generic[A]):
         cleanup).
         """
 
-        with self._lock:
-            self._events.pop(candidate, None)
-            self._nonces.pop(candidate, None)
-            self._peer_info.pop(candidate, None)
+        self._events.pop(candidate, None)
+        self._nonces.pop(candidate, None)
+        self._peer_info.pop(candidate, None)
 
     def register_nonce(self, candidate: A, nonce: bytes, /) -> None:
         """
@@ -141,9 +138,8 @@ class DadSlotRegistry(Generic[A]):
         No-op if no slot exists for 'candidate'.
         """
 
-        with self._lock:
-            if candidate in self._nonces:
-                self._nonces[candidate].add(nonce)
+        if candidate in self._nonces:
+            self._nonces[candidate].add(nonce)
 
     def has_signal(self, candidate: A, /) -> bool:
         """
@@ -152,8 +148,7 @@ class DadSlotRegistry(Generic[A]):
         exists for 'candidate'.
         """
 
-        with self._lock:
-            event = self._events.get(candidate)
+        event = self._events.get(candidate)
         return event is not None and event.is_set()
 
     def peer_info(self, candidate: A, /) -> MacAddress | None:
@@ -162,8 +157,7 @@ class DadSlotRegistry(Generic[A]):
         if no slot exists or no peer info was captured.
         """
 
-        with self._lock:
-            return self._peer_info.get(candidate)
+        return self._peer_info.get(candidate)
 
     def try_signal_conflict(
         self,
@@ -174,7 +168,7 @@ class DadSlotRegistry(Generic[A]):
         inbound_nonce: bytes | None,
     ) -> DadSignalResult:
         """
-        Atomic RX-path entry point. Under the lock:
+        Atomic RX-path entry point. On the stack loop:
 
         1. If 'candidate' has no slot, return NOT_DAD. The
            caller falls through to its normal non-DAD
@@ -187,16 +181,16 @@ class DadSlotRegistry(Generic[A]):
            the slot Event, and return SIGNALED. The caller
            charges its peer-conflict counter and logs.
 
-        The full check + write + signal is atomic — the
-        worker thread cannot tear down the slot between the
-        membership check and the Event.set() call.
+        The full check + write + signal is atomic — it runs
+        synchronously on the stack loop, so the worker task
+        cannot tear down the slot between the membership check
+        and the Event.set() call.
         """
 
-        with self._lock:
-            if candidate not in self._events:
-                return DadSignalResult.NOT_DAD
-            if inbound_nonce is not None and inbound_nonce in self._nonces[candidate]:
-                return DadSignalResult.LOOP_HAIRPIN
-            self._peer_info[candidate] = peer_info
-            self._events[candidate].set()
-            return DadSignalResult.SIGNALED
+        if candidate not in self._events:
+            return DadSignalResult.NOT_DAD
+        if inbound_nonce is not None and inbound_nonce in self._nonces[candidate]:
+            return DadSignalResult.LOOP_HAIRPIN
+        self._peer_info[candidate] = peer_info
+        self._events[candidate].set()
+        return DadSignalResult.SIGNALED

@@ -32,98 +32,71 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import heapq
-import threading
+import asyncio
 import time
-from dataclasses import field
-from pmd_pytcp._compat import as_buffer, dataclass
 from typing import Any, Callable
-from typing_extensions import override
 
 from pmd_pytcp.lib.logger import log
-from pmd_pytcp.runtime.subsystem import Subsystem
-
-# Ceiling on the worker's idle wait. When the heap is empty the
-# worker blocks on 'threading.Event.wait(timeout=_IDLE_WAKEUP__SEC)'
-# rather than forever, so the stop event is re-checked at least
-# this often even on a fully idle stack.
-_IDLE_WAKEUP__SEC: float = 60.0
 
 
-@dataclass(slots=True, kw_only=True)
 class TimerHandle:
     """
     Cancellation handle returned by 'Timer.call_later' and
     'Timer.call_periodic'. Pass it to 'Timer.cancel(handle)' to
-    deactivate the entry; cancellation is lazy (the worker skips
-    cancelled handles when they reach the top of the heap).
+    deactivate the entry. Wraps the underlying
+    'asyncio.TimerHandle'; a periodic entry is re-armed by the
+    fire wrapper with a fresh loop handle each period.
     """
 
-    method: Callable[..., None]
-    args: tuple[Any, ...]
-    kwargs: dict[str, Any]
-    deadline_ms: int
-    seq: int
-    period_ms: int | None = None
-    cancelled: bool = False
+    __slots__ = ("method", "args", "kwargs", "period_ms", "cancelled", "_loop_handle")
+
+    def __init__(
+        self,
+        *,
+        method: Callable[..., None],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        period_ms: int | None = None,
+    ) -> None:
+        self.method = method
+        self.args = args
+        self.kwargs = kwargs
+        self.period_ms = period_ms
+        self.cancelled = False
+        self._loop_handle: asyncio.TimerHandle | None = None
 
 
-@dataclass(slots=True, order=True)
-class _HeapEntry:
+class Timer:
     """
-    Heap node wrapping a 'TimerHandle'. Ordered solely by
-    '(deadline_ms, seq)'; the handle itself is excluded from
-    comparison so 'heapq' never inspects it.
-    """
+    Stack-wide millisecond-resolution timer over the asyncio event
+    loop. Each registration maps to one 'loop.call_at' entry —
+    there is no worker, no heap and no lock ('pure_asyncio.md';
+    everything runs on the one stack loop). Periodic entries are
+    re-armed by advancing an absolute deadline by exactly
+    'period_ms' (interval-based, so they do not drift).
 
-    deadline_ms: int
-    seq: int
-    handle: TimerHandle = field(compare=False)
-
-
-class Timer(Subsystem):
-    """
-    Stack-wide millisecond-resolution timer Subsystem.
-
-    Maintains a single min-heap of '_HeapEntry' nodes keyed by
-    '(deadline_ms, seq)'. The worker thread (inherited from
-    'Subsystem') sleeps on a 'threading.Event' until the nearest
-    deadline or until a registration / cancellation wakes it, then
-    pops and dispatches every due entry. Periodic entries are
-    re-armed by advancing their deadline by exactly 'period_ms'
-    (interval-based, so they do not drift).
-
-    External callers register / cancel from arbitrary stack
-    threads; '_lock' (RLock) guards every heap mutation. Callback
-    invocation happens with the lock released so a handler may
-    re-enter 'call_later' / 'cancel' without deadlocking.
-
-    The public API is 'call_later' / 'call_periodic' / 'cancel'
-    / 'now_ms'. (The legacy named-flag shim — 'register_timer' /
-    'is_expired' / 'unregister_timers_with_prefix' — was removed
-    once the TCP timer-client migration retired its last
-    consumer; the FSM is now event-driven.)
+    The public API is 'call_later' / 'call_periodic' / 'cancel' /
+    'now_ms' plus the lifecycle pair 'start' / 'stop' ('stop'
+    cancels every outstanding entry so a stopped stack cannot
+    fire stale callbacks). Callbacks are plain sync callables run
+    on the loop; a raising handler is logged and swallowed, same
+    policy as the threaded worker had.
     """
 
     _subsystem_name = "Timer"
 
-    _heap: list[_HeapEntry]
-    _lock: threading.RLock
-    _wakeup: threading.Event
-    _seq: int
+    _handles: "set[TimerHandle]"
+    _loop: asyncio.AbstractEventLoop | None
 
-    @override
     def __init__(self) -> None:
         """
         Class constructor.
         """
 
-        super().__init__()
+        __debug__ and log("stack", f"Initializing {self._subsystem_name}")
 
-        self._heap = []
-        self._lock = threading.RLock()
-        self._wakeup = threading.Event()
-        self._seq = 0
+        self._handles = set()
+        self._loop = None
 
     @property
     def now_ms(self) -> int:
@@ -140,16 +113,75 @@ class Timer(Subsystem):
 
         return time.monotonic_ns() // 1_000_000
 
-    def _next_seq(self) -> int:
+    def start(self) -> None:
         """
-        Return a fresh monotonic sequence number. Callers hold
-        '_lock'; the counter breaks heap-key ties so same-deadline
-        entries fire in registration order.
+        Bind the timer to the running event loop. Registrations
+        made before 'start()' (boot-time subsystem construction)
+        are already loop-bound lazily by '_get_loop', so this is
+        mostly a lifecycle symmetry point.
         """
 
-        seq = self._seq
-        self._seq += 1
-        return seq
+        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        self._loop = asyncio.get_running_loop()
+
+    def stop(self) -> None:
+        """
+        Cancel every outstanding entry so a stopped stack cannot
+        fire stale callbacks.
+        """
+
+        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+
+        for handle in list(self._handles):
+            handle.cancelled = True
+            if handle._loop_handle is not None:
+                handle._loop_handle.cancel()
+        self._handles.clear()
+
+    def _get_loop(self) -> asyncio.AbstractEventLoop:
+        """
+        Return the loop timers schedule on — the bound loop after
+        'start()', else the currently running loop.
+        """
+
+        if self._loop is not None:
+            return self._loop
+        return asyncio.get_running_loop()
+
+    def _fire(self, handle: TimerHandle, deadline: float) -> None:
+        """
+        Loop callback: run the handle's method (logging a raising
+        handler) and re-arm a periodic entry at 'deadline +
+        period' (absolute, drift-free).
+        """
+
+        if handle.cancelled:
+            self._handles.discard(handle)
+            return
+
+        if handle.period_ms is not None:
+            next_deadline = deadline + handle.period_ms / 1000.0
+            handle._loop_handle = self._get_loop().call_at(next_deadline, self._fire, handle, next_deadline)
+        else:
+            self._handles.discard(handle)
+
+        try:
+            handle.method(*handle.args, **handle.kwargs)
+        except Exception:  # pylint: disable=broad-exception-caught
+            name = getattr(handle.method, "__name__", repr(handle.method))
+            __debug__ and log("timer", f"<r>Handler raised: {name}</>")
+
+    def _schedule(self, handle: TimerHandle, delay_ms: int) -> TimerHandle:
+        """
+        Arm 'handle' 'delay_ms' from now on the loop and track it
+        for 'stop()' teardown.
+        """
+
+        loop = self._get_loop()
+        deadline = loop.time() + delay_ms / 1000.0
+        handle._loop_handle = loop.call_at(deadline, self._fire, handle, deadline)
+        self._handles.add(handle)
+        return handle
 
     def call_later(
         self,
@@ -167,18 +199,10 @@ class Timer(Subsystem):
 
         assert delay_ms >= 0, f"call_later delay_ms must be >= 0; got {delay_ms}"
 
-        with self._lock:
-            handle = TimerHandle(
-                method=method,
-                args=args,
-                kwargs=kwargs,
-                deadline_ms=self.now_ms + delay_ms,
-                seq=self._next_seq(),
-            )
-            heapq.heappush(self._heap, _HeapEntry(handle.deadline_ms, handle.seq, handle))
-
-        self._wakeup.set()
-        return handle
+        return self._schedule(
+            TimerHandle(method=method, args=args, kwargs=kwargs),
+            delay_ms,
+        )
 
     def call_periodic(
         self,
@@ -197,87 +221,18 @@ class Timer(Subsystem):
 
         assert period_ms >= 1, f"call_periodic period_ms must be >= 1; got {period_ms}"
 
-        with self._lock:
-            handle = TimerHandle(
-                method=method,
-                args=args,
-                kwargs=kwargs,
-                deadline_ms=self.now_ms + period_ms,
-                seq=self._next_seq(),
-                period_ms=period_ms,
-            )
-            heapq.heappush(self._heap, _HeapEntry(handle.deadline_ms, handle.seq, handle))
-
-        self._wakeup.set()
-        return handle
+        return self._schedule(
+            TimerHandle(method=method, args=args, kwargs=kwargs, period_ms=period_ms),
+            period_ms,
+        )
 
     def cancel(self, handle: TimerHandle, /) -> None:
         """
-        Mark 'handle' as cancelled. The worker drops it the next
-        time it surfaces at the top of the heap. Idempotent; a
-        no-op if the handle already fired or was already cancelled.
+        Cancel 'handle'. Idempotent; a no-op if the handle already
+        fired or was already cancelled.
         """
 
         handle.cancelled = True
-        self._wakeup.set()
-
-    @override
-    def stop(self) -> None:
-        """
-        Stop the subsystem. Sets the stop event and wakes the
-        worker out of its 'Event.wait()' so teardown does not
-        block for up to '_IDLE_WAKEUP__SEC' on an idle stack.
-        """
-
-        self._event__stop_subsystem.set()
-        self._wakeup.set()
-        super().stop()
-
-    @override
-    def _subsystem_loop(self) -> None:
-        """
-        Pop and dispatch every due heap entry, re-arm periodics,
-        then block until the next deadline or a wakeup signal.
-        """
-
-        while True:
-            self._wakeup.clear()
-
-            with self._lock:
-                now = self.now_ms
-
-                due: list[TimerHandle] = []
-                while self._heap and self._heap[0].deadline_ms <= now:
-                    entry = heapq.heappop(self._heap)
-                    if entry.handle.cancelled:
-                        continue
-                    due.append(entry.handle)
-
-                for handle in due:
-                    if handle.period_ms is not None and not handle.cancelled:
-                        handle.deadline_ms += as_buffer(handle.period_ms)
-                        handle.seq = self._next_seq()
-                        heapq.heappush(
-                            self._heap,
-                            _HeapEntry(handle.deadline_ms, handle.seq, handle),
-                        )
-
-                if self._heap:
-                    wait_s = max(0.0, (self._heap[0].deadline_ms - now) / 1000.0)
-                else:
-                    wait_s = _IDLE_WAKEUP__SEC
-
-            for handle in due:
-                try:
-                    handle.method(*handle.args, **handle.kwargs)
-                except Exception:  # pylint: disable=broad-exception-caught
-                    name = getattr(handle.method, "__name__", repr(handle.method))
-                    __debug__ and log("timer", f"<r>Handler raised: {name}</>")
-
-            if self._event__stop_subsystem.is_set():
-                return
-
-            self._wakeup.wait(timeout=wait_s)
-
-            if self._event__stop_subsystem.is_set():
-                return
+        if handle._loop_handle is not None:
+            handle._loop_handle.cancel()
+        self._handles.discard(handle)
