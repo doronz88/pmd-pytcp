@@ -34,7 +34,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, patch
 
 from pmd_net_addr import Ip4Address
@@ -62,9 +62,13 @@ class _TcpSessionSyscallFixture(TestCase):
             call_later=MagicMock(),
             now_ms=0,
         )
+        # 'create=True': 'stack.timer' is an annotation-only module
+        # global ('timer: Timer') populated by 'init()' / 'mock__init',
+        # so on a fresh interpreter the attribute does not exist yet.
         self._timer_patch = patch(
             "pmd_pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
+            create=True,
         )
         self._timer_patch.start()
 
@@ -145,12 +149,12 @@ class TestTcpSessionListenSyscall(_TcpSessionSyscallFixture):
         mock_fsm.assert_called_once_with(syscall=SysCall.LISTEN)
 
 
-class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
+class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture, IsolatedAsyncioTestCase):
     """
     The 'TcpSession.connect()' syscall tests.
     """
 
-    def test__tcp_session__connect_raises_on_refused(self) -> None:
+    async def test__tcp_session__connect_raises_on_refused(self) -> None:
         """
         Ensure connect() raises 'TcpSessionError("Connection refused")'
         when the FSM ends up in a non-ESTABLISHED state with the
@@ -175,7 +179,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
             mock_fsm.side_effect = fsm_side_effect
 
             with self.assertRaises(TcpSessionError) as context:
-                session.connect()
+                await session.connect()
 
         self.assertEqual(
             str(context.exception),
@@ -183,7 +187,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
             msg="connect() must raise TcpSessionError('Connection refused') on ConnError.REFUSED.",
         )
 
-    def test__tcp_session__connect_raises_on_timeout(self) -> None:
+    async def test__tcp_session__connect_raises_on_timeout(self) -> None:
         """
         Ensure connect() raises 'TcpSessionError("Connection timeout")'
         when the FSM ends up non-ESTABLISHED with the 'TIMEOUT' error
@@ -209,7 +213,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
             mock_fsm.side_effect = fsm_side_effect
 
             with self.assertRaises(TcpSessionError) as context:
-                session.connect()
+                await session.connect()
 
         self.assertEqual(
             str(context.exception),
@@ -217,7 +221,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
             msg="connect() must raise TcpSessionError('Connection timeout') on ConnError.TIMEOUT.",
         )
 
-    def test__tcp_session__connect_returns_on_established(self) -> None:
+    async def test__tcp_session__connect_returns_on_established(self) -> None:
         """
         Ensure connect() returns cleanly when the FSM reaches
         'ESTABLISHED' before the connect semaphore is signaled.
@@ -239,7 +243,7 @@ class TestTcpSessionConnectSyscall(_TcpSessionSyscallFixture):
                 session._event__connect.release()
 
             mock_fsm.side_effect = fsm_side_effect
-            session.connect()
+            await session.connect()
 
 
 class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
@@ -311,12 +315,12 @@ class TestTcpSessionSendSyscall(_TcpSessionSyscallFixture):
             session.send(data=b"data")
 
 
-class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
+class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture, IsolatedAsyncioTestCase):
     """
     The 'TcpSession.receive()' syscall tests.
     """
 
-    def test__tcp_session__receive_returns_all_buffered_bytes(self) -> None:
+    async def test__tcp_session__receive_returns_all_buffered_bytes(self) -> None:
         """
         Ensure receive() with no byte_count drains the entire RX
         buffer and returns it as 'bytes'.
@@ -329,7 +333,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         session._event__rx_buffer.set()
 
         self.assertEqual(
-            session.receive(),
+            await session.receive(),
             b"hello world",
             msg="receive() with no byte_count must return the entire RX buffer.",
         )
@@ -339,7 +343,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
             msg="receive() must drain the RX buffer after reading.",
         )
 
-    def test__tcp_session__receive_honors_byte_count(self) -> None:
+    async def test__tcp_session__receive_honors_byte_count(self) -> None:
         """
         Ensure receive(byte_count=N) returns at most N bytes and
         leaves the rest in the buffer for the next call.
@@ -351,7 +355,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         session._rx_buffer.extend(b"hello world")
         session._event__rx_buffer.set()
 
-        first = session.receive(byte_count=5)
+        first = await session.receive(byte_count=5)
         self.assertEqual(
             first,
             b"hello",
@@ -363,7 +367,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
             msg="receive(byte_count=5) must leave the remaining bytes buffered.",
         )
 
-    def test__tcp_session__receive_empty_buffer_in_close_wait_returns_empty(self) -> None:
+    async def test__tcp_session__receive_empty_buffer_in_close_wait_returns_empty(self) -> None:
         """
         Ensure receive() on an empty buffer while in 'CLOSE_WAIT'
         returns an empty bytes object to signal remote-end EOF — the
@@ -377,12 +381,12 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         session._event__rx_buffer.set()
 
         self.assertEqual(
-            session.receive(),
+            await session.receive(),
             b"",
             msg="receive() on an empty buffer in CLOSE_WAIT must signal EOF with an empty bytes object.",
         )
 
-    def test__tcp_session__receive_timeout_raises(self) -> None:
+    async def test__tcp_session__receive_timeout_raises(self) -> None:
         """
         Ensure receive() with a finite timeout raises 'TimeoutError'
         when no data arrives in the window.
@@ -392,9 +396,9 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         session = self._make_session()
         with self.assertRaises(TimeoutError):
-            session.receive(timeout=0.01)
+            await session.receive(timeout=0.01)
 
-    def test__tcp_session__receive_leaves_event_set_when_buffer_nonempty(self) -> None:
+    async def test__tcp_session__receive_leaves_event_set_when_buffer_nonempty(self) -> None:
         """
         Ensure receive() leaves the '_event__rx_buffer' event set
         when the buffer still has data after the read, so the next
@@ -407,16 +411,16 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
         session._rx_buffer.extend(b"hello world")
         session._event__rx_buffer.set()
 
-        session.receive(byte_count=5)
+        await session.receive(byte_count=5)
 
         # Second receive must not block because the event is still set.
         self.assertEqual(
-            session.receive(byte_count=6, timeout=0.01),
+            await session.receive(byte_count=6, timeout=0.01),
             b" world",
             msg="receive() must leave the rx event set when leftover data remains.",
         )
 
-    def test__tcp_session__rx_buffer_event_does_not_over_release(self) -> None:
+    async def test__tcp_session__rx_buffer_event_does_not_over_release(self) -> None:
         """
         Ensure the rx-buffer signal is not over-released when an FSM
         handler signals 'data available' on top of '_enqueue_rx_buffer'
@@ -439,7 +443,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
 
         # Drain the legitimate data.
         self.assertEqual(
-            session.receive(),
+            await session.receive(),
             b"data",
             msg="receive() must drain the buffer that _enqueue_rx_buffer wrote.",
         )
@@ -450,7 +454,7 @@ class TestTcpSessionReceiveSyscall(_TcpSessionSyscallFixture):
             TimeoutError,
             msg="receive() on an empty buffer in ESTABLISHED must time out, not return phantom EOF.",
         ):
-            session.receive(timeout=0.01)
+            await session.receive(timeout=0.01)
 
 
 class TestTcpSessionCloseSyscall(_TcpSessionSyscallFixture):

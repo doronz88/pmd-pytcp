@@ -33,7 +33,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from types import SimpleNamespace
 from typing_extensions import override
 from unittest import TestCase
@@ -81,12 +80,11 @@ class TestTcpSessionTimers(TestCase):
         # Extra bare-session state for the §5.6/§5.7 mechanism
         # tests (harmless for the deadline-map helper tests).
         self._session._state = FsmState.ESTABLISHED
-        self._session._lock__fsm = threading.RLock()
         self._session._tx = SimpleNamespace(buffer=bytearray())  # type: ignore[assignment]
         self._session._snd_seq = SimpleNamespace(una=0, max=0)  # type: ignore[assignment]
         self._session._closing = False
         # Wire the timer service AFTER the session state attributes
-        # are populated — '_reschedule_locked' reads
+        # are populated — '_reschedule' reads
         # 'self._session._state' on every public call.
         self._session._timers = TcpTimerService(self._session)
 
@@ -202,7 +200,7 @@ class TestTcpSessionTimers(TestCase):
 
         self._session._arm_timer("retransmit", 100)
         self._session._arm_timer("delayed_ack", 40)
-        handle = TimerHandle(method=MagicMock(), args=(), kwargs={}, deadline_ms=0, seq=0)
+        handle = TimerHandle(method=MagicMock(), args=(), kwargs={})
         self._session._timers._service_handle = handle
 
         self._session._cancel_all_timers()

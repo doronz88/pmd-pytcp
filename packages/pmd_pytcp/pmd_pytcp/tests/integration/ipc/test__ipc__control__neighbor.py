@@ -70,7 +70,7 @@ class TestIpcControlNeighbor(IpcControlTestCase):
         self._packet_handler._arp_cache = ArpCache()
         self._packet_handler._nd_cache = NdCache()
 
-    def test__ipc__control__neighbor_list_starts_empty_matching_in_process(self) -> None:
+    async def test__ipc__control__neighbor_list_starts_empty_matching_in_process(self) -> None:
         """
         Ensure an out-of-process list_neighbors on a fresh cache returns
         the same (empty) result the in-process API reports.
@@ -78,15 +78,15 @@ class TestIpcControlNeighbor(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.neighbor.interface(self._ifindex).list_neighbors(),
+            await client.neighbor.interface(self._ifindex).list_neighbors(),
             stack.neighbor.interface(self._ifindex).list_neighbors(),
             msg="A client list_neighbors must match the in-process (empty) cache.",
         )
 
-    def test__ipc__control__neighbor_add_reflected_in_process(self) -> None:
+    async def test__ipc__control__neighbor_add_reflected_in_process(self) -> None:
         """
         Ensure an out-of-process add installs a permanent entry in the
         real daemon cache, visible as a NeighborSnapshot to a subsequent
@@ -96,9 +96,9 @@ class TestIpcControlNeighbor(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
-        client.neighbor.interface(self._ifindex).add(ip=_IP, mac=_MAC)
+        await client.neighbor.interface(self._ifindex).add(ip=_IP, mac=_MAC)
 
         self.assertIn(
             NeighborSnapshot(address=_IP, mac_address=_MAC, state=NudState.PERMANENT),

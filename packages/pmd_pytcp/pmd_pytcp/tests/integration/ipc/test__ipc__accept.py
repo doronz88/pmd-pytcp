@@ -35,10 +35,10 @@ daemon spawns a fresh data channel for the accepted child and passes its
 fd back via SCM_RIGHTS, so the client gets a real fd for the accepted
 connection (Phase 4).
 
-The client's accept() blocks on the daemon dispatch thread (in
-'TcpSocket.accept'), so the test issues accept() on a background thread
-and drives the passive handshake from the main thread; different threads,
-so it completes without deadlock.
+The client's accept() coroutine awaits on the daemon dispatch task (in
+'TcpSocket.accept'), so the test spawns accept() as a task and drives the
+passive handshake on the same loop; the wire poke yields to the daemon
+task, so it completes without deadlock.
 
 pmd_pytcp/tests/integration/ipc/test__ipc__accept.py
 
@@ -47,9 +47,9 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-import threading
 from typing import cast
 from typing_extensions import override
 
@@ -100,20 +100,29 @@ class TestIpcAccept(TcpTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mocked TCP runtime (via 'TcpTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Build the mocked TCP runtime (via 'TcpTestCase', sync 'setUp' runs
+        first through the MRO) then stand up an 'IpcServer' on a temp
+        AF_UNIX path against it. The server needs the running loop.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -126,12 +135,12 @@ class TestIpcAccept(TcpTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 
@@ -170,7 +179,7 @@ class TestIpcAccept(TcpTestCase):
             )
         )
 
-    def test__accept__returns_child_with_peer_and_data(self) -> None:
+    async def test__accept__returns_child_with_peer_and_data(self) -> None:
         """
         Ensure a listening client socket accepts an inbound connection out
         of process: accept() returns a child socket carrying the peer
@@ -180,29 +189,24 @@ class TestIpcAccept(TcpTestCase):
         Reference: RFC 9293 §3.5 (Passive OPEN / connection establishment).
         """
 
-        listener = cast(ClientTcpSocket, self._connect().socket(AddressFamily.INET4, SocketType.STREAM))
-        self.addCleanup(listener.close)
+        client = await self._connect()
+        listener = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
+        self.addAsyncCleanup(listener.close)
         self._force_iss(_LOCAL_ISS)
-        listener.bind((str(STACK__IP4_HOST.address), _LISTEN_PORT))
-        listener.listen()
+        await listener.bind((str(STACK__IP4_HOST.address), _LISTEN_PORT))
+        await listener.listen()
 
-        accepted: list[tuple[ClientTcpSocket, tuple[str, int]]] = []
-
-        def _accept() -> None:
-            accepted.append(listener.accept())
-
-        accept_thread = threading.Thread(target=_accept, name="accept")
-        accept_thread.start()
-        self.addCleanup(accept_thread.join)
+        # Spawn accept() as a task so the daemon has a pending accept
+        # while the passive handshake is driven on the same loop.
+        accept_task = asyncio.ensure_future(listener.accept())
+        # Yield so the accept request reaches the daemon before the
+        # handshake queues the child.
+        await asyncio.sleep(0)
 
         self._drive_passive_handshake()
 
-        accept_thread.join(timeout=_DEADLINE__SEC)
-        self.assertFalse(accept_thread.is_alive(), msg="accept() must return once the handshake completes.")
-
-        child, peer = accepted[0]
-        self.addCleanup(child.close)
-        child.settimeout(_DEADLINE__SEC)
+        child, peer = await asyncio.wait_for(accept_task, timeout=_DEADLINE__SEC)
+        self.addAsyncCleanup(child.close)
 
         self._drive_rx(
             frame=build_tcp4(
@@ -219,7 +223,7 @@ class TestIpcAccept(TcpTestCase):
         )
 
         self.assertEqual(
-            (peer, child.recv(64)),
+            (peer, await asyncio.wait_for(child.recv(64), timeout=_DEADLINE__SEC)),
             ((str(HOST_A__IP4_ADDRESS), _PEER_PORT), b"hi"),
             msg="accept() must return the peer address and a child whose fd receives the peer's data.",
         )

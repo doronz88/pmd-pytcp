@@ -37,6 +37,7 @@ from __future__ import annotations
 import errno
 from typing import Any, cast
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_pytcp.socket import SOCK_RAW, AddressFamily, socket
@@ -50,7 +51,7 @@ from pmd_pytcp.tests.lib.network_testcase import NetworkTestCase
 _FRAME = b"\xff\xff\xff\xff\xff\xff\x02\x00\x00\x00\x00\x07\x08\x06verbatim-frame"
 
 
-class TestPacketSocketTx(NetworkTestCase):
+class TestPacketSocketTx(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     The AF_PACKET egress (send / sendto) integration tests.
     """
@@ -76,7 +77,7 @@ class TestPacketSocketTx(NetworkTestCase):
         self.addCleanup(sock.close)
         return sock
 
-    def test__packet_socket__sendto_enqueues_verbatim_frame(self) -> None:
+    async def test__packet_socket__sendto_enqueues_verbatim_frame(self) -> None:
         """
         Ensure 'sendto' enqueues the frame bytes verbatim onto the
         TxRing of the interface named by the address ifindex, and
@@ -88,12 +89,12 @@ class TestPacketSocketTx(NetworkTestCase):
         sock = self._packet_socket()
         ifindex = self._packet_handler._ifindex
 
-        sent = sock.sendto(_FRAME, SockAddrLl(ifindex=ifindex))
+        sent = await sock.sendto(_FRAME, SockAddrLl(ifindex=ifindex))
 
         self.assertEqual(sent, len(_FRAME), msg="sendto must return the number of bytes accepted.")
         self._tx_ring.enqueue_raw_frame.assert_called_once_with(_FRAME)
 
-    def test__packet_socket__send_uses_sole_interface_when_unbound(self) -> None:
+    async def test__packet_socket__send_uses_sole_interface_when_unbound(self) -> None:
         """
         Ensure 'send' on an unbound socket egresses the sole registered
         interface (the N=1 fallback), enqueuing the frame verbatim.
@@ -103,12 +104,12 @@ class TestPacketSocketTx(NetworkTestCase):
 
         sock = self._packet_socket()
 
-        sent = sock.send(_FRAME)
+        sent = await sock.send(_FRAME)
 
         self.assertEqual(sent, len(_FRAME), msg="send must return the number of bytes accepted.")
         self._tx_ring.enqueue_raw_frame.assert_called_once_with(_FRAME)
 
-    def test__packet_socket__sendto_unknown_ifindex_raises_enodev(self) -> None:
+    async def test__packet_socket__sendto_unknown_ifindex_raises_enodev(self) -> None:
         """
         Ensure 'sendto' to an ifindex with no registered interface
         raises 'OSError(ENODEV)' and enqueues nothing.
@@ -119,7 +120,7 @@ class TestPacketSocketTx(NetworkTestCase):
         sock = self._packet_socket()
 
         with self.assertRaises(OSError) as context:
-            sock.sendto(_FRAME, SockAddrLl(ifindex=99))
+            await sock.sendto(_FRAME, SockAddrLl(ifindex=99))
 
         self.assertEqual(
             context.exception.errno,

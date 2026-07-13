@@ -40,7 +40,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, patch
 
 from pmd_net_addr import Ip6Address, MacAddress
@@ -50,7 +50,7 @@ from pmd_pytcp.runtime.packet_handler import PacketHandlerL2
 from pmd_pytcp.stack import sysctl as sysctl_module
 
 
-class _NdCacheFixture(TestCase):
+class _NdCacheFixture(IsolatedAsyncioTestCase):
     """
     Build a fresh NdCache, silence subsystem logs, restore
     sysctl defaults on tearDown.
@@ -174,7 +174,7 @@ class TestNdCacheKwargAPI(_NdCacheFixture):
                     "wait",
                     return_value=False,
                 ):
-                    self._cache._subsystem_loop()
+                    self._cache.run_maintenance_once()
         self.assertIs(
             self._cache._entries[ip].state,
             NudState.STALE,

@@ -34,11 +34,9 @@ ver 3.0.7
 from __future__ import annotations
 
 import errno
-import fcntl
-import select
 from types import SimpleNamespace
 from typing import Any
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
@@ -83,7 +81,7 @@ def _make_packet_handler(
     )
 
 
-class _UdpSocketTestCase(TestCase):
+class _UdpSocketTestCase(IsolatedAsyncioTestCase):
     """
     Shared fixture for 'UdpSocket' tests that stubs the stack's module
     globals ('sockets', 'packet_handler') and suppresses log output.
@@ -365,7 +363,7 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
     The 'UdpSocket.connect' tests.
     """
 
-    def test__udp_socket__connect_sets_remote_and_picks_local(self) -> None:
+    async def test__udp_socket__connect_sets_remote_and_picks_local(self) -> None:
         """
         Ensure connect() picks a local IP via 'pick_local_ip_address'
         when unspecified, picks a local port via 'pick_local_port'
@@ -385,14 +383,14 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
                 return_value=40000,
             ),
         ):
-            s.connect(("10.0.0.5", 5353))
+            await s.connect(("10.0.0.5", 5353))
 
         self.assertEqual(s.local_ip_address, Ip4Address("10.0.0.1"), msg="connect() must pick the local IP.")
         self.assertEqual(s.local_port, 40000, msg="connect() must pick the local port.")
         self.assertEqual(s.remote_ip_address, Ip4Address("10.0.0.5"), msg="connect() must store the remote IP.")
         self.assertEqual(s.remote_port, 5353, msg="connect() must store the remote port.")
 
-    def test__udp_socket__connect_rejects_out_of_range_port(self) -> None:
+    async def test__udp_socket__connect_rejects_out_of_range_port(self) -> None:
         """
         Ensure connect() raises 'OverflowError' for a remote port
         outside the 0-65535 range.
@@ -402,9 +400,9 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         with self.assertRaises(OverflowError):
-            s.connect(("10.0.0.5", 70000))
+            await s.connect(("10.0.0.5", 70000))
 
-    def test__udp_socket__connect_rejects_malformed_address(self) -> None:
+    async def test__udp_socket__connect_rejects_malformed_address(self) -> None:
         """
         Ensure a malformed remote-address literal raises 'gaierror'.
 
@@ -413,9 +411,9 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         with self.assertRaises(gaierror):
-            s.connect(("garbage", 7))
+            await s.connect(("garbage", 7))
 
-    def test__udp_socket__connect_unspecified_remote_marks_unreachable(self) -> None:
+    async def test__udp_socket__connect_unspecified_remote_marks_unreachable(self) -> None:
         """
         Ensure connecting to '0.0.0.0' (unspecified) flips the internal
         'unreachable' flag, which translates to 'ConnectionRefusedError'
@@ -430,7 +428,7 @@ class TestUdpSocketConnect(_UdpSocketTestCase):
             return_value=Ip4Address("10.0.0.1"),
         ):
             with patch("pmd_pytcp.socket.udp__socket.pick_local_port", return_value=40000):
-                s.connect(("0.0.0.0", 7))
+                await s.connect(("0.0.0.0", 7))
         self.assertTrue(
             s._unreachable,
             msg="connect() to the unspecified remote address must mark the socket unreachable.",
@@ -442,7 +440,7 @@ class TestUdpSocketSend(_UdpSocketTestCase):
     The 'UdpSocket.send' / 'UdpSocket.sendto' tests.
     """
 
-    def _connected_socket(self) -> UdpSocket:
+    async def _connected_socket(self) -> UdpSocket:
         """
         Construct a connected IPv4 UDP socket ready for send().
         """
@@ -458,10 +456,10 @@ class TestUdpSocketSend(_UdpSocketTestCase):
                 return_value=40000,
             ),
         ):
-            s.connect(("10.0.0.5", 5353))
+            await s.connect(("10.0.0.5", 5353))
         return s
 
-    def test__udp_socket__send_requires_connect(self) -> None:
+    async def test__udp_socket__send_requires_connect(self) -> None:
         """
         Ensure send() raises 'OSError' with Errno 89 when neither the
         remote IP nor the remote port is set.
@@ -471,14 +469,14 @@ class TestUdpSocketSend(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         with self.assertRaises(OSError) as context:
-            s.send(b"data")
+            await s.send(b"data")
         self.assertIn(
             "[Errno 89]",
             str(context.exception),
             msg="send() must raise Errno 89 when no destination is set.",
         )
 
-    def test__udp_socket__send_returns_bytes_sent(self) -> None:
+    async def test__udp_socket__send_returns_bytes_sent(self) -> None:
         """
         Ensure send() returns 'len(data)' when 'send_udp_packet'
         reports 'PASSED__ETHERNET__TO_TX_RING'.
@@ -486,10 +484,10 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         Reference: RFC 768 (UDP user interface).
         """
 
-        s = self._connected_socket()
-        self.assertEqual(s.send(b"hello"), 5, msg="send() must return len(data) on success.")
+        s = await self._connected_socket()
+        self.assertEqual(await s.send(b"hello"), 5, msg="send() must return len(data) on success.")
 
-    def test__udp_socket__send_returns_len_data_even_on_drop(self) -> None:
+    async def test__udp_socket__send_returns_len_data_even_on_drop(self) -> None:
         """
         Ensure send() returns 'len(data)' even when the TX path would
         ultimately drop the datagram. Phase 4b made the UDP send path
@@ -505,14 +503,14 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         # Point the egress seam at a DROPPED-tx_status stub (the fixture's
         # 'egress_packet_handler' side_effect reads 'self._handler' lazily).
         self._handler = _make_packet_handler(tx_status=TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL)
-        s = self._connected_socket()
+        s = await self._connected_socket()
         self.assertEqual(
-            s.send(b"data"),
+            await s.send(b"data"),
             4,
             msg="send() must return len(data) — fire-and-forget accepts the datagram regardless of drop.",
         )
 
-    def test__udp_socket__send_clears_unreachable_and_raises(self) -> None:
+    async def test__udp_socket__send_clears_unreachable_and_raises(self) -> None:
         """
         Ensure send() on a socket flagged unreachable clears the flag
         and raises 'ConnectionRefusedError' — subsequent send()s see
@@ -521,16 +519,16 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         Reference: RFC 768 (UDP user interface).
         """
 
-        s = self._connected_socket()
+        s = await self._connected_socket()
         s.notify_unreachable()
         with self.assertRaises(ConnectionRefusedError):
-            s.send(b"data")
+            await s.send(b"data")
         self.assertFalse(
             s._unreachable,
             msg="send() must clear the unreachable flag after translating it into ConnectionRefusedError.",
         )
 
-    def test__udp_socket__sendto_does_not_require_connect(self) -> None:
+    async def test__udp_socket__sendto_does_not_require_connect(self) -> None:
         """
         Ensure sendto() works on an unbound socket — it picks a local
         port via 'pick_local_port' and derives the remote from its
@@ -551,12 +549,12 @@ class TestUdpSocketSend(_UdpSocketTestCase):
             ),
         ):
             self.assertEqual(
-                s.sendto(b"hello", ("10.0.0.5", 5353)),
+                await s.sendto(b"hello", ("10.0.0.5", 5353)),
                 5,
                 msg="sendto() must return len(data) on success without requiring connect().",
             )
 
-    def test__udp_socket__sendto_rejects_out_of_range_port(self) -> None:
+    async def test__udp_socket__sendto_rejects_out_of_range_port(self) -> None:
         """
         Ensure sendto() raises 'OverflowError' for a remote port
         outside the 0-65535 range.
@@ -566,9 +564,9 @@ class TestUdpSocketSend(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         with self.assertRaises(OverflowError):
-            s.sendto(b"data", ("10.0.0.5", 70000))
+            await s.sendto(b"data", ("10.0.0.5", 70000))
 
-    def test__udp_socket__sendto_uses_existing_local_port(self) -> None:
+    async def test__udp_socket__sendto_uses_existing_local_port(self) -> None:
         """
         Ensure sendto() on an already-bound socket reuses the existing
         local port rather than picking a new one.
@@ -582,7 +580,7 @@ class TestUdpSocketSend(_UdpSocketTestCase):
             "pmd_pytcp.socket.udp__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
         ):
-            s.sendto(b"hello", ("10.0.0.5", 5353))
+            await s.sendto(b"hello", ("10.0.0.5", 5353))
         self.assertEqual(
             s.local_port,
             4444,
@@ -595,7 +593,7 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
     The 'UdpSocket.sendmsg' tests.
     """
 
-    def _connected_socket(self) -> UdpSocket:
+    async def _connected_socket(self) -> UdpSocket:
         """
         Construct a connected IPv4 UDP socket ready for sendmsg().
         """
@@ -611,7 +609,7 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
                 return_value=40000,
             ),
         ):
-            s.connect(("10.0.0.5", 5353))
+            await s.connect(("10.0.0.5", 5353))
         return s
 
     def _capture_payload(self) -> dict[str, Any]:
@@ -630,7 +628,7 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
         self._handler.send_udp_packet = _send_udp_packet
         return captured
 
-    def test__udp_socket__sendmsg_concatenates_buffers(self) -> None:
+    async def test__udp_socket__sendmsg_concatenates_buffers(self) -> None:
         """
         Ensure sendmsg() concatenates the scatter-gather 'buffers'
         iterable into a single datagram payload and returns the total
@@ -639,11 +637,11 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
         Reference: RFC 768 (UDP user interface).
         """
 
-        s = self._connected_socket()
+        s = await self._connected_socket()
         captured = self._capture_payload()
 
         self.assertEqual(
-            s.sendmsg([b"AB", b"CD"]),
+            await s.sendmsg([b"AB", b"CD"]),
             4,
             msg="sendmsg() must return the total length of all concatenated buffers.",
         )
@@ -653,7 +651,7 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
             msg="sendmsg() must transmit the buffers concatenated in order.",
         )
 
-    def test__udp_socket__sendmsg_with_address_unconnected(self) -> None:
+    async def test__udp_socket__sendmsg_with_address_unconnected(self) -> None:
         """
         Ensure sendmsg() with an explicit 'address' on an unconnected
         socket behaves like sendto() — it binds a local port and sends
@@ -674,12 +672,12 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
             ),
         ):
             self.assertEqual(
-                s.sendmsg([b"hi"], address=("10.0.0.5", 5353)),
+                await s.sendmsg([b"hi"], address=("10.0.0.5", 5353)),
                 2,
                 msg="sendmsg(address=...) must send like sendto() and return the byte count.",
             )
 
-    def test__udp_socket__sendmsg_accepts_and_ignores_ancdata(self) -> None:
+    async def test__udp_socket__sendmsg_accepts_and_ignores_ancdata(self) -> None:
         """
         Ensure sendmsg() accepts a well-formed ancillary-data list and
         silently ignores it (Phase-1 honours no send-side cmsg type,
@@ -688,15 +686,15 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
         Reference: socket(7) sendmsg (ancillary-data ignore).
         """
 
-        s = self._connected_socket()
+        s = await self._connected_socket()
 
         self.assertEqual(
-            s.sendmsg([b"x"], [(int(IPPROTO_IP), int(IP_TOS), b"\x10")]),
+            await s.sendmsg([b"x"], [(int(IPPROTO_IP), int(IP_TOS), b"\x10")]),
             1,
             msg="sendmsg() must accept a valid cmsg 3-tuple and send the payload regardless.",
         )
 
-    def test__udp_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
+    async def test__udp_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
         """
         Ensure sendmsg() rejects an ancillary-data entry that is not a
         '(cmsg_level, cmsg_type, cmsg_data)' 3-tuple with a TypeError,
@@ -705,11 +703,11 @@ class TestUdpSocketSendmsg(_UdpSocketTestCase):
         Reference: socket(7) sendmsg (ancillary-data structure).
         """
 
-        s = self._connected_socket()
+        s = await self._connected_socket()
 
         bad_ancdata: list[Any] = [(1, 2)]
         with self.assertRaises(TypeError):
-            s.sendmsg([b"x"], bad_ancdata)
+            await s.sendmsg([b"x"], bad_ancdata)
 
 
 class TestUdpSocketReceive(_UdpSocketTestCase):
@@ -749,7 +747,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="process_udp_packet must enqueue exactly one metadata entry.",
         )
 
-    def test__udp_socket__recv_returns_payload(self) -> None:
+    async def test__udp_socket__recv_returns_payload(self) -> None:
         """
         Ensure recv() dequeues a single queued packet and returns its
         payload as 'bytes'.
@@ -760,12 +758,12 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s = UdpSocket(family=AddressFamily.INET4)
         s.process_udp_packet(self._make_md())
         self.assertEqual(
-            s.recv(),
+            await s.recv(),
             b"payload",
             msg="recv() must return the queued payload as bytes.",
         )
 
-    def test__udp_socket__recv_timeout_raises(self) -> None:
+    async def test__udp_socket__recv_timeout_raises(self) -> None:
         """
         Ensure recv() with a finite timeout raises 'TimeoutError' when
         no packet arrives.
@@ -775,9 +773,9 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         with self.assertRaises(TimeoutError):
-            s.recv(timeout=0.01)
+            await s.recv(timeout=0.01)
 
-    def test__udp_socket__recv_unreachable_raises(self) -> None:
+    async def test__udp_socket__recv_unreachable_raises(self) -> None:
         """
         Ensure recv() on a socket flagged unreachable raises
         'ConnectionRefusedError' and clears the flag.
@@ -788,13 +786,13 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s = UdpSocket(family=AddressFamily.INET4)
         s.notify_unreachable()
         with self.assertRaises(ConnectionRefusedError):
-            s.recv()
+            await s.recv()
         self.assertFalse(
             s._unreachable,
             msg="recv() must clear the unreachable flag after translating it into ConnectionRefusedError.",
         )
 
-    def test__udp_socket__recv_mv_returns_memoryview(self) -> None:
+    async def test__udp_socket__recv_mv_returns_memoryview(self) -> None:
         """
         Ensure recv__mv() returns the underlying memoryview without
         copying through 'bytes'. Downstream parsers rely on the
@@ -805,7 +803,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         s.process_udp_packet(self._make_md())
-        data = s.recv__mv()
+        data = await s.recv__mv()
         self.assertIsInstance(
             data,
             memoryview,
@@ -817,7 +815,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recv__mv() must return the queued payload.",
         )
 
-    def test__udp_socket__recvfrom_returns_payload_and_addr(self) -> None:
+    async def test__udp_socket__recvfrom_returns_payload_and_addr(self) -> None:
         """
         Ensure recvfrom() returns a (bytes, (str_ip, port)) tuple
         extracted from the metadata's remote-side fields.
@@ -827,7 +825,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         s.process_udp_packet(self._make_md())
-        data, addr = s.recvfrom()
+        data, addr = await s.recvfrom()
         self.assertEqual(data, b"payload", msg="recvfrom() must return the queued payload as bytes.")
         self.assertEqual(
             addr,
@@ -835,7 +833,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvfrom() must return (remote_ip_str, remote_port) as the second tuple element.",
         )
 
-    def test__udp_socket__recvfrom_timeout_raises(self) -> None:
+    async def test__udp_socket__recvfrom_timeout_raises(self) -> None:
         """
         Ensure recvfrom() with a finite timeout raises 'TimeoutError'
         when no packet arrives.
@@ -845,7 +843,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
 
         s = UdpSocket(family=AddressFamily.INET4)
         with self.assertRaises(TimeoutError):
-            s.recvfrom(timeout=0.01)
+            await s.recvfrom(timeout=0.01)
 
     def _make_md_with_tos(self, tos: int = 0xC2) -> UdpMetadata:
         """
@@ -903,7 +901,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             ip4__options=Ip4Options(Ip4OptionRouterAlert()),
         )
 
-    def test__udp_socket__recvmsg_returns_quadruple(self) -> None:
+    async def test__udp_socket__recvmsg_returns_quadruple(self) -> None:
         """
         Ensure recvmsg() returns the four-element
         '(data, ancdata, msg_flags, address)' tuple matching the
@@ -917,7 +915,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         self.addCleanup(s.close)
         s.process_udp_packet(self._make_md())
 
-        result = s.recvmsg()
+        result = await s.recvmsg()
 
         self.assertEqual(
             len(result),
@@ -925,7 +923,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg() must return a 4-tuple (data, ancdata, msg_flags, address).",
         )
 
-    def test__udp_socket__recvmsg_ipv4_address_two_tuple(self) -> None:
+    async def test__udp_socket__recvmsg_ipv4_address_two_tuple(self) -> None:
         """
         Ensure recvmsg() returns a 2-tuple '(host, port)' as the
         address for IPv4 sockets, matching stdlib
@@ -938,7 +936,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         self.addCleanup(s.close)
         s.process_udp_packet(self._make_md())
 
-        _data, _ancdata, _flags, address = s.recvmsg()
+        _data, _ancdata, _flags, address = await s.recvmsg()
 
         self.assertEqual(
             address,
@@ -946,7 +944,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg() on AF_INET must return a (host, port) 2-tuple.",
         )
 
-    def test__udp_socket__recvmsg_ipv6_address_four_tuple(self) -> None:
+    async def test__udp_socket__recvmsg_ipv6_address_four_tuple(self) -> None:
         """
         Ensure recvmsg() returns a 4-tuple
         '(host, port, flowinfo, scope_id)' as the address for
@@ -970,7 +968,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         )
         s.process_udp_packet(md)
 
-        _data, _ancdata, _flags, address = s.recvmsg()
+        _data, _ancdata, _flags, address = await s.recvmsg()
 
         self.assertEqual(
             address,
@@ -978,7 +976,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg() on AF_INET6 must return a (host, port, flowinfo, scope_id) 4-tuple.",
         )
 
-    def test__udp_socket__recvmsg_no_options_no_ancdata(self) -> None:
+    async def test__udp_socket__recvmsg_no_options_no_ancdata(self) -> None:
         """
         Ensure recvmsg() returns an empty ancdata list when the
         inbound datagram carries no IPv4 options, regardless of
@@ -995,7 +993,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
         s.process_udp_packet(self._make_md())
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             ancdata,
@@ -1003,7 +1001,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg() must return empty ancdata when the datagram carries no IPv4 options.",
         )
 
-    def test__udp_socket__recvmsg_options_with_ip_recvopts_returns_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_options_with_ip_recvopts_returns_cmsg(self) -> None:
         """
         Ensure recvmsg(ancbufsize > 0) returns an IP_OPTIONS cmsg
         carrying the raw IPv4 options block when 'IP_RECVOPTS' is
@@ -1022,7 +1020,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
         s.process_udp_packet(self._make_md_with_options())
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             len(ancdata),
@@ -1047,7 +1045,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="IP_OPTIONS cmsg value must be the raw options block bytes.",
         )
 
-    def test__udp_socket__recvmsg_options_without_ip_recvopts_no_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_options_without_ip_recvopts_no_cmsg(self) -> None:
         """
         Ensure recvmsg() returns empty ancdata when IP_RECVOPTS is
         not set on the socket, even if the inbound datagram
@@ -1062,7 +1060,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         self.addCleanup(s.close)
         s.process_udp_packet(self._make_md_with_options())
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             ancdata,
@@ -1070,7 +1068,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg() must return empty ancdata when IP_RECVOPTS is not set.",
         )
 
-    def test__udp_socket__recvmsg_options_with_zero_ancbufsize_no_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_options_with_zero_ancbufsize_no_cmsg(self) -> None:
         """
         Ensure recvmsg(ancbufsize=0) returns empty ancdata even
         when IP_RECVOPTS=1 and the datagram carried IPv4
@@ -1087,7 +1085,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IP, IP_RECVOPTS, 1)
         s.process_udp_packet(self._make_md_with_options())
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=0)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=0)
 
         self.assertEqual(
             ancdata,
@@ -1095,7 +1093,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg(ancbufsize=0) must return empty ancdata regardless of IP_RECVOPTS.",
         )
 
-    def test__udp_socket__recvmsg_data_returned_as_bytes(self) -> None:
+    async def test__udp_socket__recvmsg_data_returned_as_bytes(self) -> None:
         """
         Ensure recvmsg() returns the data element as 'bytes' (not
         'memoryview'), matching stdlib 'socket.recvmsg'.
@@ -1107,7 +1105,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         self.addCleanup(s.close)
         s.process_udp_packet(self._make_md(b"hello"))
 
-        data, _ancdata, _flags, _address = s.recvmsg()
+        data, _ancdata, _flags, _address = await s.recvmsg()
 
         self.assertIsInstance(
             data,
@@ -1120,7 +1118,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg() must return the queued payload as bytes.",
         )
 
-    def test__udp_socket__recvmsg_ip_tos_with_recvtos_returns_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_ip_tos_with_recvtos_returns_cmsg(self) -> None:
         """
         Ensure recvmsg(ancbufsize > 0) returns an IP_TOS cmsg
         carrying the inbound datagram's TOS byte (one byte,
@@ -1138,7 +1136,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
         s.process_udp_packet(self._make_md_with_tos(tos=0xC2))
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             len(ancdata),
@@ -1151,7 +1149,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="IP_TOS cmsg must carry (IPPROTO_IP, IP_TOS, single-byte TOS).",
         )
 
-    def test__udp_socket__recvmsg_ip_tos_without_recvtos_no_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_ip_tos_without_recvtos_no_cmsg(self) -> None:
         """
         Ensure recvmsg() returns empty ancdata for the IP_TOS
         cmsg when 'IP_RECVTOS' is not set on the socket, even
@@ -1165,7 +1163,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         self.addCleanup(s.close)
         s.process_udp_packet(self._make_md_with_tos(tos=0xC2))
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             ancdata,
@@ -1173,7 +1171,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="ancdata must be empty when IP_RECVTOS is not set.",
         )
 
-    def test__udp_socket__recvmsg_ip_tos_zero_byte_with_recvtos_returns_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_ip_tos_zero_byte_with_recvtos_returns_cmsg(self) -> None:
         """
         Ensure recvmsg() emits an IP_TOS cmsg with value b"\\x00"
         when 'IP_RECVTOS' is set and the inbound datagram
@@ -1192,7 +1190,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
         s.process_udp_packet(self._make_md_with_tos(tos=0))
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             ancdata,
@@ -1200,7 +1198,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="IP_TOS cmsg must be emitted with b'\\x00' for a zero-TOS datagram when IP_RECVTOS=1.",
         )
 
-    def test__udp_socket__recvmsg_ipv6_tclass_with_recvtclass_returns_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_ipv6_tclass_with_recvtclass_returns_cmsg(self) -> None:
         """
         Ensure recvmsg(ancbufsize > 0) on an AF_INET6 socket
         returns an IPV6_TCLASS cmsg carrying the inbound
@@ -1219,7 +1217,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IPV6, IPV6_RECVTCLASS, 1)
         s.process_udp_packet(self._make_md_ip6_with_tclass(tclass=0xC2))
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             len(ancdata),
@@ -1238,7 +1236,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="IPV6_TCLASS cmsg value must be a 4-byte big-endian int matching the Traffic Class byte.",
         )
 
-    def test__udp_socket__recvmsg_ipv6_tclass_without_recvtclass_no_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_ipv6_tclass_without_recvtclass_no_cmsg(self) -> None:
         """
         Ensure recvmsg() on an AF_INET6 socket returns empty
         ancdata when 'IPV6_RECVTCLASS' is not set, even though
@@ -1253,7 +1251,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         self.addCleanup(s.close)
         s.process_udp_packet(self._make_md_ip6_with_tclass(tclass=0xC2))
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=256)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=256)
 
         self.assertEqual(
             ancdata,
@@ -1261,7 +1259,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="ancdata must be empty when IPV6_RECVTCLASS is not set.",
         )
 
-    def test__udp_socket__recvmsg_ip_tos_zero_ancbufsize_no_cmsg(self) -> None:
+    async def test__udp_socket__recvmsg_ip_tos_zero_ancbufsize_no_cmsg(self) -> None:
         """
         Ensure recvmsg(ancbufsize=0) returns empty ancdata even
         when 'IP_RECVTOS' is set, mirroring the zero-buffer
@@ -1277,7 +1275,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s.setsockopt(IPPROTO_IP, IP_RECVTOS, 1)
         s.process_udp_packet(self._make_md_with_tos(tos=0xC2))
 
-        _data, ancdata, _flags, _address = s.recvmsg(ancbufsize=0)
+        _data, ancdata, _flags, _address = await s.recvmsg(ancbufsize=0)
 
         self.assertEqual(
             ancdata,
@@ -1285,7 +1283,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
             msg="recvmsg(ancbufsize=0) must return empty ancdata regardless of IP_RECVTOS.",
         )
 
-    def test__udp_socket__recvmsg_timeout_raises(self) -> None:
+    async def test__udp_socket__recvmsg_timeout_raises(self) -> None:
         """
         Ensure recvmsg() with a finite timeout raises
         'TimeoutError' when no packet arrives, matching
@@ -1297,7 +1295,7 @@ class TestUdpSocketReceive(_UdpSocketTestCase):
         s = UdpSocket(family=AddressFamily.INET4)
         self.addCleanup(s.close)
         with self.assertRaises(TimeoutError):
-            s.recvmsg(timeout=0.01)
+            await s.recvmsg(timeout=0.01)
 
 
 class TestUdpSocketClose(_UdpSocketTestCase):
@@ -1327,183 +1325,6 @@ class TestUdpSocketClose(_UdpSocketTestCase):
             s.socket_id,
             self._sockets,
             msg="close() must unregister the socket from stack.sockets.",
-        )
-
-
-class TestUdpSocketFileno(_UdpSocketTestCase):
-    """
-    The 'UdpSocket.fileno' / read-readiness signal-and-drain tests.
-    """
-
-    def _make_md(self, data: bytes = b"payload") -> UdpMetadata:
-        """
-        Build a canonical IPv4 UDP envelope for the read-side path.
-        """
-
-        return UdpMetadata(
-            ip__ver=IpVersion.IP4,
-            ip__local_address=Ip4Address("10.0.0.1"),
-            ip__remote_address=Ip4Address("10.0.0.2"),
-            udp__local_port=1234,
-            udp__remote_port=5678,
-            udp__data=memoryview(data),
-        )
-
-    def setUp(self) -> None:
-        """
-        Build a fresh UDP socket. 'tearDown' closes it before the
-        parent fixture stops the 'log' patch so the close-time log
-        line stays suppressed.
-        """
-
-        super().setUp()
-        self._socket = UdpSocket(family=AddressFamily.INET4)
-
-    def tearDown(self) -> None:
-        """
-        Close the socket while the 'log' patch is still active, then
-        let the parent tear down the stack stubs.
-        """
-
-        try:
-            self._socket.close()
-        except OSError:
-            pass
-        super().tearDown()
-
-    def test__udp_socket__fileno_returns_non_negative_int(self) -> None:
-        """
-        Ensure 'fileno()' on a UDP socket returns a non-negative
-        integer file descriptor for selector / poll consumption.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-
-        self.assertIsInstance(
-            fd,
-            int,
-            msg="UdpSocket.fileno() must return an int.",
-        )
-        self.assertGreaterEqual(
-            fd,
-            0,
-            msg="UdpSocket.fileno() must return a non-negative fd.",
-        )
-
-    def test__udp_socket__fileno_initially_not_select_ready(self) -> None:
-        """
-        Ensure a freshly-constructed UDP socket reports as not
-        readable until a packet has been delivered.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="A fresh UdpSocket must not be select-readable.",
-        )
-
-    def test__udp_socket__fileno_select_ready_after_packet_arrives(self) -> None:
-        """
-        Ensure 'process_udp_packet' transitions the fd into the
-        select-readable state — selectors driven by an event-loop
-        framework rely on this to deliver wakeups.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.process_udp_packet(self._make_md())
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="process_udp_packet must mark the fd as select-readable.",
-        )
-
-    def test__udp_socket__fileno_drained_after_recv_consumes_last_packet(self) -> None:
-        """
-        Ensure 'recv()' returns the fd to the not-readable state
-        once the last queued datagram has been consumed.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.process_udp_packet(self._make_md())
-        self._socket.recv()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="recv() draining the last packet must clear the readable bit.",
-        )
-
-    def test__udp_socket__fileno_remains_select_ready_with_pending_packets(self) -> None:
-        """
-        Ensure a partial drain (one of several queued packets
-        consumed) leaves the fd select-readable so the next
-        selector tick still wakes.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.process_udp_packet(self._make_md(b"first"))
-        self._socket.process_udp_packet(self._make_md(b"second"))
-        self._socket.recv()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="recv() draining one of several packets must leave the fd readable.",
-        )
-
-    def test__udp_socket__recvfrom_drains_fileno_when_queue_empties(self) -> None:
-        """
-        Ensure 'recvfrom()' parallels 'recv()' in clearing the fd's
-        readable bit on consuming the last datagram.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.process_udp_packet(self._make_md())
-        self._socket.recvfrom()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="recvfrom() draining the last packet must clear the readable bit.",
-        )
-
-    def test__udp_socket__close_closes_underlying_fd(self) -> None:
-        """
-        Ensure 'close()' tears down the eventfd backing 'fileno()'
-        so the OS resource is reclaimed.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-        self._socket.close()
-
-        with self.assertRaises(OSError) as context:
-            fcntl.fcntl(fd, fcntl.F_GETFD)
-
-        self.assertEqual(
-            context.exception.errno,
-            errno.EBADF,
-            msg="close() must close the eventfd backing fileno() (EBADF on syscall).",
         )
 
 
@@ -1547,7 +1368,7 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
             pass
         super().tearDown()
 
-    def test__udp_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
+    async def test__udp_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
         """
         Ensure 'recv()' on a non-blocking socket with an empty queue
         raises 'BlockingIOError' carrying 'errno.EAGAIN', matching
@@ -1558,7 +1379,7 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
         """
 
         with self.assertRaises(BlockingIOError) as context:
-            self._socket.recv()
+            await self._socket.recv()
 
         self.assertEqual(
             context.exception.errno,
@@ -1566,7 +1387,7 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
             msg="Non-blocking recv() with no data must raise BlockingIOError(EAGAIN).",
         )
 
-    def test__udp_socket__recvfrom_raises_blocking_io_error_when_no_data(self) -> None:
+    async def test__udp_socket__recvfrom_raises_blocking_io_error_when_no_data(self) -> None:
         """
         Ensure 'recvfrom()' parallels 'recv()' in raising
         'BlockingIOError(EAGAIN)' on a non-blocking socket with an
@@ -1576,7 +1397,7 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
         """
 
         with self.assertRaises(BlockingIOError) as context:
-            self._socket.recvfrom()
+            await self._socket.recvfrom()
 
         self.assertEqual(
             context.exception.errno,
@@ -1584,7 +1405,7 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
             msg="Non-blocking recvfrom() with no data must raise BlockingIOError(EAGAIN).",
         )
 
-    def test__udp_socket__recv_returns_data_when_non_blocking_and_packet_queued(self) -> None:
+    async def test__udp_socket__recv_returns_data_when_non_blocking_and_packet_queued(self) -> None:
         """
         Ensure 'recv()' on a non-blocking socket returns the queued
         payload immediately when one is available — non-blocking
@@ -1596,12 +1417,12 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
         self._socket.process_udp_packet(self._make_md(b"payload"))
 
         self.assertEqual(
-            self._socket.recv(),
+            await self._socket.recv(),
             b"payload",
             msg="Non-blocking recv() with a queued packet must return its payload.",
         )
 
-    def test__udp_socket__recv_per_call_timeout_overrides_non_blocking(self) -> None:
+    async def test__udp_socket__recv_per_call_timeout_overrides_non_blocking(self) -> None:
         """
         Ensure an explicit 'timeout=' parameter takes precedence over
         the 'setblocking(False)' flag — the per-call argument wins,
@@ -1612,9 +1433,9 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
         """
 
         with self.assertRaises(TimeoutError):
-            self._socket.recv(timeout=0.01)
+            await self._socket.recv(timeout=0.01)
 
-    def test__udp_socket__recv_blocking_mode_unchanged_by_default(self) -> None:
+    async def test__udp_socket__recv_blocking_mode_unchanged_by_default(self) -> None:
         """
         Ensure a default-mode (blocking=True) socket with a finite
         per-call timeout still raises 'TimeoutError' rather than
@@ -1628,7 +1449,7 @@ class TestUdpSocketNonBlocking(_UdpSocketTestCase):
         self.addCleanup(s.close)
 
         with self.assertRaises(TimeoutError):
-            s.recv(timeout=0.01)
+            await s.recv(timeout=0.01)
 
 
 class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
@@ -1671,7 +1492,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
             pass
         super().tearDown()
 
-    def test__udp_socket__recv_truncates_oversized_datagram_to_bufsize(self) -> None:
+    async def test__udp_socket__recv_truncates_oversized_datagram_to_bufsize(self) -> None:
         """
         Ensure 'recv(bufsize)' returns at most 'bufsize' bytes when
         the queued datagram exceeds it; the datagram remainder is
@@ -1683,12 +1504,12 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
         self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
 
         self.assertEqual(
-            self._socket.recv(bufsize=4),
+            await self._socket.recv(bufsize=4),
             b"abcd",
             msg="recv(bufsize=4) on a 10-byte datagram must return the first 4 bytes only.",
         )
 
-    def test__udp_socket__recv_with_bufsize_returns_full_when_smaller(self) -> None:
+    async def test__udp_socket__recv_with_bufsize_returns_full_when_smaller(self) -> None:
         """
         Ensure 'recv(bufsize)' returns the full datagram unchanged
         when the datagram is smaller than 'bufsize' — bufsize is a
@@ -1700,12 +1521,12 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
         self._socket.process_udp_packet(self._make_md(b"hi"))
 
         self.assertEqual(
-            self._socket.recv(bufsize=1024),
+            await self._socket.recv(bufsize=1024),
             b"hi",
             msg="recv(bufsize=1024) on a 2-byte datagram must return the full payload.",
         )
 
-    def test__udp_socket__recv_with_bufsize_none_returns_full_payload(self) -> None:
+    async def test__udp_socket__recv_with_bufsize_none_returns_full_payload(self) -> None:
         """
         Ensure 'recv()' with no 'bufsize' argument (the default
         'None') returns the complete datagram — preserves the
@@ -1718,12 +1539,12 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
         self._socket.process_udp_packet(self._make_md(payload))
 
         self.assertEqual(
-            self._socket.recv(),
+            await self._socket.recv(),
             payload,
             msg="recv() without bufsize must return the full datagram.",
         )
 
-    def test__udp_socket__recv_with_bufsize_zero_returns_empty(self) -> None:
+    async def test__udp_socket__recv_with_bufsize_zero_returns_empty(self) -> None:
         """
         Ensure 'recv(bufsize=0)' returns 'b""' and consumes the
         queued datagram per POSIX UDP recv semantics — bufsize of
@@ -1736,7 +1557,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
         self._socket.process_udp_packet(self._make_md(b"payload"))
 
         self.assertEqual(
-            self._socket.recv(bufsize=0),
+            await self._socket.recv(bufsize=0),
             b"",
             msg="recv(bufsize=0) must return empty bytes.",
         )
@@ -1746,7 +1567,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
             msg="recv(bufsize=0) must still consume the queued datagram.",
         )
 
-    def test__udp_socket__recvfrom_truncates_oversized_datagram_to_bufsize(self) -> None:
+    async def test__udp_socket__recvfrom_truncates_oversized_datagram_to_bufsize(self) -> None:
         """
         Ensure 'recvfrom(bufsize)' parallels 'recv(bufsize)' by
         truncating an oversized datagram while still returning the
@@ -1757,7 +1578,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
 
         self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
 
-        data, addr = self._socket.recvfrom(bufsize=3)
+        data, addr = await self._socket.recvfrom(bufsize=3)
 
         self.assertEqual(
             data,
@@ -1770,7 +1591,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
             msg="recvfrom(bufsize=3) must still return the sender's (ip, port).",
         )
 
-    def test__udp_socket__recv_mv_with_bufsize_truncates_memoryview(self) -> None:
+    async def test__udp_socket__recv_mv_with_bufsize_truncates_memoryview(self) -> None:
         """
         Ensure 'recv__mv(bufsize)' returns a memoryview limited to
         'bufsize' bytes — the zero-copy variant honors the same
@@ -1781,7 +1602,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
 
         self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
 
-        mv = self._socket.recv__mv(bufsize=5)
+        mv = await self._socket.recv__mv(bufsize=5)
 
         self.assertEqual(
             len(mv),
@@ -1794,7 +1615,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
             msg="recv__mv(bufsize=5) must contain the first 5 datagram bytes.",
         )
 
-    def test__udp_socket__recvfrom_mv_with_bufsize_truncates_memoryview(self) -> None:
+    async def test__udp_socket__recvfrom_mv_with_bufsize_truncates_memoryview(self) -> None:
         """
         Ensure 'recvfrom__mv(bufsize)' truncates the memoryview to
         'bufsize' bytes while still returning the sender tuple.
@@ -1804,7 +1625,7 @@ class TestUdpSocketRecvBufsize(_UdpSocketTestCase):
 
         self._socket.process_udp_packet(self._make_md(b"abcdefghij"))
 
-        mv, addr = self._socket.recvfrom__mv(bufsize=2)
+        mv, addr = await self._socket.recvfrom__mv(bufsize=2)
 
         self.assertEqual(
             bytes(mv),
@@ -1936,7 +1757,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             msg="SO_REUSEPORT must not join a cohort with a non-REUSEPORT socket.",
         )
 
-    def test__udp_socket__so_rcvtimeo_supplies_recv_default_timeout(self) -> None:
+    async def test__udp_socket__so_rcvtimeo_supplies_recv_default_timeout(self) -> None:
         """
         Ensure setsockopt(SOL_SOCKET, SO_RCVTIMEO, N) makes a
         subsequent 'recv()' (with no per-call timeout) raise
@@ -1954,7 +1775,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
         s._so_rcvtimeo = 0.01
 
         with self.assertRaises(TimeoutError):
-            s.recv()
+            await s.recv()
 
     def test__udp_socket__so_broadcast_round_trip(self) -> None:
         """
@@ -2020,7 +1841,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             msg="IP_TTL must round-trip via setsockopt/getsockopt.",
         )
 
-    def test__udp_socket__ip_ttl_threads_into_send_udp_packet(self) -> None:
+    async def test__udp_socket__ip_ttl_threads_into_send_udp_packet(self) -> None:
         """
         Ensure a non-default IP_TTL set on a UDP socket appears as
         the 'ip__ttl' kwarg on 'send_udp_packet'.
@@ -2048,7 +1869,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             "pmd_pytcp.socket.udp__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
         ):
-            s.sendto(b"data", ("10.0.0.5", 9999))
+            await s.sendto(b"data", ("10.0.0.5", 9999))
 
         self.assertEqual(
             captured[0].get("ip__ttl"),
@@ -2381,7 +2202,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
         self.assertEqual(entry.errno, errno_mod.EMSGSIZE)
         self.assertEqual(entry.ee_info, 1280)
 
-    def test__udp_socket__recvmsg_errqueue_returns_cmsg_with_embedded_datagram(self) -> None:
+    async def test__udp_socket__recvmsg_errqueue_returns_cmsg_with_embedded_datagram(self) -> None:
         """
         Ensure recvmsg(flags=MSG_ERRQUEUE) dequeues one
         ErrorQueueEntry and returns the 4-tuple
@@ -2413,7 +2234,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
             embedded_datagram=b"the-triggering-packet",
         )
 
-        data, ancdata, flags, address = s.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE)
+        data, ancdata, flags, address = await s.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE)
 
         self.assertEqual(data, b"the-triggering-packet")
         self.assertEqual(flags, int(MSG_ERRQUEUE))
@@ -2424,7 +2245,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
         self.assertEqual(type_, int(IP_RECVERR))
         self.assertEqual(len(value), 32, msg="sock_extended_err (16) + sockaddr_in (16) = 32 bytes.")
 
-    def test__udp_socket__recvmsg_errqueue_empty_raises(self) -> None:
+    async def test__udp_socket__recvmsg_errqueue_empty_raises(self) -> None:
         """
         Ensure recvmsg(flags=MSG_ERRQUEUE, timeout=0.01) on an
         empty error queue raises TimeoutError (or
@@ -2439,7 +2260,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
         self.addCleanup(s.close)
 
         with self.assertRaises(TimeoutError):
-            s.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
+            await s.recvmsg(ancbufsize=256, flags=MSG_ERRQUEUE, timeout=0.01)
 
     def test__udp_socket__error_queue_bounded_drops_oldest(self) -> None:
         """
@@ -2745,7 +2566,7 @@ class TestUdpSocketSolSocketOptions(_UdpSocketTestCase):
 
 class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
     """
-    The 'UdpSocket' + 'selectors.DefaultSelector' integration tests.
+    The 'UdpSocket' OSError errno-mapping tests.
     """
 
     def _make_md(self, data: bytes = b"payload") -> UdpMetadata:
@@ -2781,48 +2602,6 @@ class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
         except OSError:
             pass
         super().tearDown()
-
-    def test__udp_socket__selectors_default_selector_event_read_lifecycle(self) -> None:
-        """
-        Ensure a 'selectors.DefaultSelector' driving the socket
-        sees the EVENT_READ bit toggle on/off across the full
-        deliver -> recv lifecycle. This is the core asyncio /
-        trio compatibility contract.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        import selectors
-
-        sel = selectors.DefaultSelector()
-        sel.register(self._socket, selectors.EVENT_READ, data="udp")
-        self.addCleanup(sel.close)
-
-        self.assertEqual(
-            sel.select(timeout=0),
-            [],
-            msg="A fresh socket must not be reported readable by the selector.",
-        )
-
-        self._socket.process_udp_packet(self._make_md(b"hello"))
-        events = sel.select(timeout=0)
-        self.assertEqual(
-            len(events),
-            1,
-            msg="An arrived datagram must wake the selector with one EVENT_READ entry.",
-        )
-        self.assertTrue(
-            events[0][1] & selectors.EVENT_READ,
-            msg="The selector entry must carry the EVENT_READ bit.",
-        )
-
-        self._socket.recv()
-
-        self.assertEqual(
-            sel.select(timeout=0),
-            [],
-            msg="After draining the queue, the selector must not report readable.",
-        )
 
     def test__udp_socket__bind_twice_oserror_carries_einval_errno(self) -> None:
         """
@@ -2890,7 +2669,7 @@ class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
             msg="address-in-use bind OSError must carry errno=EADDRINUSE.",
         )
 
-    def test__udp_socket__send_no_destination_oserror_carries_edestaddrreq_errno(self) -> None:
+    async def test__udp_socket__send_no_destination_oserror_carries_edestaddrreq_errno(self) -> None:
         """
         Ensure 'send()' on a socket with no remote IP raises
         'OSError' with '.errno == errno.EDESTADDRREQ'.
@@ -2902,7 +2681,7 @@ class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
         self.addCleanup(s.close)
 
         with self.assertRaises(OSError) as context:
-            s.send(b"data")
+            await s.send(b"data")
 
         self.assertEqual(
             context.exception.errno,
@@ -2910,7 +2689,7 @@ class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
             msg="send-without-destination OSError must carry errno=EDESTADDRREQ.",
         )
 
-    def test__udp_socket__recv_unreachable_carries_econnrefused_errno(self) -> None:
+    async def test__udp_socket__recv_unreachable_carries_econnrefused_errno(self) -> None:
         """
         Ensure 'recv()' translation of an ICMP Unreachable raises
         'ConnectionRefusedError' with '.errno == errno.ECONNREFUSED'.
@@ -2923,31 +2702,10 @@ class TestUdpSocketSelectorIntegration(_UdpSocketTestCase):
         s.notify_unreachable()
 
         with self.assertRaises(ConnectionRefusedError) as context:
-            s.recv()
+            await s.recv()
 
         self.assertEqual(
             context.exception.errno,
             errno.ECONNREFUSED,
             msg="ICMP-Unreachable ConnectionRefusedError must carry errno=ECONNREFUSED.",
-        )
-
-    def test__udp_socket__select_select_event_write_is_always_ready(self) -> None:
-        """
-        Ensure 'select.select' reports the socket as immediately
-        writable. PyTCP's tx buffer is unbounded today, so the
-        write-readable bit is always asserted; matches the
-        kernel-level eventfd "writable when counter < UINT64_MAX -
-        1" behavior.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        import select as _select
-
-        _, wlist, _ = _select.select([], [self._socket], [], 0)
-
-        self.assertEqual(
-            wlist,
-            [self._socket],
-            msg="The socket fd must always be select-writable while tx buffer is unbounded.",
         )

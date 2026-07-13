@@ -41,8 +41,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
-from typing_extensions import override
+import asyncio
 
 from pmd_net_addr import Ip6Address, MacAddress
 from pmd_net_proto import (
@@ -74,23 +73,27 @@ class NdTestCase(IcmpTestCase):
     of NS / NA / RS / RA / Redirect cases).
     """
 
-    @override
-    def tearDown(self) -> None:
+    async def _settle_dad_tasks(self) -> None:
         """
-        Join any DAD daemon thread spawned during the test before the
-        harness tears down 'stack'. An address-claim worker
-        ('_claim_ip6_address_async' -> '_perform_ip6_nd_dad') that
-        outlives the fixture would otherwise reach 'stack.timer' after
-        teardown removed it and raise from the daemon thread
-        (unit_testing.md §10a.3). Joining here lets the worker finish
-        against the still-installed 'FakeTimer'.
+        Await completion of every in-flight worker task tracked on
+        the packet handler ('self._packet_handler._tasks') — in
+        these ND fixtures those are exclusively the 'DAD-*' address
+        claim workers spawned by '_claim_ip6_address_async' (either
+        directly by a test or indirectly by an RX-driven PI-admit /
+        temp-address / regen path). An address-claim worker that
+        outlived the fixture would otherwise reach 'stack.timer'
+        after teardown removed it, or get destroyed while pending
+        when 'IsolatedAsyncioTestCase' closes its loop
+        (unit_testing.md §10a.3 rationale carried over from the
+        threading era). Callers invoke this from an async test body
+        right after the action that spawns workers; the loop is
+        still running so the workers finish against the
+        still-installed 'FakeTimer'.
         """
 
-        for thread in threading.enumerate():
-            if thread.name.startswith("DAD-") and thread.is_alive():
-                thread.join(timeout=5.0)
-
-        super().tearDown()
+        tasks = [task for task in self._packet_handler._tasks if not task.done()]
+        if tasks:
+            await asyncio.gather(*tasks)
 
     def _make_nd_redirect_frame(
         self,

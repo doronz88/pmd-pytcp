@@ -35,6 +35,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import MacAddress
@@ -87,7 +88,7 @@ def _arp_request_frame(*, ethernet_dst: MacAddress = STACK__MAC_ADDRESS) -> byte
     )
 
 
-class TestPacketSocketRxTap(NetworkTestCase):
+class TestPacketSocketRxTap(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     The AF_PACKET ingress-tap integration tests.
     """
@@ -115,7 +116,7 @@ class TestPacketSocketRxTap(NetworkTestCase):
         self.addCleanup(sock.close)
         return sock
 
-    def test__packet_socket__rx_tap__receives_matching_frame(self) -> None:
+    async def test__packet_socket__rx_tap__receives_matching_frame(self) -> None:
         """
         Ensure a frame arriving at the Ethernet RX handler is delivered
         verbatim to a bound packet socket, with a 'sockaddr_ll' carrying
@@ -129,7 +130,7 @@ class TestPacketSocketRxTap(NetworkTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(frame))
 
-        data, addr = sock.recvfrom()
+        data, addr = await sock.recvfrom()
         self.assertEqual(data, frame, msg="The packet socket must receive the complete frame verbatim.")
         self.assertEqual(addr.ethertype, EtherType.ARP, msg="sockaddr_ll.ethertype must be the frame's ethertype.")
         self.assertEqual(addr.mac, HOST_A__MAC_ADDRESS, msg="sockaddr_ll.mac must be the frame's source MAC.")
@@ -139,7 +140,7 @@ class TestPacketSocketRxTap(NetworkTestCase):
             msg="Phase 1 reports PACKET_HOST until pkttype classification lands.",
         )
 
-    def test__packet_socket__rx_tap__is_parallel_to_ip_delivery(self) -> None:
+    async def test__packet_socket__rx_tap__is_parallel_to_ip_delivery(self) -> None:
         """
         Ensure the tap is parallel: an ARP request that a packet socket
         captures is STILL processed by the ARP handler, which emits its
@@ -155,7 +156,7 @@ class TestPacketSocketRxTap(NetworkTestCase):
         self._packet_handler._phrx_ethernet(PacketRx(frame))
 
         self.assertEqual(
-            sock.recvfrom()[0],
+            (await sock.recvfrom())[0],
             frame,
             msg="The ETH_P_ALL packet socket must capture the ARP request.",
         )
@@ -165,7 +166,7 @@ class TestPacketSocketRxTap(NetworkTestCase):
             msg="Normal ARP delivery must still occur — the stack emits its ARP reply.",
         )
 
-    def test__packet_socket__rx_tap__ethertype_filter_excludes_nonmatch(self) -> None:
+    async def test__packet_socket__rx_tap__ethertype_filter_excludes_nonmatch(self) -> None:
         """
         Ensure a packet socket bound to a different ethertype does not
         receive a frame of an unrelated ethertype — the registry's
@@ -179,9 +180,9 @@ class TestPacketSocketRxTap(NetworkTestCase):
         self._packet_handler._phrx_ethernet(PacketRx(_arp_request_frame()))
 
         with self.assertRaises(BlockingIOError):
-            ip_sock.recv()
+            await ip_sock.recv()
 
-    def test__packet_socket__rx_tap__pkttype_classification(self) -> None:
+    async def test__packet_socket__rx_tap__pkttype_classification(self) -> None:
         """
         Ensure the 'sockaddr_ll.pkttype' reflects how the frame was
         addressed at the link layer relative to this interface: the
@@ -202,7 +203,7 @@ class TestPacketSocketRxTap(NetworkTestCase):
         ):
             with self.subTest(dst=dst_mac):
                 self._packet_handler._phrx_ethernet(PacketRx(_arp_request_frame(ethernet_dst=dst_mac)))
-                _, addr = sock.recvfrom()
+                _, addr = await sock.recvfrom()
                 self.assertEqual(
                     addr.pkttype,
                     expected,

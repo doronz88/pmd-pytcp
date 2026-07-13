@@ -51,8 +51,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
-import time
+import asyncio
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_net_addr import Ip6Address, Ip6IfAddr
 from pmd_pytcp.stack import sysctl as sysctl_module
@@ -122,7 +122,7 @@ class TestIcmp6Nd__AcceptDad__SysctlRegistration(NdTestCase):
             sysctl_module.set("icmp6.default.accept_dad", True)
 
 
-class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase):
+class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase, IsolatedAsyncioTestCase):
     """
     With 'accept_dad=0' '_perform_ip6_nd_dad' short-circuits:
     no probes are sent, no initial delay is taken, the
@@ -138,7 +138,7 @@ class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__accept_dad__zero_returns_true_no_probes(self) -> None:
+    async def test__icmp6__nd__accept_dad__zero_returns_true_no_probes(self) -> None:
         """
         Ensure 'accept_dad=0' makes '_perform_ip6_nd_dad'
         return True without emitting any DAD probe frames.
@@ -150,7 +150,7 @@ class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase):
 
         with sysctl_module.override("icmp6.default.accept_dad", 0):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
-                ok = self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
+                ok = await self._packet_handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE)
 
         self.assertTrue(ok, msg="accept_dad=0 must short-circuit DAD as success.")
         # No TX frames — neither probes nor gratuitous NA.
@@ -161,7 +161,7 @@ class TestIcmp6Nd__AcceptDad__ZeroSkipsDad(NdTestCase):
         )
 
 
-class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
+class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase, IsolatedAsyncioTestCase):
     """
     With 'accept_dad=2' a DAD failure disables IPv6 on the
     interface ('_ip6_support = False'). The async-claim
@@ -176,7 +176,7 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__accept_dad__two_disables_ipv6_on_collision(self) -> None:
+    async def test__icmp6__nd__accept_dad__two_disables_ipv6_on_collision(self) -> None:
         """
         Ensure a DAD failure with 'accept_dad=2' flips
         '_ip6_support' to False — the interface-wide IPv6
@@ -185,7 +185,10 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         Reference: Linux 'accept_dad=2' fail-hard semantics.
         """
 
-        # Trigger DAD failure mid-loop.
+        # Trigger DAD failure mid-loop. Scheduled via the loop's
+        # 'call_later' — 'try_signal_conflict' is a plain sync
+        # call, so a timer callback fires it while the worker
+        # task is suspended in its inter-probe wait.
         def _trigger_conflict() -> None:
             self._packet_handler._icmp6_nd_dad__registry.try_signal_conflict(
                 _CANDIDATE_HOST.address,
@@ -201,9 +204,9 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         with sysctl_module.override("icmp6.default.accept_dad", 2):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                    threading.Timer(0.005, _trigger_conflict).start()
-                    thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
-                    thread.join(timeout=5.0)
+                    asyncio.get_running_loop().call_later(0.005, _trigger_conflict)
+                    task = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
+                    await task
 
         self.assertFalse(
             self._packet_handler._ip6_support,
@@ -215,7 +218,7 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
             msg="DAD failure must still remove the address from _ip6_ifaddr.",
         )
 
-    def test__icmp6__nd__accept_dad__one_does_not_disable_ipv6(self) -> None:
+    async def test__icmp6__nd__accept_dad__one_does_not_disable_ipv6(self) -> None:
         """
         Ensure with the default 'accept_dad=1' a DAD failure
         does NOT flip '_ip6_support' (regression check).
@@ -232,16 +235,16 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
 
         with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
             with sysctl_module.override("icmp6.default.retrans_timer_ms", 200):
-                threading.Timer(0.005, _trigger_conflict).start()
-                thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
-                thread.join(timeout=5.0)
+                asyncio.get_running_loop().call_later(0.005, _trigger_conflict)
+                task = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
+                await task
 
         self.assertTrue(
             self._packet_handler._ip6_support,
             msg="accept_dad=1 + DAD failure must leave _ip6_support True.",
         )
 
-    def test__icmp6__nd__accept_dad__two_no_effect_on_success(self) -> None:
+    async def test__icmp6__nd__accept_dad__two_no_effect_on_success(self) -> None:
         """
         Ensure with 'accept_dad=2' a SUCCESSFUL DAD does NOT
         flip '_ip6_support' — the disable-on-failure rule
@@ -253,19 +256,13 @@ class TestIcmp6Nd__AcceptDad__TwoDisablesIp6OnFailure(NdTestCase):
         with sysctl_module.override("icmp6.default.accept_dad", 2):
             with sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0):
                 with sysctl_module.override("icmp6.default.dad_transmits", 0):
-                    thread = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
-                    thread.join(timeout=5.0)
+                    task = self._packet_handler._claim_ip6_address_async(ip6_host=_CANDIDATE_HOST)
+                    await task
 
         self.assertTrue(
             self._packet_handler._ip6_support,
             msg="accept_dad=2 + DAD success must leave _ip6_support True.",
         )
-        # Address must be in _ip6_ifaddr (DAD passed).
-        deadline = time.monotonic() + 1.0
-        while time.monotonic() < deadline:
-            if _CANDIDATE_HOST.address in [h.address for h in self._packet_handler._ip6_ifaddr]:
-                break
-            time.sleep(0.005)
         self.assertIn(
             _CANDIDATE_HOST.address,
             [host.address for host in self._packet_handler._ip6_ifaddr],

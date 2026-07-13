@@ -212,7 +212,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
             msg="use_tempaddr=0 must NOT install a temp-address entry.",
         )
 
-    def test__icmp6__nd__rfc8981__creates_entry_with_random_iid(self) -> None:
+    async def test__icmp6__nd__rfc8981__creates_entry_with_random_iid(self) -> None:
         """
         Ensure the mutator with sysctl=1 installs a temp-address
         entry whose address shares the /64 prefix but has a
@@ -230,6 +230,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
                     preferred_lifetime=604800,
                     router_address=ROUTER__LINK_LOCAL,
                 )
+                await self._settle_dad_tasks()
 
         entries = self._packet_handler._icmp6_temp_addresses
         self.assertEqual(len(entries), 1, msg=f"Expected one temp entry. Got: {entries!r}")
@@ -252,7 +253,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
             msg="Temp address IID must differ from the stable derivation.",
         )
 
-    def test__icmp6__nd__rfc8981__lifetime_clamps_to_temp_constants(self) -> None:
+    async def test__icmp6__nd__rfc8981__lifetime_clamps_to_temp_constants(self) -> None:
         """
         Ensure the entry's preferred_until and valid_until
         deadlines are clamped to TEMP_PREFERRED_LIFETIME /
@@ -271,6 +272,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
                     preferred_lifetime=99999999,
                     router_address=ROUTER__LINK_LOCAL,
                 )
+                await self._settle_dad_tasks()
 
         entry = self._packet_handler._icmp6_temp_addresses[0]
         # Valid lifetime clamped to TEMP_VALID_LIFETIME = 7 days.
@@ -287,7 +289,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
             msg=f"preferred_until must clamp to TEMP_PREFERRED_LIFETIME. Got: {entry.preferred_until - before}s",
         )
 
-    def test__icmp6__nd__rfc8981__zero_valid_removes_entry(self) -> None:
+    async def test__icmp6__nd__rfc8981__zero_valid_removes_entry(self) -> None:
         """
         Ensure a subsequent PI with valid_lifetime=0 removes
         the temp-address entry — same removal rule the stable
@@ -304,6 +306,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
                     preferred_lifetime=604800,
                     router_address=ROUTER__LINK_LOCAL,
                 )
+                await self._settle_dad_tasks()
                 self.assertEqual(len(self._packet_handler._icmp6_temp_addresses), 1)
 
                 self._packet_handler._update_icmp6_temp_address(
@@ -312,6 +315,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
                     preferred_lifetime=0,
                     router_address=ROUTER__LINK_LOCAL,
                 )
+                await self._settle_dad_tasks()
 
         self.assertEqual(
             len(self._packet_handler._icmp6_temp_addresses),
@@ -319,7 +323,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
             msg="valid_lifetime=0 PI must remove the temp-address entry.",
         )
 
-    def test__icmp6__nd__rfc8981__refresh_preserves_address(self) -> None:
+    async def test__icmp6__nd__rfc8981__refresh_preserves_address(self) -> None:
         """
         Ensure a subsequent PI for the same prefix refreshes
         lifetimes but preserves the existing temp address —
@@ -336,6 +340,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
                     preferred_lifetime=604800,
                     router_address=ROUTER__LINK_LOCAL,
                 )
+                await self._settle_dad_tasks()
                 first_address = self._packet_handler._icmp6_temp_addresses[0].address
 
                 self._packet_handler._update_icmp6_temp_address(
@@ -344,6 +349,7 @@ class TestIcmp6Nd__Rfc8981Temp__MutatorWireState(NdTestCase):
                     preferred_lifetime=604800,
                     router_address=ROUTER__LINK_LOCAL,
                 )
+                await self._settle_dad_tasks()
 
         entries = self._packet_handler._icmp6_temp_addresses
         self.assertEqual(
@@ -407,7 +413,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__rfc8981__ra_drives_temp_address_creation(self) -> None:
+    async def test__icmp6__nd__rfc8981__ra_drives_temp_address_creation(self) -> None:
         """
         Ensure an RA with a single PI option creates one
         stable SLAAC entry AND one temp-address entry (under
@@ -434,6 +440,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
                         ],
                     ),
                 )
+                await self._settle_dad_tasks()
 
         # SLAAC table got the stable entry.
         slaac_entries = self._packet_handler._icmp6_slaac_addresses
@@ -461,7 +468,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
             msg="Temp address IID must differ from the stable SLAAC address.",
         )
 
-    def test__icmp6__nd__rfc8981__ra_with_sysctl_zero_no_temp(self) -> None:
+    async def test__icmp6__nd__rfc8981__ra_with_sysctl_zero_no_temp(self) -> None:
         """
         Ensure an RA with sysctl=0 (default) creates only the
         stable SLAAC entry — no temp-address entry, no temp
@@ -487,6 +494,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
                     ],
                 ),
             )
+            await self._settle_dad_tasks()
 
         self.assertEqual(
             len(self._packet_handler._icmp6_slaac_addresses),
@@ -499,7 +507,7 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
             msg="use_tempaddr=0 must NOT create a temp-address entry.",
         )
 
-    def test__icmp6__nd__rfc8981__claim_worker_assigns_temp_to_ip6_host(self) -> None:
+    async def test__icmp6__nd__rfc8981__claim_worker_assigns_temp_to_ip6_host(self) -> None:
         """
         Ensure the DAD worker spawned for the temp address
         eventually installs it into '_ip6_ifaddr' (DAD passes
@@ -528,14 +536,10 @@ class TestIcmp6Nd__Rfc8981Temp__RxDrivenClaim(NdTestCase):
                     ),
                 )
 
-                # Wait briefly for the DAD worker to finish — under
-                # 'dad_transmits=0' it returns almost immediately.
+                # Let the DAD worker finish — under 'dad_transmits=0'
+                # it returns almost immediately.
                 temp_address = self._packet_handler._icmp6_temp_addresses[0].address
-                deadline = time.monotonic() + 1.0
-                while time.monotonic() < deadline:
-                    if temp_address in [host.address for host in self._packet_handler._ip6_ifaddr]:
-                        break
-                    time.sleep(0.005)
+                await self._settle_dad_tasks()
 
         self.assertIn(
             temp_address,

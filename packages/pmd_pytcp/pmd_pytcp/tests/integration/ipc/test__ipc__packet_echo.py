@@ -43,11 +43,12 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-import time
 from typing import Any, cast
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import call
 
 from pmd_net_proto import ArpAssembler, ArpOperation, EthernetAssembler, EtherType
@@ -88,7 +89,7 @@ def _arp_request_frame() -> bytes:
     )
 
 
-class TestIpcPacketEcho(NetworkTestCase):
+class TestIpcPacketEcho(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     The out-of-process AF_PACKET echo integration test.
     """
@@ -118,20 +119,29 @@ class TestIpcPacketEcho(NetworkTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mock network (via 'NetworkTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Build the mock network (via 'NetworkTestCase', sync 'setUp' runs
+        first through the MRO) then stand up an 'IpcServer' on a temp
+        AF_UNIX path against it. The server needs the running loop.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -144,30 +154,29 @@ class TestIpcPacketEcho(NetworkTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 
-    def _packet_socket(self) -> ClientPacketSocket:
+    async def _packet_socket(self) -> ClientPacketSocket:
         """
-        Open a capture-all client AF_PACKET socket with a receive timeout
-        set.
+        Open a capture-all client AF_PACKET socket.
         """
 
+        client = await self._connect()
         sock = cast(
             ClientPacketSocket,
-            self._connect().socket(AddressFamily.PACKET, SocketType.RAW, ETH_P_ALL),
+            await client.socket(AddressFamily.PACKET, SocketType.RAW, ETH_P_ALL),
         )
-        self.addCleanup(sock.close)
-        sock.settimeout(_DEADLINE__SEC)
+        self.addAsyncCleanup(sock.close)
         return sock
 
-    def test__packet_echo__client_captures_wire_frame(self) -> None:
+    async def test__packet_echo__client_captures_wire_frame(self) -> None:
         """
         Ensure a complete link-layer frame arriving on the wire is
         delivered verbatim to the out-of-process client over its real fd,
@@ -176,12 +185,12 @@ class TestIpcPacketEcho(NetworkTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sock = self._packet_socket()
+        sock = await self._packet_socket()
         frame = _arp_request_frame()
 
         self._packet_handler._phrx_ethernet(PacketRx(frame))
 
-        data, sockaddr_ll = sock.recvfrom()
+        data, sockaddr_ll = await asyncio.wait_for(sock.recvfrom(), timeout=_DEADLINE__SEC)
 
         self.assertEqual(
             (data, sockaddr_ll.ethertype, sockaddr_ll.mac),
@@ -189,7 +198,7 @@ class TestIpcPacketEcho(NetworkTestCase):
             msg="The client must capture the verbatim frame with its sockaddr_ll over its fd.",
         )
 
-    def test__packet_echo__client_frame_reaches_the_wire(self) -> None:
+    async def test__packet_echo__client_frame_reaches_the_wire(self) -> None:
         """
         Ensure a complete link-layer frame the out-of-process client
         sends is emitted verbatim onto the wire by the stack.
@@ -197,20 +206,20 @@ class TestIpcPacketEcho(NetworkTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sock = self._packet_socket()
+        sock = await self._packet_socket()
         frame = _arp_request_frame()
         tx_ring = cast(Any, self._packet_handler._tx_ring)
 
         # AF_PACKET egress is a verbatim link-frame enqueue
         # ('enqueue_raw_frame'), distinct from the IP TX path the
         # NetworkTestCase '_frames_tx' slot captures.
-        sock.sendto(frame, SockAddrLl(ifindex=self._packet_handler._ifindex))
+        await sock.sendto(frame, SockAddrLl(ifindex=self._packet_handler._ifindex))
 
-        deadline = time.monotonic() + _DEADLINE__SEC
-        while time.monotonic() < deadline:
+        deadline = asyncio.get_running_loop().time() + _DEADLINE__SEC
+        while asyncio.get_running_loop().time() < deadline:
             if tx_ring.enqueue_raw_frame.call_args_list:
                 break
-            time.sleep(0.01)
+            await asyncio.sleep(0.01)
 
         self.assertEqual(
             tx_ring.enqueue_raw_frame.call_args_list,

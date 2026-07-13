@@ -501,8 +501,7 @@ class TestTcpDataTransfer__Window(TcpTestCase):
         # '_rcv_wnd' is a property: 'max(0, _rcv_wnd_max - len(_rx_buffer))'.
         target_available = 535  # sub-MSS (< 1460)
         prefill_count = session._win.rcv_wnd_max - target_available
-        with session._lock__rx_buffer:
-            session._rx_buffer.extend(b"\x00" * prefill_count)
+        session._rx_buffer.extend(b"\x00" * prefill_count)
         self.assertEqual(
             session._rcv_wnd,
             target_available,

@@ -23,7 +23,11 @@
 
 
 """
-This module contains tests for the 'Subsystem' base class.
+This module contains tests for the 'Subsystem' base class — the
+task-based pure-asyncio variant ('docs/refactor/pure_asyncio.md'):
+'start()' spawns an 'asyncio.Task' on the running loop, 'stop()'
+sets the stop event + cancels the task, and 'wait_stopped()'
+awaits the worker's actual exit.
 
 pmd_pytcp/tests/unit/runtime/test__runtime__subsystem.py
 
@@ -32,10 +36,10 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import io
-import threading
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import patch
 
 from pmd_pytcp.runtime.subsystem import SUBSYSTEM_SLEEP_TIME__SEC, Subsystem
@@ -60,18 +64,20 @@ class _TestSubsystem(Subsystem):
         self.loop_iterations = 0
         self.start_hook_called = False
         self.stop_hook_called = False
-        self._loop_event = threading.Event()
+        self._loop_event = asyncio.Event()
         super().__init__(info=info)
 
     @override
-    def _subsystem_loop(self) -> None:
+    async def _subsystem_loop(self) -> None:
         """
-        Increment the iteration counter and, once, signal the test thread
-        so it can request the subsystem to stop deterministically.
+        Increment the iteration counter, signal the test coroutine so it
+        can request the subsystem to stop deterministically, and yield
+        the loop so the base wrapper's stop-event check is reachable.
         """
 
         self.loop_iterations += 1
         self._loop_event.set()
+        await asyncio.sleep(0)
 
     @override
     def _start(self) -> None:
@@ -111,9 +117,9 @@ class _HookOnlySubsystem(Subsystem):
         self._event__stop_subsystem.set()
 
     @override
-    def _subsystem_loop(self) -> None:
+    async def _subsystem_loop(self) -> None:
         """
-        Unreachable — the stop event is set before the thread starts.
+        Unreachable — the stop event is set before the task starts.
         """
 
 
@@ -157,7 +163,7 @@ class TestSubsystemModuleConstants(TestCase):
         )
 
 
-class TestSubsystemAbstractContract(TestCase):
+class TestSubsystemAbstractContract(IsolatedAsyncioTestCase):
     """
     The 'Subsystem' abstract-base-class contract tests.
     """
@@ -173,10 +179,10 @@ class TestSubsystemAbstractContract(TestCase):
         with self.assertRaises(TypeError):
             Subsystem()  # type: ignore[abstract]
 
-    def test__subsystem__loop_stub_raises_not_implemented(self) -> None:
+    async def test__subsystem__loop_stub_raises_not_implemented(self) -> None:
         """
         Ensure the abstract '_subsystem_loop' stub body itself raises
-        'NotImplementedError' so a subclass that calls 'super()' into
+        'NotImplementedError' so a subclass that awaits 'super()' into
         the default receives the canonical failure.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -186,7 +192,7 @@ class TestSubsystemAbstractContract(TestCase):
             subsystem = _TestSubsystem()
 
         with self.assertRaises(NotImplementedError):
-            Subsystem._subsystem_loop(subsystem)
+            await Subsystem._subsystem_loop(subsystem)
 
 
 class TestSubsystemInit(TestCase):
@@ -196,7 +202,7 @@ class TestSubsystemInit(TestCase):
 
     def test__subsystem__init_creates_stop_event(self) -> None:
         """
-        Ensure '__init__' creates a fresh 'threading.Event' for the stop
+        Ensure '__init__' creates a fresh 'asyncio.Event' for the stop
         signal and that it starts cleared (subsystem is not yet stopping).
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -207,8 +213,8 @@ class TestSubsystemInit(TestCase):
 
         self.assertIsInstance(
             subsystem._event__stop_subsystem,
-            threading.Event,
-            msg="Subsystem.__init__ must create a 'threading.Event' for the stop signal.",
+            asyncio.Event,
+            msg="Subsystem.__init__ must create an 'asyncio.Event' for the stop signal.",
         )
         self.assertFalse(
             subsystem._event__stop_subsystem.is_set(),
@@ -247,44 +253,54 @@ class TestSubsystemInit(TestCase):
             "Initializing test-subsystem [tap7]",
         )
 
+    def test__subsystem__init_empty_info_string_omits_bracket(self) -> None:
+        """
+        Ensure an empty 'info' string is treated as 'no info' —
+        the bracket suffix is omitted from the 'Initializing X'
+        log line because the 'if info' falsy guard catches the
+        empty case.
 
-class TestSubsystemLifecycle(TestCase):
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with patch("pmd_pytcp.runtime.subsystem.log") as mock_log:
+            _TestSubsystem(info="")
+
+        mock_log.assert_called_once_with(
+            "stack",
+            "Initializing test-subsystem",
+        )
+
+
+class TestSubsystemLifecycle(IsolatedAsyncioTestCase):
     """
     The 'Subsystem.start()' / 'Subsystem.stop()' full-lifecycle tests.
     """
 
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
         Redirect 'pmd_pytcp.stack.LOG__OUTPUT' to an in-memory buffer so the
-        real 'log()' calls driven from the worker thread do not pollute
+        real 'log()' calls driven from the worker task do not pollute
         the test runner's stderr.
         """
 
         self._log_patch = patch("pmd_pytcp.stack.LOG__OUTPUT", io.StringIO())
         self._log_patch.start()
 
-    def tearDown(self) -> None:
+    async def asyncTearDown(self) -> None:
         """
-        Join any subsystem-spawned worker threads before restoring the
-        original log output stream. Without the join, a worker that
-        prints its terminal "Stopped ..." line after 'tearDown' has
-        unpatched 'LOG__OUTPUT' would leak the line to real stderr.
+        Restore the original log output stream. Worker tasks are awaited
+        by each test's own 'wait_stopped()' call, so no task can print
+        its terminal "Stopped ..." line after the unpatch.
         """
-
-        for thread in list(threading.enumerate()):
-            if thread is threading.main_thread():
-                continue
-            if thread is threading.current_thread():
-                continue
-            thread.join(timeout=2.0)
 
         self._log_patch.stop()
 
-    def test__subsystem__start_runs_thread_and_fires_hooks(self) -> None:
+    async def test__subsystem__start_runs_task_and_fires_hooks(self) -> None:
         """
-        Ensure 'start()' clears the stop event, launches a worker thread
+        Ensure 'start()' clears the stop event, spawns a worker task
         that drives '_subsystem_loop()' at least once, and invokes the
-        optional '_start()' hook synchronously after thread spawn.
+        optional '_start()' hook synchronously after task spawn.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -294,22 +310,25 @@ class TestSubsystemLifecycle(TestCase):
         try:
             subsystem.start()
 
-            self.assertTrue(
-                subsystem._loop_event.wait(timeout=2.0),
+            await asyncio.wait_for(subsystem._loop_event.wait(), timeout=2.0)
+            self.assertGreaterEqual(
+                subsystem.loop_iterations,
+                1,
                 msg="The subsystem loop must execute at least one iteration after start().",
             )
             self.assertTrue(
                 subsystem.start_hook_called,
-                msg="Subsystem.start() must invoke the '_start' hook after spawning the thread.",
+                msg="Subsystem.start() must invoke the '_start' hook after spawning the task.",
             )
         finally:
             subsystem.stop()
+            await subsystem.wait_stopped()
 
-    def test__subsystem__stop_signals_event_and_fires_hook(self) -> None:
+    async def test__subsystem__stop_signals_event_and_fires_hook(self) -> None:
         """
         Ensure 'stop()' sets the stop event (terminating the loop) and
-        invokes the optional '_stop()' hook. A join after stop must
-        complete promptly so the thread exits cleanly.
+        invokes the optional '_stop()' hook. A 'wait_stopped()' after
+        stop must complete promptly so the task exits cleanly.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -317,10 +336,7 @@ class TestSubsystemLifecycle(TestCase):
         subsystem = _TestSubsystem()
         subsystem.start()
 
-        self.assertTrue(
-            subsystem._loop_event.wait(timeout=2.0),
-            msg="Precondition: the subsystem loop must be running before stop().",
-        )
+        await asyncio.wait_for(subsystem._loop_event.wait(), timeout=2.0)
 
         subsystem.stop()
 
@@ -333,45 +349,28 @@ class TestSubsystemLifecycle(TestCase):
             msg="Subsystem.stop() must invoke the '_stop' hook.",
         )
 
-    def test__subsystem__thread_exits_on_stop(self) -> None:
+        await asyncio.wait_for(subsystem.wait_stopped(), timeout=2.0)
+
+    async def test__subsystem__task_exits_on_stop(self) -> None:
         """
-        Ensure the worker thread observes the stop event and exits the
-        loop. Tracked by joining every currently-alive non-main thread
-        (besides threading internals) after 'stop()'.
+        Ensure the worker task observes the stop event / cancellation
+        and exits the loop — 'wait_stopped()' must return within a
+        bounded time and leave the task in the done state.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         subsystem = _TestSubsystem()
         subsystem.start()
-        self.assertTrue(
-            subsystem._loop_event.wait(timeout=2.0),
-            msg="Precondition: the subsystem loop must be running before stop().",
-        )
+        await asyncio.wait_for(subsystem._loop_event.wait(), timeout=2.0)
 
         subsystem.stop()
 
-        deadline = threading.Event()
-
-        def _watchdog() -> None:
-            """
-            Release the deadline once every subsystem-spawned thread has
-            joined or the 2-second ceiling has elapsed.
-            """
-
-            for thread in list(threading.enumerate()):
-                if thread is threading.main_thread():
-                    continue
-                if thread is threading.current_thread():
-                    continue
-                thread.join(timeout=2.0)
-            deadline.set()
-
-        threading.Thread(target=_watchdog).start()
-
+        await asyncio.wait_for(subsystem.wait_stopped(), timeout=2.0)
+        assert subsystem._task is not None
         self.assertTrue(
-            deadline.wait(timeout=3.0),
-            msg="All subsystem worker threads must exit within a few seconds of stop().",
+            subsystem._task.done(),
+            msg="The worker task must be done after stop() + wait_stopped().",
         )
 
 
@@ -414,17 +413,17 @@ class TestSubsystemDefaultHooks(TestCase):
             self.fail(f"Subsystem._stop() base implementation must be a silent no-op; raised {exc!r}.")
 
 
-class TestSubsystemThreadEarlyExit(TestCase):
+class TestSubsystemTaskEarlyExit(IsolatedAsyncioTestCase):
     """
-    The '_thread__subsystem' worker-thread early-exit test.
+    The '_task__subsystem' worker-coroutine early-exit test.
     """
 
-    def test__subsystem__thread_exits_when_event_preset(self) -> None:
+    async def test__subsystem__task_exits_when_event_preset(self) -> None:
         """
-        Ensure the worker function walks past the while-loop when the
+        Ensure the worker coroutine walks past the while-loop when the
         stop event is already set, logs 'Started' / 'Stopped' markers,
         and never invokes '_subsystem_loop'. Exercises the loop-condition
-        false branch directly without relying on thread scheduling.
+        false branch directly without relying on task scheduling.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -434,7 +433,7 @@ class TestSubsystemThreadEarlyExit(TestCase):
         subsystem._event__stop_subsystem.set()
 
         with patch("pmd_pytcp.runtime.subsystem.log") as mock_log:
-            subsystem._thread__subsystem()
+            await subsystem._task__subsystem()
 
         self.assertEqual(
             subsystem.loop_iterations,
@@ -454,20 +453,18 @@ class TestSubsystemThreadEarlyExit(TestCase):
         )
 
 
-class TestSubsystemStartStopEdgeCases(TestCase):
+class TestSubsystemStartStopEdgeCases(IsolatedAsyncioTestCase):
     """
     Edge cases on the 'Subsystem.start()' / 'Subsystem.stop()'
-    safety guards added by the 'safety guards on start() / stop()'
-    commit (double-start prevention, stop-before-start no-op).
+    safety guards (double-start prevention, stop-before-start no-op).
     """
 
-    def test__subsystem__stop_before_start_is_safe(self) -> None:
+    async def test__subsystem__stop_before_start_is_safe(self) -> None:
         """
-        Ensure 'stop()' is a safe no-op (no exception, no thread
-        access) when called on a subsystem that has never been
-        started. The 'self._thread is not None' guard in stop()
-        protects the join; the optional '_stop' hook still
-        fires.
+        Ensure 'stop()' is a safe no-op (no exception, no task access)
+        when called on a subsystem that has never been started. The
+        'self._task is not None' guard in stop() protects the cancel;
+        the optional '_stop' hook still fires.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -486,15 +483,15 @@ class TestSubsystemStartStopEdgeCases(TestCase):
             msg="Subsystem.stop() must invoke the '_stop' hook even without prior start().",
         )
         self.assertIsNone(
-            subsystem._thread,
-            msg="No worker thread should be created when stop() is called without start().",
+            subsystem._task,
+            msg="No worker task should be created when stop() is called without start().",
         )
 
-    def test__subsystem__double_start_asserts(self) -> None:
+    async def test__subsystem__double_start_asserts(self) -> None:
         """
         Ensure 'start()' raises AssertionError when called while a
-        worker thread is already alive. Prevents the orphan-worker
-        bug where the previous thread would lose its stop signal
+        worker task is still running. Prevents the orphan-worker
+        bug where the previous task would lose its stop signal
         (cleared by the second start()) and run indefinitely.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -504,10 +501,7 @@ class TestSubsystemStartStopEdgeCases(TestCase):
             subsystem = _TestSubsystem()
             subsystem.start()
             try:
-                self.assertTrue(
-                    subsystem._loop_event.wait(timeout=2.0),
-                    msg="Precondition: worker thread must be running before the double-start attempt.",
-                )
+                await asyncio.wait_for(subsystem._loop_event.wait(), timeout=2.0)
 
                 with self.assertRaises(AssertionError) as ctx:
                     subsystem.start()
@@ -519,21 +513,28 @@ class TestSubsystemStartStopEdgeCases(TestCase):
                 )
             finally:
                 subsystem.stop()
+                await subsystem.wait_stopped()
 
-    def test__subsystem__init_empty_info_string_omits_bracket(self) -> None:
+    async def test__subsystem__restart_after_wait_stopped(self) -> None:
         """
-        Ensure an empty 'info' string is treated as 'no info' —
-        the bracket suffix is omitted from the 'Initializing X'
-        log line because the 'if info' falsy guard catches the
-        empty case.
+        Ensure a stopped-and-awaited subsystem can be started again —
+        the double-start guard gates on 'task.done()', not identity,
+        and 'start()' clears the stop event for the fresh run.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with patch("pmd_pytcp.runtime.subsystem.log") as mock_log:
-            _TestSubsystem(info="")
+        with patch("pmd_pytcp.stack.LOG__OUTPUT", io.StringIO()):
+            subsystem = _TestSubsystem()
+            subsystem.start()
+            await asyncio.wait_for(subsystem._loop_event.wait(), timeout=2.0)
+            subsystem.stop()
+            await subsystem.wait_stopped()
 
-        mock_log.assert_called_once_with(
-            "stack",
-            "Initializing test-subsystem",
-        )
+            subsystem._loop_event.clear()
+            subsystem.start()
+            try:
+                await asyncio.wait_for(subsystem._loop_event.wait(), timeout=2.0)
+            finally:
+                subsystem.stop()
+                await subsystem.wait_stopped()

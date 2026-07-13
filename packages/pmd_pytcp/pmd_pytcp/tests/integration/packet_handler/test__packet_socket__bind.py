@@ -35,6 +35,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, Ip4IfAddr, MacAddress
@@ -81,7 +82,7 @@ def _arp_frame() -> bytes:
     )
 
 
-class TestPacketSocketBind(NetworkTestCase):
+class TestPacketSocketBind(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     The AF_PACKET 'bind' scoping integration tests.
     """
@@ -106,7 +107,7 @@ class TestPacketSocketBind(NetworkTestCase):
         self.addCleanup(sock.close)
         return sock
 
-    def test__packet_socket__bind__matching_ifindex_receives(self) -> None:
+    async def test__packet_socket__bind__matching_ifindex_receives(self) -> None:
         """
         Ensure a socket bound to an interface's own ifindex receives a
         frame arriving on that interface.
@@ -119,14 +120,16 @@ class TestPacketSocketBind(NetworkTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(_arp_frame()))
 
-        _, addr = sock.recvfrom()
+        # 'recvfrom' is a coroutine on the pure-asyncio socket API;
+        # the frame is already queued, so this resolves immediately.
+        _, addr = await sock.recvfrom()
         self.assertEqual(
             addr.ifindex,
             self._packet_handler._ifindex,
             msg="A socket bound to an interface must receive frames arriving on it.",
         )
 
-    def test__packet_socket__bind__other_ifindex_excluded(self) -> None:
+    async def test__packet_socket__bind__other_ifindex_excluded(self) -> None:
         """
         Ensure a socket bound to one interface does not receive a frame
         arriving on a different interface — the ifindex scope excludes
@@ -146,10 +149,12 @@ class TestPacketSocketBind(NetworkTestCase):
         # Frame arrives on the BOOT interface, not the bound one.
         self._packet_handler._phrx_ethernet(PacketRx(_arp_frame()))
 
+        # The socket is non-blocking with no timeout, so an empty RX
+        # queue surfaces as 'BlockingIOError(EAGAIN)' when awaited.
         with self.assertRaises(BlockingIOError):
-            sock.recv()
+            await sock.recv()
 
-    def test__packet_socket__bind__ethertype_filter_excludes(self) -> None:
+    async def test__packet_socket__bind__ethertype_filter_excludes(self) -> None:
         """
         Ensure binding to a specific ethertype narrows the capture
         filter — an ARP frame is excluded from a socket re-bound to the
@@ -164,4 +169,4 @@ class TestPacketSocketBind(NetworkTestCase):
         self._packet_handler._phrx_ethernet(PacketRx(_arp_frame()))
 
         with self.assertRaises(BlockingIOError):
-            sock.recv()
+            await sock.recv()

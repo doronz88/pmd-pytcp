@@ -80,9 +80,13 @@ class _TcpSessionFsmFixture(TestCase):
             call_later=MagicMock(),
             now_ms=0,
         )
+        # 'create=True': 'stack.timer' is an annotation-only module
+        # global ('timer: Timer') populated by 'init()' / 'mock__init',
+        # so on a fresh interpreter the attribute does not exist yet.
         self._timer_patch = patch(
             "pmd_pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
+            create=True,
         )
         self._timer_patch.start()
 
@@ -1098,13 +1102,13 @@ class TestTcpSessionEnqueueRxBuffer(_TcpSessionFsmFixture):
         with self.assertRaises(AssertionError):
             session._enqueue_rx_buffer(b"raw-bytes")  # type: ignore[arg-type]
 
-    def test__tcp_session__enqueue_signals_readable_on_socket(self) -> None:
+    def test__tcp_session__enqueue_sets_rx_buffer_event(self) -> None:
         """
-        Ensure '_enqueue_rx_buffer' calls '_signal_readable' on the
-        owning socket so the selector-readable bit on the socket's
-        fileno() flips ready when data lands. Without this hook,
-        asyncio / trio loops blocked on the socket's fd would never
-        wake on inbound data.
+        Ensure '_enqueue_rx_buffer' sets the '_event__rx_buffer'
+        asyncio event so a 'receive()' coroutine blocked on it wakes
+        when data lands. (The old eventfd-backed '_signal_readable'
+        selector hook is gone with the pure-asyncio socket API — the
+        rx event IS the wakeup path now.)
 
         Reference: RFC 9293 §3.10.5 (RECEIVE call) — buffer delivery.
         """
@@ -1112,9 +1116,7 @@ class TestTcpSessionEnqueueRxBuffer(_TcpSessionFsmFixture):
         session = self._make_session()
         session._enqueue_rx_buffer(memoryview(b"hello"))
 
-        # session._socket is a MagicMock from the fixture; cast lets
-        # mypy see the dynamic '.assert_called()' on the auto-spec'd
-        # '_signal_readable' attribute without widening the production
-        # method's typed signature.
-        signal = cast(MagicMock, session._socket._signal_readable)
-        signal.assert_called()
+        self.assertTrue(
+            session._event__rx_buffer.is_set(),
+            msg="_enqueue_rx_buffer must set the rx-buffer event so receive() wakes.",
+        )

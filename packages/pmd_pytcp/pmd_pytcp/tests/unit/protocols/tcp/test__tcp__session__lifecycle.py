@@ -61,9 +61,13 @@ class _TcpSessionFixture(TestCase):
             call_later=lambda *_a, **_k: None,
             now_ms=0,
         )
+        # 'create=True': 'stack.timer' is an annotation-only module
+        # global ('timer: Timer') populated by 'init()' / 'mock__init',
+        # so on a fresh interpreter the attribute does not exist yet.
         self._timer_patch = patch(
             "pmd_pytcp.protocols.tcp.session.tcp__session.stack.timer",
             self._timer,
+            create=True,
         )
         self._timer_patch.start()
 

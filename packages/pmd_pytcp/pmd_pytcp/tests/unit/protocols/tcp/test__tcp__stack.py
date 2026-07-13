@@ -33,114 +33,12 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from types import TracebackType
-from typing_extensions import Self, override
 from unittest import TestCase
 
-from pmd_net_addr import Ip4Address, Ip6Address
+from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.tcp__stack import TcpStack
-from typing import Union
 
 _PEER_A = Ip4Address("203.0.113.1")
-
-
-class _TrackingLock:
-    """
-    A 'threading.Lock' stand-in that records the maximum
-    context-manager hold depth so a test can prove an accessor
-    acquired the lock for the duration of its critical section.
-    """
-
-    def __init__(self) -> None:
-        """
-        Initialize the hold-depth counters.
-        """
-
-        self.depth = 0
-        self.max_depth = 0
-
-    def __enter__(self) -> Self:
-        """
-        Enter the guarded section, bumping the hold depth.
-        """
-
-        self.depth += 1
-        self.max_depth = max(self.max_depth, self.depth)
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        """
-        Leave the guarded section, dropping the hold depth.
-        """
-
-        self.depth -= 1
-
-
-class _LockAssertingDict(dict[Union[Ip4Address, Ip6Address], bytes]):
-    """
-    A dict that records whether a tracking lock was held at the
-    moment of each mutating operation, so a test can prove the
-    cookie-cache write happened inside the critical section.
-    """
-
-    def __init__(self, probe: _TrackingLock) -> None:
-        """
-        Bind the dict to the tracking lock it should observe.
-        """
-
-        super().__init__()
-        self._probe = probe
-        self.held_on_setitem = True
-        self.held_on_delitem = True
-
-    @override
-    def __setitem__(self, key: Ip4Address | Ip6Address, value: bytes) -> None:
-        """
-        Record the lock state, then perform the insertion.
-        """
-
-        self.held_on_setitem = self.held_on_setitem and self._probe.depth > 0
-        super().__setitem__(key, value)
-
-    @override
-    def __delitem__(self, key: Ip4Address | Ip6Address) -> None:
-        """
-        Record the lock state, then perform the deletion.
-        """
-
-        self.held_on_delitem = self.held_on_delitem and self._probe.depth > 0
-        super().__delitem__(key)
-
-
-class _LockAssertingSet(set[Union[Ip4Address, Ip6Address]]):
-    """
-    A set that records whether a tracking lock was held at the
-    moment of each 'add', so a test can prove the negative-cache
-    write happened inside the critical section.
-    """
-
-    def __init__(self, probe: _TrackingLock) -> None:
-        """
-        Bind the set to the tracking lock it should observe.
-        """
-
-        super().__init__()
-        self._probe = probe
-        self.held_on_add = True
-
-    @override
-    def add(self, element: Ip4Address | Ip6Address) -> None:
-        """
-        Record the lock state, then perform the insertion.
-        """
-
-        self.held_on_add = self.held_on_add and self._probe.depth > 0
-        super().add(element)
 
 
 class TestTcpStack__Accessors(TestCase):
@@ -266,74 +164,10 @@ class TestTcpStack__Accessors(TestCase):
             msg="decr_fastopen_pending must clamp the count at zero.",
         )
 
-    def test__tcp_stack__cache_fastopen_cookie_holds_lock_on_write(self) -> None:
-        """
-        Ensure 'cache_fastopen_cookie' performs its cookie-cache
-        mutation while holding the stack lock so a concurrent RX
-        or TX thread cannot observe a torn dict under no-GIL
-        CPython.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        probe = _TrackingLock()
-        recorder = _LockAssertingDict(probe)
-        setattr(self._stack, "_lock", probe)
-        setattr(self._stack, "fastopen_cookies", recorder)
-
-        self._stack.cache_fastopen_cookie(peer=_PEER_A, cookie=b"abcd", max_size=4)
-
-        self.assertTrue(
-            recorder.held_on_setitem,
-            msg="cache_fastopen_cookie must hold the lock while writing the cookie cache.",
-        )
-
-    def test__tcp_stack__mark_fastopen_negative_holds_lock_on_write(self) -> None:
-        """
-        Ensure 'mark_fastopen_negative' performs its set insertion
-        while holding the stack lock so a concurrent thread cannot
-        observe a torn set under no-GIL CPython.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        probe = _TrackingLock()
-        recorder = _LockAssertingSet(probe)
-        setattr(self._stack, "_lock", probe)
-        setattr(self._stack, "fastopen_negative", recorder)
-
-        self._stack.mark_fastopen_negative(_PEER_A)
-
-        self.assertTrue(
-            recorder.held_on_add,
-            msg="mark_fastopen_negative must hold the lock while writing the negative cache.",
-        )
-
-    def test__tcp_stack__pending_mutators_acquire_lock(self) -> None:
-        """
-        Ensure the PendingFastOpenRequests mutators acquire the
-        stack lock so the non-atomic read-modify-write of the
-        scalar count cannot lose an update under no-GIL CPython.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        probe = _TrackingLock()
-        setattr(self._stack, "_lock", probe)
-
-        self._stack.incr_fastopen_pending()
-        self._stack.decr_fastopen_pending()
-
-        self.assertGreaterEqual(
-            probe.max_depth,
-            1,
-            msg="The pending-count mutators must acquire the stack lock.",
-        )
-        self.assertEqual(
-            probe.depth,
-            0,
-            msg="The pending-count mutators must release the stack lock.",
-        )
+    # The pre-asyncio '_holds_lock_on_write' / '_acquire_lock' suite
+    # was deleted with the pure-asyncio refactor: 'TcpStack' no longer
+    # carries a lock because every accessor runs on the one stack
+    # event loop (docs/refactor/pure_asyncio.md).
 
 
 class TestTcpStack__Defaults(TestCase):

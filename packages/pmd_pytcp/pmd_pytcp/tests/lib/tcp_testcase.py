@@ -41,6 +41,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pmd_pytcp._compat import dataclass
 from typing import Any, cast
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import _patch, patch
 
 from pmd_net_addr import Ip4Address, Ip6Address
@@ -140,7 +141,7 @@ class TcpProbe:
     payload: bytes
 
 
-class TcpTestCase(NetworkTestCase):
+class TcpTestCase(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     Base class for TCP session integration tests. Adds a deterministic
     'FakeTimer' replacement for 'stack.timer', helpers to drive RX

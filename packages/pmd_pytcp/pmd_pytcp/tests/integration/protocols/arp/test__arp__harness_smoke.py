@@ -204,7 +204,7 @@ class TestArpHarnessSmoke(ArpTestCase):
             ),
         )
 
-    def test__arp__harness__drive_dad_clean_probe_installs_candidate(self) -> None:
+    async def test__arp__harness__drive_dad_clean_probe_installs_candidate(self) -> None:
         """
         Ensure '_drive_dad' (default clean probe) drives the
         static-host path over the mocked 'Ip4Acd' engine: it
@@ -218,7 +218,7 @@ class TestArpHarnessSmoke(ArpTestCase):
 
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
-        self._drive_dad()
+        await self._drive_dad()
 
         self._acd.probe.assert_called_once_with(address=candidate_address)
         self._acd.announce.assert_called_once_with(address=candidate_address)
@@ -229,7 +229,7 @@ class TestArpHarnessSmoke(ArpTestCase):
             msg="A clean probe must install the candidate into '_ip4_ifaddr'.",
         )
 
-    def test__arp__harness__drive_dad_conflict_suppresses_install(self) -> None:
+    async def test__arp__harness__drive_dad_conflict_suppresses_install(self) -> None:
         """
         Ensure '_drive_dad(probe_success=False)' makes the mocked
         engine report a conflict, so the static-host path neither
@@ -241,7 +241,7 @@ class TestArpHarnessSmoke(ArpTestCase):
 
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
-        self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
+        await self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
 
         self._acd.announce.assert_not_called()
         addresses = {host.address for host in self._packet_handler._ip4_ifaddr}

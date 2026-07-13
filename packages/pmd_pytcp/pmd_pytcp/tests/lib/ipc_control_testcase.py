@@ -34,6 +34,12 @@ path and a '_connect()' helper returning a 'ClientStack', so a test can
 drive the daemon's real control APIs from out of process and compare
 against the in-process result.
 
+Pure-asyncio ('docs/refactor/pure_asyncio.md'): the daemon serves on
+the test's event loop, so this base mixes in
+'IsolatedAsyncioTestCase' — the server is armed in 'asyncSetUp' (sync
+'NetworkTestCase.setUp' still runs first via the MRO) and tests are
+'async def' methods that await the client mirrors directly.
+
 pmd_pytcp/tests/lib/ipc_control_testcase.py
 
 ver 3.0.7
@@ -44,6 +50,7 @@ from __future__ import annotations
 import os
 import tempfile
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_pytcp import stack
 from pmd_pytcp.client import ClientStack, connect
@@ -51,7 +58,7 @@ from pmd_pytcp.ipc.ipc__server import IpcServer
 from pmd_pytcp.tests.lib.network_testcase import NetworkTestCase
 
 
-class IpcControlTestCase(NetworkTestCase):
+class IpcControlTestCase(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     Integration-test base for the out-of-process control-API mirrors.
     """
@@ -86,21 +93,32 @@ class IpcControlTestCase(NetworkTestCase):
         super().tearDownClass()
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Build the mocked runtime (via 'NetworkTestCase') then stand up an
-        'IpcServer' on a temp AF_UNIX path against it.
+        Stand up an 'IpcServer' on a temp AF_UNIX path against the
+        mocked runtime built by the (sync) 'NetworkTestCase.setUp' that
+        already ran. The server needs the running loop, hence the async
+        flavour.
         """
 
-        super().setUp()
+        await super().asyncSetUp()
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
         self.addCleanup(self._cleanup_tmp_dir)
 
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client connection tasks' exit
+        so no daemon task outlives the test's loop.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -113,12 +131,12 @@ class IpcControlTestCase(NetworkTestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> ClientStack:
+    async def _connect(self) -> ClientStack:
         """
         Open a client stack against the server and register its close.
         """
 
-        client = connect(socket_path=self._socket_path)
+        client = await connect(socket_path=self._socket_path)
         self.addCleanup(client.close)
         return client
 

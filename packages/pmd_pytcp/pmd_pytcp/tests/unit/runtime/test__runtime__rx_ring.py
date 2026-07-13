@@ -23,7 +23,12 @@
 
 
 """
-This module contains tests for the 'RxRing' subsystem.
+This module contains tests for the 'RxRing' class — the pure-asyncio
+readiness-callback ingress ('docs/refactor/pure_asyncio.md'): the fd
+is armed with 'loop.add_reader', every readiness callback burst-drains
+the kernel buffer, and each parsed 'PacketRx' is delivered
+synchronously to the deliver callback the packet handler installs.
+There is no rx queue, no eventfd and no worker thread.
 
 pmd_pytcp/tests/unit/runtime/test__runtime__rx_ring.py
 
@@ -32,777 +37,454 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
-import queue
-from typing import Any
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, patch
 
 from pmd_net_proto.lib.packet_rx import PacketRx
-from pmd_pytcp.runtime.rx_ring import RxRing
+from pmd_pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx
+from pmd_pytcp.runtime.rx_ring import RX_RING__READ_HEADROOM, RxRing
+
+_TEST_FD = 7
+_TEST_MTU = 1500
+_TEST_FRAME = b"\x02" * 60
 
 
 class _RxRingFixture(TestCase):
     """
-    Shared fixture: opens a real pipe to provide a valid 'fd' to the
-    'selector', suppresses module-level logging, and tears down the
-    pipe after every test so no file descriptor leaks.
+    Shared fixture: a bare 'RxRing' over a fake fd with logging
+    suppressed. No loop is armed — the ingress mechanics
+    ('_handle_frame' / '_on_readable') are driven directly.
     """
 
     def setUp(self) -> None:
         """
-        Install the logging patches and open a pipe whose read end
-        serves as the RX file descriptor.
+        Suppress rx-ring logging and build a fresh 'RxRing'.
         """
 
         self._log_patch = patch("pmd_pytcp.runtime.rx_ring.log")
-        self._log_patch.start()
-        self._subsystem_log_patch = patch("pmd_pytcp.runtime.subsystem.log")
-        self._subsystem_log_patch.start()
+        self._log = self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
 
-        self._read_fd, self._write_fd = os.pipe()
-        self._ring = RxRing(fd=self._read_fd, mtu=1500)
-
-    def tearDown(self) -> None:
-        """
-        Close the pipe endpoints, release the ring's selector +
-        eventfd via '_stop', and stop the log patches.
-        """
-
-        try:
-            self._ring._stop()
-        except OSError:
-            pass
-        try:
-            os.close(self._read_fd)
-        except OSError:
-            pass
-        try:
-            os.close(self._write_fd)
-        except OSError:
-            pass
-        self._log_patch.stop()
-        self._subsystem_log_patch.stop()
+        self._ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU)
 
 
 class TestRxRingInit(_RxRingFixture):
     """
-    The 'RxRing.__init__' tests.
+    The 'RxRing.__init__()' tests.
     """
 
     def test__rx_ring__stores_fd_and_mtu(self) -> None:
         """
-        Ensure '__init__' stores the 'fd', 'mtu', and
-        'queue_max_size' fields on private attributes.
+        Ensure the constructor records the fd and MTU used by the
+        readiness-callback reads.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         self.assertEqual(
             self._ring._fd,
-            self._read_fd,
-            msg="RxRing.__init__ must store the fd argument verbatim.",
+            _TEST_FD,
+            msg="RxRing must store the fd it reads from.",
         )
         self.assertEqual(
             self._ring._mtu,
-            1500,
-            msg="RxRing.__init__ must store the mtu argument verbatim.",
-        )
-        self.assertEqual(
-            self._ring._queue_max_size,
-            1000,
-            msg="RxRing._queue_max_size must default to 1000.",
+            _TEST_MTU,
+            msg="RxRing must store the interface MTU.",
         )
 
-    def test__rx_ring__creates_deque(self) -> None:
+    def test__rx_ring__no_deliver_callback_by_default(self) -> None:
         """
-        Ensure '__init__' creates an empty deque and a sane
-        configured queue cap.
+        Ensure a fresh ring has no deliver callback installed — the
+        packet handler installs one at 'start()' time.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self.assertEqual(
-            self._ring._queue_max_size,
-            1000,
-            msg="RxRing._queue_max_size must equal queue_max_size.",
-        )
-        self.assertEqual(
-            len(self._ring._rx_deque),
-            0,
-            msg="RxRing._rx_deque must start empty.",
+        self.assertIsNone(
+            self._ring._deliver,
+            msg="A fresh RxRing must have no deliver callback.",
         )
 
-    def test__rx_ring__custom_queue_size(self) -> None:
+    def test__rx_ring__custom_queue_size_bounds_burst(self) -> None:
         """
-        Ensure a non-default 'queue_max_size' is honored.
+        Ensure the former 'queue_max_size' kwarg now bounds the
+        per-readiness-callback drain burst so one hot interface
+        cannot starve the loop.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=7)
-        self.addCleanup(ring._stop)
+        ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, queue_max_size=5)
+
         self.assertEqual(
-            ring._queue_max_size,
-            7,
-            msg="Custom queue_max_size must be propagated to the deque cap.",
+            ring._burst_max,
+            5,
+            msg="queue_max_size must bound the per-callback drain burst.",
         )
 
 
-class TestRxRingDequeue(_RxRingFixture):
+class TestRxRingDeliver(_RxRingFixture):
     """
-    The 'RxRing.dequeue' tests.
+    The '_handle_frame' deliver-callback tests.
     """
 
-    def test__rx_ring__dequeue_returns_queued_packet(self) -> None:
+    def test__rx_ring__delivers_parsed_packet(self) -> None:
         """
-        Ensure 'dequeue()' returns the next queued 'PacketRx' in FIFO
-        order via the fast path (deque non-empty, no eventfd wait).
+        Ensure a read frame is parsed into a 'PacketRx' and handed
+        synchronously to the installed deliver callback.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        pkt = MagicMock(spec=PacketRx)
-        self._ring._rx_deque.append(pkt)
-        self.assertIs(
-            self._ring.dequeue(),
-            pkt,
-            msg="dequeue() must return the queued PacketRx in FIFO order.",
-        )
+        delivered: list[PacketRx] = []
+        self._ring.set_deliver_callback(delivered.append)
 
-    def test__rx_ring__dequeue_returns_none_on_timeout(self) -> None:
-        """
-        Ensure 'dequeue()' returns 'None' when the deque stays empty
-        past the subsystem-sleep timeout. Exercises the slow path
-        ('select.select' on the eventfd times out).
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with patch(
-            "pmd_pytcp.runtime.rx_ring.SUBSYSTEM_SLEEP_TIME__SEC",
-            0.001,
-        ):
-            self.assertIsNone(
-                self._ring.dequeue(),
-                msg="dequeue() must return None when the deque stays empty past the timeout.",
-            )
-
-    def test__rx_ring__dequeue_drains_eventfd_signal_on_slow_path(self) -> None:
-        """
-        Ensure the slow-path 'dequeue()' calls 'os.eventfd_read'
-        once a 'select.select' wake fires so the kernel-side ready
-        bit clears. If the slow path didn't drain the eventfd,
-        subsequent calls would spin on stale signals.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        # Pre-signal the eventfd, leave deque empty so dequeue takes
-        # the slow path. Capture the eventfd_read call.
-        os.eventfd_write(self._ring._rx_event_fd, 1)
-
-        with patch(
-            "pmd_pytcp.runtime.rx_ring.os.eventfd_read",
-            wraps=os.eventfd_read,
-        ) as mock_read:
-            with patch(
-                "pmd_pytcp.runtime.rx_ring.SUBSYSTEM_SLEEP_TIME__SEC",
-                0.5,
-            ):
-                self._ring.dequeue()  # spurious wake — deque empty.
-
-        mock_read.assert_called_once_with(self._ring._rx_event_fd)
-
-
-class TestRxRingSubsystemLoop(_RxRingFixture):
-    """
-    The 'RxRing._subsystem_loop' tests.
-    """
-
-    def test__rx_ring__loop_returns_early_when_selector_idle(self) -> None:
-        """
-        Ensure the loop returns early (without reading the fd) when
-        the selector signals no readable events. This is the happy
-        no-op path while the interface is quiet.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with (
-            patch.object(self._ring._selector, "select", return_value=[]),
-            patch("pmd_pytcp.runtime.rx_ring.os.read") as mock_read,
-        ):
-            self._ring._subsystem_loop()
-        mock_read.assert_not_called()
-
-    def test__rx_ring__loop_enqueues_packet_on_read(self) -> None:
-        """
-        Ensure the loop reads bytes from the fd and enqueues a
-        'PacketRx' when the selector signals a readable event. The
-        selector is mocked to return ready on the first call and
-        empty on the inner-drain peek so the loop exits after one
-        frame.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        frame = b"\x00" * 64
-        with (
-            patch.object(
-                self._ring._selector,
-                "select",
-                side_effect=[[MagicMock()], []],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=frame,
-            ),
-        ):
-            self._ring._subsystem_loop()
+        self._ring._handle_frame(_TEST_FRAME)
 
         self.assertEqual(
-            len(self._ring._rx_deque),
+            len(delivered),
             1,
-            msg="_subsystem_loop must enqueue one PacketRx per readable event.",
+            msg="The deliver callback must receive exactly one packet per frame.",
         )
-
-    def test__rx_ring__loop_read_size_honors_mtu_for_jumbo_frames(self) -> None:
-        """
-        Ensure 'os.read' is called with a buffer large enough to hold
-        a full jumbo Ethernet frame ('mtu + L2 overhead'), not the
-        legacy hardcoded 2048-byte buffer that silently truncated
-        anything above ~2 KiB. Jumbo Ethernet (MTU 9000) and IPv6
-        jumbograms require this.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        Reference: RFC 2675 (IPv6 jumbograms).
-        Reference: RFC 9293 §3.7.5 (IPv6 jumbograms).
-        """
-
-        ring = RxRing(fd=self._read_fd, mtu=9000)
-
-        captured: list[int] = []
-
-        def _capture_read(fd: int, size: int) -> bytes:
-            captured.append(size)
-            return b"\x00" * 64
-
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                side_effect=[[MagicMock()], []],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                side_effect=_capture_read,
-            ),
-        ):
-            ring._subsystem_loop()
-
         self.assertEqual(
-            len(captured),
-            1,
-            msg="Setup invariant: _subsystem_loop must call os.read once.",
-        )
-        self.assertGreaterEqual(
-            captured[0],
-            9014,
-            msg=(
-                "os.read buffer must be at least 'mtu + 14 (Ethernet)' bytes "
-                f"to fit a jumbo frame. Got size={captured[0]} for mtu=9000."
-            ),
+            bytes(delivered[0].frame),
+            _TEST_FRAME,
+            msg="The delivered PacketRx must wrap the read frame verbatim.",
         )
 
-    def test__rx_ring__loop_drops_packet_on_full_queue(self) -> None:
+    def test__rx_ring__drops_frame_without_deliver_callback(self) -> None:
         """
-        Ensure the loop catches 'queue.Full' when the RX ring is
-        already at 'queue_max_size' — the frame is dropped instead of
-        blocking the RX thread.
+        Ensure a frame read while no deliver callback is installed is
+        dropped and counted under the legacy 'queue_full_drop_count'
+        name (kept so unified-stats consumers keep their field).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        # Exhaust the queue first.
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
-        self.addCleanup(ring._stop)
-        ring._rx_deque.append(MagicMock(spec=PacketRx))
-        self.assertEqual(
-            len(ring._rx_deque),
-            ring._queue_max_size,
-            msg="Precondition: the deque must be at capacity before we exercise the drop path.",
-        )
-
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                return_value=[MagicMock()],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=b"\x00" * 64,
-            ),
-        ):
-            ring._subsystem_loop()  # must not raise
-
-        self.assertEqual(
-            len(ring._rx_deque),
-            1,
-            msg="On a full queue, the new frame must be dropped (queue size unchanged).",
-        )
-
-    def test__rx_ring__loop_drains_all_pending_packets_per_select_wake(self) -> None:
-        """
-        Ensure a single 'selectors.DefaultSelector.select' wake-up
-        drains every packet currently readable on the fd, not just
-        one. The inner-drain pattern amortises the outer-select
-        round-trip across the whole pending burst — under bursty
-        traffic, the kernel TAP buffer can hold many frames between
-        two selector wake-ups, and the producer should empty them
-        in one pass rather than yielding back to the subsystem
-        driver between every packet.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=100)
-        n_frames = 25
-
-        # First select() returns ready (outer wake-up); subsequent
-        # peeks return ready N-1 more times then empty so the
-        # inner drain naturally exits.
-        select_returns: list[list[Any]] = [[MagicMock()]] * n_frames + [[]]
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                side_effect=select_returns,
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=b"\x00" * 64,
-            ),
-        ):
-            ring._subsystem_loop()
-
-        self.assertEqual(
-            len(ring._rx_deque),
-            n_frames,
-            msg=(
-                f"A single _subsystem_loop wake must drain all {n_frames} "
-                f"pre-buffered frames in one pass. Got qsize="
-                f"{len(ring._rx_deque)}."
-            ),
-        )
-
-    def test__rx_ring__loop_inner_drain_breaks_on_full_queue(self) -> None:
-        """
-        Ensure the inner-drain loop stops the moment the consumer-
-        side ring is full — continuing to read would only keep
-        bumping the drop counter without delivering anything to the
-        consumer.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=2)
-
-        select_returns: list[list[Any]] = [[MagicMock()]] * 100  # plenty of "ready"
-        read_calls: list[int] = []
-
-        def _track_read(fd: int, size: int) -> bytes:
-            read_calls.append(size)
-            return b"\x00" * 64
-
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                side_effect=select_returns,
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                side_effect=_track_read,
-            ),
-        ):
-            ring._subsystem_loop()
-
-        # The ring is size-2 and starts empty: two successful puts,
-        # then one queue.Full drop, then break. No further reads.
-        self.assertEqual(
-            len(read_calls),
-            3,
-            msg=(
-                "Inner drain must break after the first queue-full "
-                "drop. Expected 3 reads (2 enqueued + 1 dropped); "
-                f"got {len(read_calls)}."
-            ),
-        )
-        self.assertEqual(
-            ring.queue_full_drop_count,
-            1,
-            msg="Exactly one drop should be counted before the drain breaks.",
-        )
-
-    def test__rx_ring__queue_full_drop_count_starts_at_zero(self) -> None:
-        """
-        Ensure 'queue_full_drop_count' starts at 0 on a freshly
-        constructed ring so observability monitors can establish a
-        baseline.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
+        self._ring._handle_frame(_TEST_FRAME)
 
         self.assertEqual(
             self._ring.queue_full_drop_count,
-            0,
-            msg="A fresh RxRing must report queue_full_drop_count == 0.",
+            1,
+            msg="A frame dropped for lack of a deliver callback must be counted.",
         )
 
-    def test__rx_ring__os_error_drop_count_starts_at_zero(self) -> None:
+    def test__rx_ring__uninstalling_callback_reverts_to_drop(self) -> None:
         """
-        Ensure 'os_error_drop_count' starts at 0 on a freshly
-        constructed ring so monitors have a clean baseline.
+        Ensure 'set_deliver_callback(None)' (the packet handler's
+        stop() path) uninstalls the callback so later frames drop.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
+
+        self._ring.set_deliver_callback(MagicMock())
+        self._ring.set_deliver_callback(None)
+
+        self._ring._handle_frame(_TEST_FRAME)
 
         self.assertEqual(
-            self._ring.os_error_drop_count,
-            0,
-            msg="A fresh RxRing must report os_error_drop_count == 0.",
+            self._ring.queue_full_drop_count,
+            1,
+            msg="Frames after callback uninstall must be dropped + counted.",
         )
 
-    def test__rx_ring__loop_swallows_os_read_oserror(self) -> None:
+    def test__rx_ring__raising_deliver_callback_is_swallowed(self) -> None:
         """
-        Ensure 'os.read' raising 'OSError' does not crash the RX
-        subsystem thread. Transient kernel errors (EINTR on
-        signal, EBADF on shutdown race, EIO on hardware glitches)
-        must be caught and counted, not propagated to the
-        Subsystem driver where they would silently kill the
-        thread.
+        Ensure a raising deliver callback is logged and swallowed so a
+        handler bug cannot disarm the RX ingress.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        with (
-            patch.object(
-                self._ring._selector,
-                "select",
-                side_effect=[[MagicMock()], []],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                side_effect=OSError("transient kernel error"),
-            ),
+        self._ring.set_deliver_callback(MagicMock(side_effect=RuntimeError("boom")))
+
+        self._ring._handle_frame(_TEST_FRAME)  # must not raise
+
+        logged = " ".join(str(call_args) for call_args in self._log.call_args_list)
+        self.assertIn(
+            "Deliver callback raised",
+            logged,
+            msg="A raising deliver callback must be logged.",
+        )
+
+    def test__rx_ring__link_stats_rx_bytes_bumped(self) -> None:
+        """
+        Ensure the shared 'LinkStatsCounters.rx_bytes' is bumped per
+        frame at the canonical RX entry point (RFC 1213 'ifInOctets'
+        semantics for the Link API).
+
+        Reference: RFC 1213 (MIB-II ifInOctets).
+        """
+
+        link_stats = LinkStatsCounters()
+        ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, link_stats=link_stats)
+        ring.set_deliver_callback(MagicMock())
+
+        ring._handle_frame(_TEST_FRAME)
+
+        self.assertEqual(
+            link_stats.rx_bytes,
+            len(_TEST_FRAME),
+            msg="rx_bytes must count wire-level frame bytes received.",
+        )
+
+
+class TestRxRingOnReadable(_RxRingFixture):
+    """
+    The '_on_readable' burst-drain tests.
+    """
+
+    def test__rx_ring__drains_until_would_block(self) -> None:
+        """
+        Ensure one readiness callback drains every pending frame until
+        the kernel buffer reports 'BlockingIOError'.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        delivered: list[PacketRx] = []
+        self._ring.set_deliver_callback(delivered.append)
+
+        with patch(
+            "pmd_pytcp.runtime.rx_ring.io_backend.read",
+            side_effect=[_TEST_FRAME, _TEST_FRAME, _TEST_FRAME, BlockingIOError()],
         ):
-            # Must not propagate the OSError.
-            self._ring._subsystem_loop()
+            self._ring._on_readable()
+
+        self.assertEqual(
+            len(delivered),
+            3,
+            msg="One readiness callback must drain every pending frame.",
+        )
+
+    def test__rx_ring__burst_bounded_by_queue_max_size(self) -> None:
+        """
+        Ensure the per-callback drain burst is bounded by the
+        configured 'queue_max_size' so a hot interface cannot starve
+        the rest of the loop.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, queue_max_size=2)
+        delivered: list[PacketRx] = []
+        ring.set_deliver_callback(delivered.append)
+
+        with patch(
+            "pmd_pytcp.runtime.rx_ring.io_backend.read",
+            return_value=_TEST_FRAME,
+        ) as mock_read:
+            ring._on_readable()
+
+        self.assertEqual(
+            mock_read.call_count,
+            2,
+            msg="The drain burst must stop at the configured budget.",
+        )
+        self.assertEqual(
+            len(delivered),
+            2,
+            msg="Only the budgeted frames may be delivered per callback.",
+        )
+
+    def test__rx_ring__read_size_honors_mtu_headroom(self) -> None:
+        """
+        Ensure the per-read kernel-buffer size is
+        'mtu + RX_RING__READ_HEADROOM' so jumbo-Ethernet frames
+        (MTU 9000) fit with the L2 framing overhead.
+
+        Reference: RFC 2675 (IPv6 jumbograms).
+        """
+
+        ring = RxRing(fd=_TEST_FD, mtu=9000)
+        ring.set_deliver_callback(MagicMock())
+
+        with patch(
+            "pmd_pytcp.runtime.rx_ring.io_backend.read",
+            side_effect=[_TEST_FRAME, BlockingIOError()],
+        ) as mock_read:
+            ring._on_readable()
+
+        mock_read.assert_any_call(_TEST_FD, 9000 + RX_RING__READ_HEADROOM)
+
+    def test__rx_ring__os_error_counted_and_stops_drain(self) -> None:
+        """
+        Ensure a transient read 'OSError' (EINTR / EBADF on shutdown
+        race / EIO / ENOMEM) increments the drop counter and ends the
+        drain without unwinding the loop callback.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        self._ring.set_deliver_callback(MagicMock())
+
+        with patch(
+            "pmd_pytcp.runtime.rx_ring.io_backend.read",
+            side_effect=OSError(5, "EIO"),
+        ):
+            self._ring._on_readable()  # must not raise
 
         self.assertEqual(
             self._ring.os_error_drop_count,
             1,
-            msg="os.read OSError must bump 'os_error_drop_count' by exactly one.",
+            msg="A read OSError must increment os_error_drop_count.",
         )
 
-    def test__rx_ring__loop_increments_drop_count_on_full_queue(self) -> None:
+    def test__rx_ring__drop_counters_start_at_zero(self) -> None:
         """
-        Ensure 'queue_full_drop_count' increments by exactly one each
-        time the RX loop catches 'queue.Full'. Drop counters are the
-        only signal that the kernel-side TAP / TUN buffer has
-        outpaced the consumer; without this counter, packet loss is
-        invisible to monitoring.
+        Ensure both drop counters start at zero on a fresh ring.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
-        self.addCleanup(ring._stop)
-        ring._rx_deque.append(MagicMock(spec=PacketRx))
-
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                return_value=[MagicMock()],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=b"\x00" * 64,
-            ),
-        ):
-            ring._subsystem_loop()
-            ring._subsystem_loop()
-
-        self.assertEqual(
-            ring.queue_full_drop_count,
-            2,
-            msg="Each queue-full drop must bump 'queue_full_drop_count' by exactly one.",
-        )
+        self.assertEqual(self._ring.queue_full_drop_count, 0)
+        self.assertEqual(self._ring.os_error_drop_count, 0)
 
 
 class TestRxRingSharedPacketStats(_RxRingFixture):
     """
-    The 'RxRing' shared-PacketStats integration tests.
+    The shared-'PacketStatsRx' counter-dispatch tests.
     """
 
-    def test__rx_ring__queue_full_drop_increments_shared_stats(self) -> None:
+    def test__rx_ring__no_deliver_drop_increments_shared_stats(self) -> None:
         """
-        Ensure that when a 'PacketStatsRx' instance is wired in via
-        the constructor's 'packet_stats=' kwarg, queue-full drops
-        bump 'stats.rx_ring__queue_full__drop' instead of the ring's
-        private internal counter. Lets monitoring tools see ring
-        drops alongside per-protocol drops in one dataclass.
+        Ensure the no-deliver-callback drop lands on the shared
+        'PacketStatsRx.rx_ring__queue_full__drop' field when a shared
+        stats object is wired, keeping the ring property in sync.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        from pmd_pytcp.lib.packet_stats import PacketStatsRx
-
         stats = PacketStatsRx()
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1, packet_stats=stats)
-        self.addCleanup(ring._stop)
-        ring._rx_deque.append(MagicMock(spec=PacketRx))  # fill to cap
+        ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, packet_stats=stats)
 
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                side_effect=[[MagicMock()], []],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=b"\x00" * 64,
-            ),
-        ):
-            ring._subsystem_loop()
+        ring._handle_frame(_TEST_FRAME)
 
         self.assertEqual(
             stats.rx_ring__queue_full__drop,
             1,
-            msg="Queue-full drop must bump the shared PacketStatsRx field.",
+            msg="The drop must land on the shared stats field.",
         )
-        # The ring's property should now read from the shared field.
         self.assertEqual(
             ring.queue_full_drop_count,
             1,
-            msg="queue_full_drop_count property must read the shared stats value.",
+            msg="The ring property must source from the shared stats.",
         )
 
     def test__rx_ring__os_error_drop_increments_shared_stats(self) -> None:
         """
-        Ensure that 'os.read' OSError increments
-        'stats.rx_ring__os_error__drop' when stats are shared.
+        Ensure the read-OSError drop lands on the shared
+        'PacketStatsRx.rx_ring__os_error__drop' field when wired.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        from pmd_pytcp.lib.packet_stats import PacketStatsRx
-
         stats = PacketStatsRx()
-        ring = RxRing(fd=self._read_fd, mtu=1500, packet_stats=stats)
-        self.addCleanup(ring._stop)
+        ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, packet_stats=stats)
+        ring.set_deliver_callback(MagicMock())
 
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                side_effect=[[MagicMock()], []],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                side_effect=OSError("transient kernel error"),
-            ),
+        with patch(
+            "pmd_pytcp.runtime.rx_ring.io_backend.read",
+            side_effect=OSError(5, "EIO"),
         ):
-            ring._subsystem_loop()
+            ring._on_readable()
 
         self.assertEqual(
             stats.rx_ring__os_error__drop,
             1,
-            msg="os.read OSError must bump the shared PacketStatsRx field.",
+            msg="The OSError drop must land on the shared stats field.",
+        )
+        self.assertEqual(
+            ring.os_error_drop_count,
+            1,
+            msg="The ring property must source from the shared stats.",
         )
 
     def test__rx_ring__without_shared_stats_uses_internal_counters(self) -> None:
         """
-        Ensure that when no 'packet_stats' is provided, the ring
-        falls back to its private internal counters — the
-        standalone-bench / unit-test path stays working unchanged.
+        Ensure a ring without a shared stats object falls back to its
+        private counters (the standalone unit-test configuration).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        ring = RxRing(fd=self._read_fd, mtu=1500, queue_max_size=1)
-        self.addCleanup(ring._stop)
-        ring._rx_deque.append(MagicMock(spec=PacketRx))
-
-        with (
-            patch.object(
-                ring._selector,
-                "select",
-                side_effect=[[MagicMock()], []],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=b"\x00" * 64,
-            ),
-        ):
-            ring._subsystem_loop()
+        self._ring._handle_frame(_TEST_FRAME)
 
         self.assertEqual(
-            ring._queue_full_drop_count,
+            self._ring._no_deliver_drop_count,
             1,
-            msg="With no shared stats, drop must increment the internal counter.",
-        )
-        self.assertEqual(
-            ring.queue_full_drop_count,
-            1,
-            msg="Property must read the internal counter when no stats are shared.",
+            msg="Without shared stats the internal counter must be used.",
         )
 
 
-class TestRxRingStopReleasesSelector(_RxRingFixture):
+class TestRxRingLoopIntegration(IsolatedAsyncioTestCase):
     """
-    The 'RxRing._stop' selector-cleanup tests.
+    The 'start()' / 'stop()' loop-integration tests over a real pipe
+    fd — 'add_reader' arms the ingress, frames written to the pipe are
+    delivered, 'stop()' disarms.
     """
 
-    def test__rx_ring__stop_closes_selector(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Ensure 'RxRing._stop' closes the underlying
-        'selectors.DefaultSelector' so the epoll fd it wraps is
-        released back to the kernel. Long-lived embedded use of the
-        stack would otherwise leak one epoll fd per stack.start /
-        stack.stop cycle.
+        Suppress logging and build a ring over the read end of a real
+        pipe so 'loop.add_reader' has an OS-level fd to watch.
+        """
+
+        self._log_patch = patch("pmd_pytcp.runtime.rx_ring.log")
+        self._log_patch.start()
+        self.addCleanup(self._log_patch.stop)
+
+        self._rd, self._wr = os.pipe()
+        self.addCleanup(os.close, self._rd)
+        self.addCleanup(os.close, self._wr)
+
+        self._ring = RxRing(fd=self._rd, mtu=_TEST_MTU)
+
+    async def asyncTearDown(self) -> None:
+        """
+        Disarm the ingress so the loop holds no reader on the pipe.
+        """
+
+        self._ring.stop()
+
+    async def test__rx_ring__start_arms_reader_and_delivers(self) -> None:
+        """
+        Ensure 'start()' arms the fd with 'add_reader' and a frame
+        written to the pipe is delivered to the callback on the next
+        loop turn.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        sel = self._ring._selector
-        with patch.object(sel, "close") as mock_close:
-            self._ring._stop()
+        delivered: "asyncio.Queue[PacketRx]" = asyncio.Queue()
+        self._ring.set_deliver_callback(delivered.put_nowait)
+        self._ring.start()
 
-        mock_close.assert_called_once_with()
+        os.write(self._wr, _TEST_FRAME)
 
+        packet_rx = await asyncio.wait_for(delivered.get(), timeout=2.0)
+        self.assertEqual(
+            bytes(packet_rx.frame),
+            _TEST_FRAME,
+            msg="A frame written to the armed fd must be delivered.",
+        )
 
-class TestRxRingQueueFullSpelling(TestCase):
-    """
-    Cross-check the module imports 'queue.Full' (not a custom class).
-    """
-
-    def test__rx_ring__queue_full_is_stdlib(self) -> None:
+    async def test__rx_ring__stop_disarms_reader(self) -> None:
         """
-        Ensure the module's 'queue.Full' reference resolves to the
-        standard library's exception class — a shim or rename would
-        silently change the drop-path semantics.
+        Ensure 'stop()' removes the reader — frames written after stop
+        are not delivered.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self.assertIs(
-            queue.Full,
-            queue.Full,
-            msg="Sanity: stdlib queue.Full must still be accessible.",
-        )
+        deliver = MagicMock()
+        self._ring.set_deliver_callback(deliver)
+        self._ring.start()
+        self._ring.stop()
 
+        os.write(self._wr, _TEST_FRAME)
+        await asyncio.sleep(0.05)
 
-class TestRxRingSelectorTeardownRace(_RxRingFixture):
-    """
-    The RX loop's behavior when the interface fd / selector is torn
-    down under a running loop. A host embedding the stack may close
-    the interface fd to unblock the RX thread before 'stop()' is
-    observed; 'select' then RAISES (WinError 10038 on Windows, EBADF
-    elsewhere, 'ValueError' once the selector object itself is
-    closed) instead of returning — which used to kill the RX thread
-    with an unhandled exception mid-teardown.
-    """
-
-    def test__rx_ring__loop_survives_selector_oserror(self) -> None:
-        """
-        Ensure the outer 'selector.select' raising 'OSError' (the
-        fd was closed under the loop — on Windows a closed socket
-        raises WinError 10038) does not propagate and kill the RX
-        thread; the error is counted like a read-side 'OSError' and
-        the loop is paced so it idles until the stop event is seen.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with (
-            patch.object(
-                self._ring._selector,
-                "select",
-                side_effect=OSError(10038, "An operation was attempted on something that is not a socket"),
-            ),
-            patch("pmd_pytcp.runtime.rx_ring.time.sleep") as mock_sleep,
-        ):
-            # Must not propagate the OSError.
-            self._ring._subsystem_loop()
-
-        self.assertEqual(
-            self._ring.os_error_drop_count,
-            1,
-            msg="A selector OSError must bump 'os_error_drop_count' by exactly one.",
-        )
-        mock_sleep.assert_called_once()
-
-    def test__rx_ring__loop_survives_closed_selector_valueerror(self) -> None:
-        """
-        Ensure a 'ValueError' from a selector already closed by
-        '_stop' (a stop/loop race) is tolerated the same way as the
-        closed-fd 'OSError'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with (
-            patch.object(
-                self._ring._selector,
-                "select",
-                side_effect=ValueError("I/O operation on closed epoll object"),
-            ),
-            patch("pmd_pytcp.runtime.rx_ring.time.sleep"),
-        ):
-            # Must not propagate the ValueError.
-            self._ring._subsystem_loop()
-
-        self.assertEqual(
-            self._ring.os_error_drop_count,
-            1,
-            msg="A closed-selector ValueError must bump 'os_error_drop_count' by exactly one.",
-        )
-
-    def test__rx_ring__inner_peek_survives_selector_oserror(self) -> None:
-        """
-        Ensure the inner burst-drain 'select(timeout=0)' peek raising
-        'OSError' breaks the drain cleanly (keeping the frame already
-        read) instead of killing the RX thread.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        with (
-            patch.object(
-                self._ring._selector,
-                "select",
-                side_effect=[[MagicMock()], OSError(10038, "not a socket")],
-            ),
-            patch(
-                "pmd_pytcp.runtime.rx_ring.os.read",
-                return_value=b"\x00" * 64,
-            ),
-            patch("pmd_pytcp.runtime.rx_ring.time.sleep"),
-        ):
-            # Must not propagate the OSError.
-            self._ring._subsystem_loop()
-
-        self.assertEqual(
-            len(self._ring._rx_deque),
-            1,
-            msg="The frame read before the failing peek must stay enqueued.",
-        )
-        self.assertEqual(
-            self._ring.os_error_drop_count,
-            1,
-            msg="The failing peek must bump 'os_error_drop_count' by exactly one.",
-        )
+        deliver.assert_not_called()

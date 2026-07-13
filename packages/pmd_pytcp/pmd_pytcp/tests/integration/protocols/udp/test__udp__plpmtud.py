@@ -60,7 +60,7 @@ class TestUdpPlpmtud(UdpTestCase):
     The UDP PLPMTUD manual probe API tests.
     """
 
-    def test__udp__plpmtud__probe_pmtu_emits_sized_datagram(self) -> None:
+    async def test__udp__plpmtud__probe_pmtu_emits_sized_datagram(self) -> None:
         """
         Ensure 'probe_pmtu(size=N)' emits a UDP datagram on the
         wire whose total IP-packet size matches the requested N.
@@ -74,7 +74,7 @@ class TestUdpPlpmtud(UdpTestCase):
             remote_port=_REMOTE_PORT,
         )
 
-        size = sock.probe_pmtu(size=1200)
+        size = await sock.probe_pmtu(size=1200)
 
         self.assertEqual(
             size,
@@ -95,7 +95,7 @@ class TestUdpPlpmtud(UdpTestCase):
             msg="Probe frame must be Ethernet(14) + IPv4 packet of probe size.",
         )
 
-    def test__udp__plpmtud__ack_probe_advances_state(self) -> None:
+    async def test__udp__plpmtud__ack_probe_advances_state(self) -> None:
         """
         Ensure 'ack_probe' transitions the engine state from
         BASE to SEARCHING — the application's app-layer ACK
@@ -109,7 +109,7 @@ class TestUdpPlpmtud(UdpTestCase):
             remote_ip=HOST_A__IP4_ADDRESS,
             remote_port=_REMOTE_PORT,
         )
-        sock.probe_pmtu(size=1200)
+        await sock.probe_pmtu(size=1200)
 
         sock.ack_probe()
 
@@ -120,7 +120,7 @@ class TestUdpPlpmtud(UdpTestCase):
             msg="ack_probe on BASE must advance state to SEARCHING.",
         )
 
-    def test__udp__plpmtud__timeout_probe_count_enters_error(self) -> None:
+    async def test__udp__plpmtud__timeout_probe_count_enters_error(self) -> None:
         """
         Ensure MAX_PROBES consecutive timeout_probe calls
         enter the engine's ERROR state and clamp current_mtu
@@ -136,7 +136,7 @@ class TestUdpPlpmtud(UdpTestCase):
         )
 
         for _ in range(MAX_PROBES):
-            sock.probe_pmtu(size=1200)
+            await sock.probe_pmtu(size=1200)
             sock.timeout_probe()
 
         assert sock._plpmtud_adapter is not None
@@ -151,7 +151,7 @@ class TestUdpPlpmtud(UdpTestCase):
             msg="ERROR clamp must drop current_mtu to MIN_PLPMTU__IP4 (576).",
         )
 
-    def test__udp__plpmtud__probe_pmtu_rejects_concurrent_probe(self) -> None:
+    async def test__udp__plpmtud__probe_pmtu_rejects_concurrent_probe(self) -> None:
         """
         Ensure 'probe_pmtu' returns None when an outstanding
         probe is already in flight — the single-outstanding
@@ -166,17 +166,17 @@ class TestUdpPlpmtud(UdpTestCase):
             remote_ip=HOST_A__IP4_ADDRESS,
             remote_port=_REMOTE_PORT,
         )
-        first = sock.probe_pmtu(size=1200)
+        first = await sock.probe_pmtu(size=1200)
         self.assertEqual(first, 1200, msg="First probe_pmtu must succeed.")
 
-        second = sock.probe_pmtu(size=1300)
+        second = await sock.probe_pmtu(size=1300)
 
         self.assertIsNone(
             second,
             msg="probe_pmtu while a probe is in flight must return None.",
         )
 
-    def test__udp__plpmtud__probe_pmtu_unconnected_returns_none(self) -> None:
+    async def test__udp__plpmtud__probe_pmtu_unconnected_returns_none(self) -> None:
         """
         Ensure 'probe_pmtu' returns None for an unconnected
         UDP socket (no fixed destination) — PLPMTUD state is
@@ -189,7 +189,7 @@ class TestUdpPlpmtud(UdpTestCase):
         sock = self._bind_udp_socket(family=AddressFamily.INET4)
         # No remote_ip / remote_port supplied → unconnected.
 
-        result = sock.probe_pmtu(size=1200)
+        result = await sock.probe_pmtu(size=1200)
 
         self.assertIsNone(
             result,
@@ -201,7 +201,7 @@ class TestUdpPlpmtud(UdpTestCase):
             msg="No frame must be emitted when probe_pmtu rejects the call.",
         )
 
-    def test__udp__plpmtud__ack_then_reprobe_succeeds(self) -> None:
+    async def test__udp__plpmtud__ack_then_reprobe_succeeds(self) -> None:
         """
         Ensure 'ack_probe' clears the in-flight slot so a
         subsequent 'probe_pmtu' call can reserve a new slot
@@ -216,11 +216,11 @@ class TestUdpPlpmtud(UdpTestCase):
             remote_ip=HOST_A__IP4_ADDRESS,
             remote_port=_REMOTE_PORT,
         )
-        sock.probe_pmtu(size=1200)
+        await sock.probe_pmtu(size=1200)
         sock.ack_probe()
 
         # After the BASE ack, a larger probe should succeed.
-        second = sock.probe_pmtu(size=1400)
+        second = await sock.probe_pmtu(size=1400)
 
         self.assertEqual(
             second,

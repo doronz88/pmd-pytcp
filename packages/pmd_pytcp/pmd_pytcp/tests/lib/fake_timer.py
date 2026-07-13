@@ -37,7 +37,6 @@ import heapq
 from collections.abc import Callable
 from typing import Any
 
-from pmd_pytcp.runtime.timer import TimerHandle
 from pmd_pytcp._compat import as_buffer
 
 # Heap-key priority band. Retained as a fixed middle tuple
@@ -48,19 +47,50 @@ from pmd_pytcp._compat import as_buffer
 _PRIO__METHOD: int = 1
 
 
+class TimerHandle:
+    """
+    FakeTimer's own cancellation handle. The production 'Timer'
+    moved onto bare 'loop.call_at' entries (pure_asyncio.md) and
+    its 'TimerHandle' no longer carries the heap bookkeeping
+    ('deadline_ms' / 'seq') the deterministic heap core here needs,
+    so the fake keeps its own handle type with the pre-refactor
+    shape. Same public semantics: pass it to 'FakeTimer.cancel'.
+    """
+
+    __slots__ = ("method", "args", "kwargs", "deadline_ms", "seq", "period_ms", "cancelled")
+
+    def __init__(
+        self,
+        *,
+        method: Callable[..., None],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        deadline_ms: int,
+        seq: int,
+        period_ms: int | None = None,
+    ) -> None:
+        self.method = method
+        self.args = args
+        self.kwargs = kwargs
+        self.deadline_ms = deadline_ms
+        self.seq = seq
+        self.period_ms = period_ms
+        self.cancelled = False
+
+
 class FakeTimer:
     """
     Deterministic in-memory replacement for 'pmd_pytcp.runtime.timer.Timer'.
 
-    Maintains the same heap-based core as the production 'Timer'
-    (a min-heap of absolute-deadline entries keyed by
-    '(deadline_ms, prio, seq)') but swaps the worker thread for a
+    Maintains the heap-based core the pre-asyncio production
+    'Timer' had (a min-heap of absolute-deadline entries keyed by
+    '(deadline_ms, prio, seq)') but swaps the worker for a
     deterministic 'advance(ms)' driver. 'advance' pops and
     dispatches every entry whose deadline falls within the new
     window, in deadline order, re-arming periodics interval-based
     so a single 'advance' may fire a periodic several times.
 
-    Exposes the new core API ('call_later' / 'call_periodic' /
+    Exposes the core API ('call_later' / 'call_periodic' /
     'cancel' / 'now_ms'); the legacy named-flag shim was removed
     with its production counterpart once the TCP timer-client
     migration retired its last consumer.

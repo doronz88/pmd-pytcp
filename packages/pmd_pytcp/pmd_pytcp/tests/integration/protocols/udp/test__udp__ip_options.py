@@ -150,7 +150,7 @@ class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp__ip_options__recvmsg_returns_cmsg_when_recvopts_enabled(self) -> None:
+    async def test__udp__ip_options__recvmsg_returns_cmsg_when_recvopts_enabled(self) -> None:
         """
         Ensure an inbound UDP datagram carrying IPv4 options
         surfaces through 'recvmsg(ancbufsize>0)' as an IP_OPTIONS
@@ -166,7 +166,7 @@ class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_with_router_alert(payload=b"hello")))
 
-        data, ancdata, _flags, address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,
@@ -190,7 +190,7 @@ class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
             msg="IP_OPTIONS cmsg must carry (IPPROTO_IP, IP_OPTIONS, raw_options_bytes).",
         )
 
-    def test__udp__ip_options__recvmsg_suppresses_cmsg_when_recvopts_disabled(self) -> None:
+    async def test__udp__ip_options__recvmsg_suppresses_cmsg_when_recvopts_disabled(self) -> None:
         """
         Ensure an inbound UDP datagram carrying IPv4 options
         delivers the payload through 'recvmsg' but omits the
@@ -204,7 +204,7 @@ class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_with_router_alert(payload=b"hello")))
 
-        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, _address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,
@@ -217,7 +217,7 @@ class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
             msg="ancdata must be empty when IP_RECVOPTS is not set.",
         )
 
-    def test__udp__ip_options__recvmsg_no_cmsg_when_no_options(self) -> None:
+    async def test__udp__ip_options__recvmsg_no_cmsg_when_no_options(self) -> None:
         """
         Ensure 'recvmsg' returns empty ancdata when the inbound
         datagram carries no IPv4 options, even with IP_RECVOPTS=1
@@ -232,7 +232,7 @@ class TestUdpIpOptionsRecvmsgPassThrough(UdpTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_plain(payload=b"hello")))
 
-        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, _address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,
@@ -265,7 +265,7 @@ class TestUdpIpOptionsSendto(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp__ip_options__sendto_emits_options_block_on_wire(self) -> None:
+    async def test__udp__ip_options__sendto_emits_options_block_on_wire(self) -> None:
         """
         Ensure a UDP socket with 'setsockopt(IP_OPTIONS, bytes)'
         emits the options block on every outbound datagram. The
@@ -279,7 +279,7 @@ class TestUdpIpOptionsSendto(UdpTestCase):
 
         self._socket.setsockopt(IPPROTO_IP, IP_OPTIONS, _ROUTER_ALERT_BYTES)
 
-        sent = self._socket.sendto(b"hello", (str(_HOST_A_IP4), _REMOTE_PORT))
+        sent = await self._socket.sendto(b"hello", (str(_HOST_A_IP4), _REMOTE_PORT))
 
         self.assertEqual(
             sent,
@@ -310,7 +310,7 @@ class TestUdpIpOptionsSendto(UdpTestCase):
             msg="Outbound IPv4 options block must equal the configured IP_OPTIONS bytes.",
         )
 
-    def test__udp__ip_options__sendto_no_options_emits_unchanged_header(self) -> None:
+    async def test__udp__ip_options__sendto_no_options_emits_unchanged_header(self) -> None:
         """
         Ensure a UDP socket without 'setsockopt(IP_OPTIONS, ...)'
         emits datagrams with the default 20-byte IPv4 header (no
@@ -321,7 +321,7 @@ class TestUdpIpOptionsSendto(UdpTestCase):
         socket).
         """
 
-        sent = self._socket.sendto(b"hello", (str(_HOST_A_IP4), _REMOTE_PORT))
+        sent = await self._socket.sendto(b"hello", (str(_HOST_A_IP4), _REMOTE_PORT))
 
         self.assertEqual(
             sent,
@@ -412,7 +412,7 @@ class TestUdpIpRecvTos(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp__ip_recvtos__returns_tos_byte_when_enabled(self) -> None:
+    async def test__udp__ip_recvtos__returns_tos_byte_when_enabled(self) -> None:
         """
         Ensure an inbound IPv4 UDP datagram with DSCP=48 / ECN=2
         surfaces through 'recvmsg(ancbufsize>0)' as an IP_TOS
@@ -428,7 +428,7 @@ class TestUdpIpRecvTos(UdpTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_ipv4_with_tos(dscp=48, ecn=2, payload=b"hello")))
 
-        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, _address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,
@@ -441,7 +441,7 @@ class TestUdpIpRecvTos(UdpTestCase):
             msg="IP_TOS cmsg must carry the single-byte TOS value (DSCP<<2 | ECN).",
         )
 
-    def test__udp__ip_recvtos__suppresses_cmsg_when_disabled(self) -> None:
+    async def test__udp__ip_recvtos__suppresses_cmsg_when_disabled(self) -> None:
         """
         Ensure an inbound IPv4 UDP datagram with a non-zero TOS
         byte delivers the payload through 'recvmsg' but omits
@@ -454,7 +454,7 @@ class TestUdpIpRecvTos(UdpTestCase):
 
         self._packet_handler._phrx_ethernet(PacketRx(_build_udp_frame_ipv4_with_tos(dscp=48, ecn=2, payload=b"hello")))
 
-        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, _address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,
@@ -487,7 +487,7 @@ class TestUdpIpV6RecvTClass(UdpTestCase):
             local_port=_LOCAL_PORT,
         )
 
-    def test__udp__ipv6_recvtclass__returns_tclass_int_when_enabled(self) -> None:
+    async def test__udp__ipv6_recvtclass__returns_tclass_int_when_enabled(self) -> None:
         """
         Ensure an inbound IPv6 UDP datagram with DSCP=48 / ECN=2
         surfaces through 'recvmsg(ancbufsize>0)' as an
@@ -506,7 +506,7 @@ class TestUdpIpV6RecvTClass(UdpTestCase):
             PacketRx(_build_udp_frame_ipv6_with_tclass(dscp=48, ecn=2, payload=b"hello"))
         )
 
-        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, _address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,
@@ -530,7 +530,7 @@ class TestUdpIpV6RecvTClass(UdpTestCase):
             msg="IPV6_TCLASS cmsg value must be a 4-byte big-endian int matching the TClass byte.",
         )
 
-    def test__udp__ipv6_recvtclass__suppresses_cmsg_when_disabled(self) -> None:
+    async def test__udp__ipv6_recvtclass__suppresses_cmsg_when_disabled(self) -> None:
         """
         Ensure an inbound IPv6 UDP datagram with a non-zero
         Traffic Class byte delivers the payload through
@@ -545,7 +545,7 @@ class TestUdpIpV6RecvTClass(UdpTestCase):
             PacketRx(_build_udp_frame_ipv6_with_tclass(dscp=48, ecn=2, payload=b"hello"))
         )
 
-        data, ancdata, _flags, _address = self._socket.recvmsg(ancbufsize=256, timeout=0.5)
+        data, ancdata, _flags, _address = await self._socket.recvmsg(ancbufsize=256, timeout=0.5)
 
         self.assertEqual(
             data,

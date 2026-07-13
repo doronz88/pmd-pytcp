@@ -32,8 +32,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
-from unittest import TestCase
+import asyncio
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
 from pmd_net_addr import Ip4Address, Ip4IfAddr, Ip6Address, Ip6IfAddr, MacAddress
@@ -306,12 +306,14 @@ class TestPacketHandlerAddressAssignment(TestCase):
         )
 
 
-class TestPacketHandlerL3CreateStackAddressing(TestCase):
+class TestPacketHandlerL3CreateStackAddressing(IsolatedAsyncioTestCase):
     """
-    The L3-specific addressing-bootstrap tests.
+    The L3-specific addressing-bootstrap tests. The addressing
+    bootstrap is a coroutine on the pure-asyncio runtime (L3 has no
+    DAD, but the shared signature is 'async def'), so these await it.
     """
 
-    def test__stack__packet_handler__init__l3_create_ip4_addressing_promotes_candidates(self) -> None:
+    async def test__stack__packet_handler__init__l3_create_ip4_addressing_promotes_candidates(self) -> None:
         """
         Ensure PacketHandlerL3's '_create_stack_ip4_addressing' moves
         every candidate into '_ip4_ifaddr' (no DAD on L3).
@@ -322,12 +324,12 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
         h = _build_l3_handler()
         h._ip4_ifaddr_candidate = [STACK__IP4_HOST]
 
-        h._create_stack_ip4_addressing()
+        await h._create_stack_ip4_addressing()
 
         self.assertEqual(h._ip4_ifaddr, [STACK__IP4_HOST])
         self.assertEqual(h._ip4_ifaddr_candidate, [])
 
-    def test__stack__packet_handler__init__l3_create_ip4_disables_ip4_when_empty(self) -> None:
+    async def test__stack__packet_handler__init__l3_create_ip4_disables_ip4_when_empty(self) -> None:
         """
         Ensure '_create_stack_ip4_addressing' turns off '_ip4_support'
         when no candidates could be assigned.
@@ -339,11 +341,11 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
         h._ip4_support = True
         h._ip4_ifaddr_candidate = []
 
-        h._create_stack_ip4_addressing()
+        await h._create_stack_ip4_addressing()
 
         self.assertFalse(h._ip4_support)
 
-    def test__stack__packet_handler__init__l3_create_ip6_addressing_promotes_and_joins_all_nodes(self) -> None:
+    async def test__stack__packet_handler__init__l3_create_ip6_addressing_promotes_and_joins_all_nodes(self) -> None:
         """
         Ensure PacketHandlerL3's '_create_stack_ip6_addressing' joins
         ff02::1 (all-nodes) and promotes every candidate.
@@ -355,18 +357,21 @@ class TestPacketHandlerL3CreateStackAddressing(TestCase):
         h._send_icmp6_multicast_listener_report = MagicMock()  # type: ignore[method-assign]
         h._ip6_ifaddr_candidate = [STACK__IP6_HOST]
 
-        h._create_stack_ip6_addressing()
+        await h._create_stack_ip6_addressing()
 
         self.assertIn(Ip6Address("ff02::1"), h._ip6_multicast)
         self.assertIn(STACK__IP6_HOST, h._ip6_ifaddr)
 
 
-class TestPacketHandlerL2SubsystemLoop(TestCase):
+class TestPacketHandlerL2FrameEntry(TestCase):
     """
-    The L2 subsystem-loop dispatch tests.
+    The L2 RX deliver-callback dispatch tests. On the pure-asyncio
+    runtime the RX ring delivers each parsed frame synchronously to
+    the handler's '_rx_frame_entry' (installed by 'start()' via
+    'RxRing.set_deliver_callback') — there is no rx-dequeue loop.
     """
 
-    def test__stack__packet_handler__init__l2_loop_dispatches_ethernet_2(self) -> None:
+    def test__stack__packet_handler__init__l2_frame_entry_dispatches_ethernet_2(self) -> None:
         """
         Ensure an Ethernet II frame (ethertype > 802.3 max) is routed
         to '_phrx_ethernet', and an 802.3 frame is routed to
@@ -384,53 +389,45 @@ class TestPacketHandlerL2SubsystemLoop(TestCase):
         eth_802_3 = MagicMock()
         eth_802_3.frame = b"\x00" * 12 + b"\x00\x46" + b"\x00" * 60
 
-        mock_rx_ring = create_autospec(RxRing, spec_set=True)
-        mock_rx_ring.dequeue.side_effect = [eth2, eth_802_3, None]
-        h._rx_ring = mock_rx_ring
-        h._subsystem_loop()
-        h._subsystem_loop()
-        h._subsystem_loop()
+        h._rx_frame_entry(eth2)
+        h._rx_frame_entry(eth_802_3)
 
         h._phrx_ethernet.assert_called_once_with(eth2)
         h._phrx_ethernet_802_3.assert_called_once_with(eth_802_3)
 
-    def test__stack__packet_handler__init__l2_loop_uses_injected_rx_ring(self) -> None:
+    def test__stack__packet_handler__init__l2_start_installs_deliver_callback(self) -> None:
         """
-        Ensure the L2 subsystem loop dequeues from the handler's own
-        injected 'self._rx_ring' and never reaches through to the
-        global 'stack.rx_ring'.
+        Ensure 'start()' installs the handler's own '_rx_frame_entry' as
+        the injected RX ring's deliver callback — the pure-asyncio
+        replacement for the old rx-dequeue loop, wired to 'self._rx_ring'
+        (never a global ring).
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         h = _build_l2_handler()
-        h._phrx_ethernet = MagicMock()  # type: ignore[method-assign]
-        h._phrx_ethernet_802_3 = MagicMock()  # type: ignore[method-assign]
-
-        eth2 = MagicMock()
-        eth2.frame = b"\x00" * 12 + b"\x08\x00" + b"\x00" * 46
-
         injected = create_autospec(RxRing, spec_set=True)
-        injected.dequeue.side_effect = [eth2, None]
         h._rx_ring = injected
 
-        global_ring = create_autospec(RxRing, spec_set=True)
-        with patch.object(stack, "rx_ring", global_ring, create=True):
-            h._subsystem_loop()
-            h._subsystem_loop()
+        async def _run() -> None:
+            h.start()
+            h.stop()
+            await h.wait_stopped()
 
-        h._phrx_ethernet.assert_called_once_with(eth2)
-        global_ring.dequeue.assert_not_called()
+        asyncio.run(_run())
+
+        injected.set_deliver_callback.assert_any_call(h._rx_frame_entry)
 
 
-class TestPacketHandlerL3SubsystemLoop(TestCase):
+class TestPacketHandlerL3FrameEntry(TestCase):
     """
-    The L3 subsystem-loop dispatch tests.
+    The L3 RX deliver-callback dispatch tests (see the L2 counterpart —
+    delivery is synchronous through '_rx_frame_entry', no dequeue loop).
     """
 
-    def test__stack__packet_handler__init__l3_loop_routes_by_ethertype(self) -> None:
+    def test__stack__packet_handler__init__l3_frame_entry_routes_by_ethertype(self) -> None:
         """
-        Ensure the L3 loop inspects bytes 2-3 of the TUN framing to
+        Ensure '_rx_frame_entry' inspects bytes 2-3 of the TUN framing to
         select the EtherType-registry handler, advances the frame
         pointer past the 4-byte TUN header before invoking it, and
         drops an unregistered EtherType without dispatching.
@@ -440,7 +437,7 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
 
         h = _build_l3_handler_supported()
         # Overwrite the real IP handlers with spies so dispatch is
-        # observable; the loop's only dispatch path is the registry.
+        # observable; the entry's only dispatch path is the registry.
         ip4_handler = MagicMock()
         ip6_handler = MagicMock()
         h._ethertype_registry.register(EtherType.IP4, ip4_handler)
@@ -454,12 +451,9 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         unknown = MagicMock()
         unknown.frame = b"\x00\x00\xff\xff" + b"UNKNOWN_PAYLOAD"
 
-        mock_rx_ring = create_autospec(RxRing, spec_set=True)
-        mock_rx_ring.dequeue.side_effect = [ip4_packet, ip6_packet, unknown, None]
-        h._rx_ring = mock_rx_ring
-        h._subsystem_loop()
-        h._subsystem_loop()
-        h._subsystem_loop()
+        h._rx_frame_entry(ip4_packet)
+        h._rx_frame_entry(ip6_packet)
+        h._rx_frame_entry(unknown)
 
         ip4_handler.assert_called_once_with(ip4_packet)
         ip6_handler.assert_called_once_with(ip6_packet)
@@ -470,10 +464,10 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
         )
         # The unknown ethertype case logs a warning but doesn't dispatch.
 
-    def test__stack__packet_handler__init__l3_loop_gates_on_support_flags(self) -> None:
+    def test__stack__packet_handler__init__l3_frame_entry_gates_on_support_flags(self) -> None:
         """
         Ensure a support-disabled L3 interface registers no IPv4 / IPv6
-        EtherType handlers, so the loop's registry lookup misses and the
+        EtherType handlers, so the entry's registry lookup misses and the
         frame is dropped with no dispatch.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -490,18 +484,15 @@ class TestPacketHandlerL3SubsystemLoop(TestCase):
             msg="An IPv6-disabled L3 interface must not register the IPv6 handler.",
         )
 
-        # Driving the loop with IP4 / IP6 frames must not raise and must
-        # not dispatch (the registry is empty).
+        # Delivering IP4 / IP6 frames must not raise and must not
+        # dispatch (the registry is empty).
         ip4_packet = MagicMock()
         ip4_packet.frame = b"\x00\x00\x08\x00" + b"IPV4_PAYLOAD"
         ip6_packet = MagicMock()
         ip6_packet.frame = b"\x00\x00\x86\xdd" + b"IPV6_PAYLOAD"
 
-        mock_rx_ring = create_autospec(RxRing, spec_set=True)
-        mock_rx_ring.dequeue.side_effect = [ip4_packet, ip6_packet, None]
-        h._rx_ring = mock_rx_ring
-        h._subsystem_loop()
-        h._subsystem_loop()
+        h._rx_frame_entry(ip4_packet)
+        h._rx_frame_entry(ip6_packet)
 
         self.assertEqual(
             ip4_packet.frame,
@@ -585,12 +576,13 @@ class TestPacketHandlerIp4IdGenerator(TestCase):
             msg="The IPv4 Identification must continue from 0 to 1 after wrapping.",
         )
 
-    def test__stack__packet_handler__init__ip4_id_concurrent_values_are_unique(self) -> None:
+    def test__stack__packet_handler__init__ip4_id_successive_values_are_unique(self) -> None:
         """
-        Ensure concurrent IPv4 Identification generation hands every
-        caller a distinct value — the masked counter increment is
-        atomic, so no two of N concurrent fragmented sends collide
-        (which would corrupt reassembly at the peer).
+        Ensure successive IPv4 Identification generation hands every
+        caller a distinct value — on the single-loop runtime the
+        counter is advanced sequentially, so no two of N fragmented
+        sends within one 16-bit cycle collide (which would corrupt
+        reassembly at the peer).
 
         Reference: RFC 791 §2.3 (Identification distinguishes
         fragments of distinct datagrams).
@@ -598,26 +590,12 @@ class TestPacketHandlerIp4IdGenerator(TestCase):
 
         h = _build_l2_handler()
         count = 500
-        results: list[int] = []
-        results_lock = threading.Lock()
-        barrier = threading.Barrier(parties=count)
-
-        def _worker() -> None:
-            barrier.wait()
-            value = h._ip4_tx._next_ip4_id()
-            with results_lock:
-                results.append(value)
-
-        threads = [threading.Thread(target=_worker) for _ in range(count)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
+        results = [h._ip4_tx._next_ip4_id() for _ in range(count)]
 
         self.assertEqual(
             len(set(results)),
             count,
-            msg="Concurrent IPv4 Identification generation must hand every caller a distinct value.",
+            msg="Successive IPv4 Identification generation must hand every caller a distinct value.",
         )
 
 

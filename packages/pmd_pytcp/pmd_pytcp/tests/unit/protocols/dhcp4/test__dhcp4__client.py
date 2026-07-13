@@ -35,8 +35,8 @@ from __future__ import annotations
 import errno
 from typing import Any, cast
 from typing_extensions import override
-from unittest import TestCase
-from unittest.mock import MagicMock, create_autospec, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 from pmd_net_addr import Ip4Address, Ip4IfAddr, Ip4Mask, Ip4Network, MacAddress
 from pmd_net_proto.protocols.dhcp4.dhcp4__enums import Dhcp4MessageType
@@ -124,7 +124,7 @@ class TestDhcp4ClientInit(TestCase):
             Dhcp4Client(_DEFAULT_MAC)  # type: ignore[misc]
 
 
-class _Dhcp4ClientFixture(TestCase):
+class _Dhcp4ClientFixture(IsolatedAsyncioTestCase):
     """
     Shared fixture base. Subclasses build their own
     'Dhcp4MockServer', enqueue the replies the test needs, and call
@@ -181,7 +181,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         self._server.enqueue_offer(router=[Ip4Address("10.0.0.1")])
         self._server.enqueue_ack(router=[Ip4Address("10.0.0.1")])
 
-    def test__dhcp4_client__fetch_returns_lease_with_address_and_mask(self) -> None:
+    async def test__dhcp4_client__fetch_returns_lease_with_address_and_mask(self) -> None:
         """
         Ensure a valid Offer/Ack exchange yields a 'Dhcp4Lease' carrying
         an 'ip4_host' with the server-assigned address and subnet mask.
@@ -190,7 +190,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         """
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsInstance(
             result,
@@ -214,7 +214,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
             msg="Dhcp4Lease.ip4_host.network.mask must equal the server-supplied subnet mask.",
         )
 
-    def test__dhcp4_client__fetch_sets_gateway_when_router_option_present(self) -> None:
+    async def test__dhcp4_client__fetch_sets_gateway_when_router_option_present(self) -> None:
         """
         Ensure the first router address from the Router option is stored
         as the host's default gateway.
@@ -223,7 +223,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         """
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         assert result is not None
         self.assertEqual(
@@ -232,7 +232,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
             msg="Dhcp4Lease.ip4_host.gateway must equal the first router address in the DHCP Router option.",
         )
 
-    def test__dhcp4_client__fetch_binds_and_connects_to_dhcp_ports(self) -> None:
+    async def test__dhcp4_client__fetch_binds_and_connects_to_dhcp_ports(self) -> None:
         """
         Ensure the client binds to the canonical DHCPv4 client port 68
         on the unspecified IPv4 address and 'connects' to the broadcast
@@ -242,12 +242,12 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         """
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         self._sock.bind.assert_called_once_with(("0.0.0.0", 68))
         self._sock.connect.assert_called_once_with(("255.255.255.255", 67))
 
-    def test__dhcp4_client__fetch_sends_two_packets(self) -> None:
+    async def test__dhcp4_client__fetch_sends_two_packets(self) -> None:
         """
         Ensure the happy path sends exactly two packets — the initial
         Discover and the follow-up Request.
@@ -256,7 +256,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         """
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         self.assertEqual(
             self._sock.send.call_count,
@@ -274,7 +274,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
             msg="Second emitted packet must be a DHCPREQUEST.",
         )
 
-    def test__dhcp4_client__fetch_closes_socket_on_success(self) -> None:
+    async def test__dhcp4_client__fetch_closes_socket_on_success(self) -> None:
         """
         Ensure the UDP socket is closed before 'fetch()' returns the
         negotiated lease.
@@ -283,11 +283,11 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         """
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         self._sock.close.assert_called_once_with()
 
-    def test__dhcp4_client__fetch_first_recv_uses_initial_retrans_window(self) -> None:
+    async def test__dhcp4_client__fetch_first_recv_uses_initial_retrans_window(self) -> None:
         """
         Ensure the first 'recv__mv' call uses a 'timeout' kwarg derived
         from 'dhcp.retrans_initial_ms' (Phase 1 backoff). With jitter
@@ -298,7 +298,7 @@ class TestDhcp4ClientFetchHappyPath(_Dhcp4ClientFixture):
         """
 
         with sysctl.override("dhcp.retrans_jitter_ms", 0):
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         first_recv = self._sock.recv__mv.call_args_list[0]
         self.assertAlmostEqual(
@@ -314,7 +314,7 @@ class TestDhcp4ClientFetchNoRouter(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' 'router option absent' happy-path test.
     """
 
-    def test__dhcp4_client__fetch_no_router_leaves_gateway_unset(self) -> None:
+    async def test__dhcp4_client__fetch_no_router_leaves_gateway_unset(self) -> None:
         """
         Ensure the host returned by 'fetch()' has no gateway set when
         the DHCP Ack lacks a Router option (the 'router is None' branch
@@ -327,7 +327,7 @@ class TestDhcp4ClientFetchNoRouter(_Dhcp4ClientFixture):
         self._server.enqueue_ack(router=None)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         assert result is not None
         self.assertIsNone(
@@ -341,7 +341,7 @@ class TestDhcp4ClientFetchOfferTimeout(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Offer-timeout failure test.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_offer_timeout(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_offer_timeout(self) -> None:
         """
         Ensure a 'TimeoutError' during the Offer receive collapses the
         exchange: 'fetch()' returns None and the socket is closed.
@@ -352,7 +352,7 @@ class TestDhcp4ClientFetchOfferTimeout(_Dhcp4ClientFixture):
         self._server.enqueue_timeout()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsNone(
             result,
@@ -366,7 +366,7 @@ class TestDhcp4ClientFetchOfferWrongMessageType(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Offer-with-wrong-type failure test.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_wrong_offer_message_type(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_wrong_offer_message_type(self) -> None:
         """
         Ensure a response to the Discover with a non-OFFER message type
         is silently dropped — under the Phase 1 backoff the bogus
@@ -382,7 +382,7 @@ class TestDhcp4ClientFetchOfferWrongMessageType(_Dhcp4ClientFixture):
         self._server.enqueue_offer(message_type=Dhcp4MessageType.ACK)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsNone(
             result,
@@ -401,7 +401,7 @@ class TestDhcp4ClientFetchAckTimeout(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Ack-timeout failure test.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_ack_timeout(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_ack_timeout(self) -> None:
         """
         Ensure a 'TimeoutError' during the Ack receive — after a valid
         Offer — aborts the exchange: 'fetch()' returns None and the
@@ -414,7 +414,7 @@ class TestDhcp4ClientFetchAckTimeout(_Dhcp4ClientFixture):
         self._server.enqueue_timeout()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsNone(
             result,
@@ -428,7 +428,7 @@ class TestDhcp4ClientFetchAckWrongMessageType(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Ack-with-wrong-non-NAK-type failure test.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_wrong_ack_message_type(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_wrong_ack_message_type(self) -> None:
         """
         Ensure a response to the Request with a non-ACK, non-NAK
         message type is silently dropped — Phase 1 keeps the wait
@@ -445,7 +445,7 @@ class TestDhcp4ClientFetchAckWrongMessageType(_Dhcp4ClientFixture):
         self._server.enqueue_ack(message_type=Dhcp4MessageType.OFFER)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsNone(
             result,
@@ -464,7 +464,7 @@ class TestDhcp4ClientFetchOfferSrvIdNone(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' rejection of an Offer without Server-ID.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_offer_without_server_id(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_offer_without_server_id(self) -> None:
         """
         Ensure 'fetch()' returns None when the Offer omits the
         Server-ID option. The malformed Offer is rejected at the
@@ -478,7 +478,7 @@ class TestDhcp4ClientFetchOfferSrvIdNone(_Dhcp4ClientFixture):
         self._server.enqueue_offer(server_id=None)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsNone(
             result,
@@ -507,7 +507,7 @@ class TestDhcp4ClientFetchAckMissingSubnetMask(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' rejection of an Ack without Subnet Mask.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_ack_without_subnet_mask(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_ack_without_subnet_mask(self) -> None:
         """
         Ensure 'fetch()' returns None when the Ack omits the Subnet
         Mask option. The socket must still be closed.
@@ -519,7 +519,7 @@ class TestDhcp4ClientFetchAckMissingSubnetMask(_Dhcp4ClientFixture):
         self._server.enqueue_ack(subnet_mask=None)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsNone(
             result,
@@ -533,7 +533,7 @@ class TestDhcp4ClientFetchXid(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' transaction-ID generation tests.
     """
 
-    def test__dhcp4_client__fetch_uses_random_randint_for_xid(self) -> None:
+    async def test__dhcp4_client__fetch_uses_random_randint_for_xid(self) -> None:
         """
         Ensure each 'fetch()' call draws a fresh xid via
         'random.randint(0, 0xFFFFFFFF)'. Pinning the PRNG call shape
@@ -549,11 +549,11 @@ class TestDhcp4ClientFetchXid(_Dhcp4ClientFixture):
             "pmd_pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ) as mock_randint:
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         mock_randint.assert_called_once_with(0, 0xFFFFFFFF)
 
-    def test__dhcp4_client__fetch_regenerates_xid_per_call(self) -> None:
+    async def test__dhcp4_client__fetch_regenerates_xid_per_call(self) -> None:
         """
         Ensure successive 'fetch()' calls draw a new xid each time so
         a stale Offer from a previous transaction cannot be matched
@@ -572,8 +572,8 @@ class TestDhcp4ClientFetchXid(_Dhcp4ClientFixture):
             return_value=_PINNED_XID,
         ) as mock_randint:
             client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-            client.fetch()
-            client.fetch()
+            await client.fetch()
+            await client.fetch()
 
         self.assertEqual(
             mock_randint.call_count,
@@ -587,7 +587,7 @@ class TestDhcp4ClientFetchClientIdInRequest(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Client Identifier emission in REQUEST.
     """
 
-    def test__dhcp4_client__send_request_includes_client_id(self) -> None:
+    async def test__dhcp4_client__send_request_includes_client_id(self) -> None:
         """
         Ensure the REQUEST packet emitted in response to a valid OFFER
         carries the Client Identifier option ('\\x01' + MAC).
@@ -599,7 +599,7 @@ class TestDhcp4ClientFetchClientIdInRequest(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         request = self._server.tx_log[1]
         self.assertEqual(
@@ -619,7 +619,7 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' xid-mismatch silent-drop tests.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_offer_xid_mismatch(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_offer_xid_mismatch(self) -> None:
         """
         Ensure an OFFER whose 'xid' does not match the value the client
         sent in DISCOVER is silently dropped — under Phase 1 the bogus
@@ -638,7 +638,7 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
             "pmd_pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ):
-            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -650,7 +650,7 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
             msg="Only DISCOVER must be sent when the OFFER xid is rejected.",
         )
 
-    def test__dhcp4_client__fetch_returns_none_on_ack_xid_mismatch(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_ack_xid_mismatch(self) -> None:
         """
         Ensure an ACK whose 'xid' does not match the value the client
         sent in REQUEST is silently dropped: 'fetch()' returns None.
@@ -665,7 +665,7 @@ class TestDhcp4ClientFetchXidMismatch(_Dhcp4ClientFixture):
             "pmd_pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=_PINNED_XID,
         ):
-            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -678,7 +678,7 @@ class TestDhcp4ClientFetchCidEcho(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Client Identifier echo-validation tests.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_offer_cid_mismatch(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_offer_cid_mismatch(self) -> None:
         """
         Ensure an OFFER whose echoed Client Identifier does not match
         the value the client emitted is silently dropped.
@@ -690,14 +690,14 @@ class TestDhcp4ClientFetchCidEcho(_Dhcp4ClientFixture):
             client_id_echo=b"\x01" + bytes(MacAddress("02:00:00:00:99:99")),
         )
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the OFFER echoes a mismatching Client Identifier.",
         )
 
-    def test__dhcp4_client__fetch_returns_none_on_ack_cid_mismatch(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_ack_cid_mismatch(self) -> None:
         """
         Ensure an ACK whose echoed Client Identifier does not match
         the value the client emitted is silently dropped.
@@ -710,14 +710,14 @@ class TestDhcp4ClientFetchCidEcho(_Dhcp4ClientFixture):
             client_id_echo=b"\x01" + bytes(MacAddress("02:00:00:00:99:99")),
         )
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
             msg="fetch() must return None when the ACK echoes a mismatching Client Identifier.",
         )
 
-    def test__dhcp4_client__fetch_accepts_matching_cid_echo(self) -> None:
+    async def test__dhcp4_client__fetch_accepts_matching_cid_echo(self) -> None:
         """
         Ensure an OFFER/ACK pair whose echoed Client Identifier matches
         the client's emitted CID is accepted (regression guard against
@@ -729,7 +729,7 @@ class TestDhcp4ClientFetchCidEcho(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -743,7 +743,7 @@ class TestDhcp4ClientFetchNakRestart(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' DHCPNAK bounded-restart tests.
     """
 
-    def test__dhcp4_client__fetch_restarts_from_discover_on_ack_stage_nak(self) -> None:
+    async def test__dhcp4_client__fetch_restarts_from_discover_on_ack_stage_nak(self) -> None:
         """
         Ensure a DHCPNAK arriving in response to the REQUEST triggers a
         restart from DISCOVER and the second exchange yields a usable
@@ -759,7 +759,7 @@ class TestDhcp4ClientFetchNakRestart(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -772,7 +772,7 @@ class TestDhcp4ClientFetchNakRestart(_Dhcp4ClientFixture):
             msg="NAK-restart path must send DISCOVER, REQUEST, DISCOVER, REQUEST.",
         )
 
-    def test__dhcp4_client__fetch_returns_none_after_max_nak_restarts(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_after_max_nak_restarts(self) -> None:
         """
         Ensure 'fetch()' returns None once the bounded NAK-restart
         budget is exhausted. With the default budget of 3 restarts,
@@ -786,7 +786,7 @@ class TestDhcp4ClientFetchNakRestart(_Dhcp4ClientFixture):
             self._server.enqueue_offer()
             self._server.enqueue_nak()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -804,7 +804,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' Dhcp4Lease return-shape tests.
     """
 
-    def test__dhcp4_client__fetch_returns_lease_time_from_ack(self) -> None:
+    async def test__dhcp4_client__fetch_returns_lease_time_from_ack(self) -> None:
         """
         Ensure 'Dhcp4Lease.lease_time__sec' equals the lease-time value
         carried by the ACK's option 51.
@@ -815,7 +815,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack(lease_time=7200)
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
         self.assertEqual(
@@ -824,7 +824,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
             msg="Dhcp4Lease.lease_time__sec must equal the ACK's option 51 value.",
         )
 
-    def test__dhcp4_client__fetch_records_server_id_on_lease(self) -> None:
+    async def test__dhcp4_client__fetch_records_server_id_on_lease(self) -> None:
         """
         Ensure 'Dhcp4Lease.server_id' equals the Server Identifier from
         the OFFER so subsequent RENEW/REBIND/DECLINE messages can
@@ -836,7 +836,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
         self.assertEqual(
@@ -845,7 +845,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
             msg="Dhcp4Lease.server_id must equal the OFFER's Server Identifier.",
         )
 
-    def test__dhcp4_client__fetch_records_acquired_at_monotonic(self) -> None:
+    async def test__dhcp4_client__fetch_records_acquired_at_monotonic(self) -> None:
         """
         Ensure 'Dhcp4Lease.acquired_at_monotonic' captures a monotonic
         timestamp at lease acquisition so the lifecycle thread can
@@ -858,7 +858,7 @@ class TestDhcp4ClientFetchLeaseReturn(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1234.5):
-            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         assert result is not None
         self.assertEqual(
@@ -873,7 +873,7 @@ class TestDhcp4ClientFetchAckMissingLeaseTime(_Dhcp4ClientFixture):
     The 'Dhcp4Client.fetch()' rejection of an Ack without lease time.
     """
 
-    def test__dhcp4_client__fetch_returns_none_on_ack_without_lease_time(self) -> None:
+    async def test__dhcp4_client__fetch_returns_none_on_ack_without_lease_time(self) -> None:
         """
         Ensure 'fetch()' returns None when the ACK omits the IP Address
         Lease Time option. Without a lease duration the lifecycle has
@@ -885,7 +885,7 @@ class TestDhcp4ClientFetchAckMissingLeaseTime(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack(lease_time=None)
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -911,7 +911,7 @@ class TestDhcp4ClientFetchBackoffSilence(_Dhcp4ClientFixture):
         for _ in range(5):
             self._server.enqueue_timeout()
 
-    def test__dhcp4_client__fetch_silent_server_runs_5_attempts(self) -> None:
+    async def test__dhcp4_client__fetch_silent_server_runs_5_attempts(self) -> None:
         """
         Ensure a fully silent server triggers exactly 5 'recv__mv'
         attempts and 5 outbound DISCOVERs (1 initial + 4 retransmits),
@@ -920,7 +920,7 @@ class TestDhcp4ClientFetchBackoffSilence(_Dhcp4ClientFixture):
         Reference: RFC 2131 §4.1 (retransmission backoff with up to 5 attempts).
         """
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -937,7 +937,7 @@ class TestDhcp4ClientFetchBackoffSilence(_Dhcp4ClientFixture):
             msg="Phase 1 backoff must emit 5 DISCOVERs (1 initial + 4 retransmits).",
         )
 
-    def test__dhcp4_client__fetch_silent_server_doubles_timeouts(self) -> None:
+    async def test__dhcp4_client__fetch_silent_server_doubles_timeouts(self) -> None:
         """
         Ensure the 'timeout' kwarg passed to successive 'recv__mv'
         calls follows the doubling sequence 4 / 8 / 16 / 32 / 64
@@ -946,7 +946,7 @@ class TestDhcp4ClientFetchBackoffSilence(_Dhcp4ClientFixture):
         Reference: RFC 2131 §4.1 (retransmission delay doubled up to 64 seconds).
         """
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         timeouts = [call.kwargs["timeout"] for call in self._sock.recv__mv.call_args_list]
         self.assertEqual(
@@ -961,7 +961,7 @@ class TestDhcp4ClientFetchBackoffEarlyExit(_Dhcp4ClientFixture):
     Phase 1 backoff terminates early on the first valid OFFER.
     """
 
-    def test__dhcp4_client__fetch_offer_on_third_attempt_returns_lease(self) -> None:
+    async def test__dhcp4_client__fetch_offer_on_third_attempt_returns_lease(self) -> None:
         """
         Ensure an OFFER arriving on the third attempt (after two
         timeouts) is accepted and 'fetch()' completes the exchange
@@ -976,7 +976,7 @@ class TestDhcp4ClientFetchBackoffEarlyExit(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -1004,7 +1004,7 @@ class TestDhcp4ClientFetchBackoffBogusPacket(_Dhcp4ClientFixture):
     current attempt's wait window.
     """
 
-    def test__dhcp4_client__fetch_bogus_xid_in_window_does_not_burn_attempt(self) -> None:
+    async def test__dhcp4_client__fetch_bogus_xid_in_window_does_not_burn_attempt(self) -> None:
         """
         Ensure an OFFER with a mismatching xid arriving mid-window is
         silently dropped and the client keeps waiting in the SAME
@@ -1026,7 +1026,7 @@ class TestDhcp4ClientFetchBackoffBogusPacket(_Dhcp4ClientFixture):
             "pmd_pytcp.protocols.dhcp4.dhcp4__client.random.randint",
             return_value=0xDEADBEEF,
         ):
-            result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -1049,7 +1049,7 @@ class TestDhcp4ClientFetchSecsField(_Dhcp4ClientFixture):
     outbound DISCOVER / REQUEST messages within a fetch().
     """
 
-    def test__dhcp4_client__first_discover_carries_secs_zero(self) -> None:
+    async def test__dhcp4_client__first_discover_carries_secs_zero(self) -> None:
         """
         Ensure the very first DISCOVER carries 'secs' = 0 — the
         client has just begun the address-acquisition process so no
@@ -1061,7 +1061,7 @@ class TestDhcp4ClientFetchSecsField(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertEqual(
             self._server.tx_log[0].secs,
@@ -1069,7 +1069,7 @@ class TestDhcp4ClientFetchSecsField(_Dhcp4ClientFixture):
             msg="First DISCOVER must carry secs=0.",
         )
 
-    def test__dhcp4_client__retransmitted_discover_carries_advancing_secs(self) -> None:
+    async def test__dhcp4_client__retransmitted_discover_carries_advancing_secs(self) -> None:
         """
         Ensure a retransmitted DISCOVER's 'secs' field equals the
         integer number of seconds elapsed since the initial DISCOVER.
@@ -1095,7 +1095,7 @@ class TestDhcp4ClientFetchSecsField(_Dhcp4ClientFixture):
             "_elapsed_secs",
             side_effect=[0, 5, 5],
         ):
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertEqual(
             self._server.tx_log[0].secs,
@@ -1114,7 +1114,7 @@ class TestDhcp4ClientFetchBackoffJitter(_Dhcp4ClientFixture):
     Phase 1 jitter draws from a uniform ±retrans_jitter_ms window.
     """
 
-    def test__dhcp4_client__fetch_jitter_draws_from_pm_jitter_ms(self) -> None:
+    async def test__dhcp4_client__fetch_jitter_draws_from_pm_jitter_ms(self) -> None:
         """
         Ensure 'random.uniform' is called with the symmetric
         '(-jitter_ms / 1000, +jitter_ms / 1000)' window before each
@@ -1129,7 +1129,7 @@ class TestDhcp4ClientFetchBackoffJitter(_Dhcp4ClientFixture):
             "pmd_pytcp.protocols.dhcp4.dhcp4__client.random.uniform",
             return_value=0.0,
         ) as mock_uniform:
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         # First (and only) jitter draw must use the configured
         # ±1000 ms bound expressed in seconds.
@@ -1142,7 +1142,7 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
     ten seconds to desynchronize the use of DHCP at startup".
     """
 
-    def test__dhcp4_client__fetch_initial_delay_uses_default_bounds(self) -> None:
+    async def test__dhcp4_client__fetch_initial_delay_uses_default_bounds(self) -> None:
         """
         Ensure the startup desync delay draws from
         'random.uniform(1.0, 10.0)' when the
@@ -1159,16 +1159,22 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
+        # The desync delay is an 'await asyncio.sleep(...)' under the
+        # pure-asyncio runtime; patch it with an AsyncMock so the
+        # delay is observable without blocking the test loop.
         with (
             patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.random.uniform", return_value=4.2) as mock_uniform,
-            patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep,
+            patch(
+                "pmd_pytcp.protocols.dhcp4.dhcp4__client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ) as mock_sleep,
         ):
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         mock_uniform.assert_any_call(1.0, 10.0)
-        mock_sleep.assert_any_call(4.2)
+        mock_sleep.assert_any_await(4.2)
 
-    def test__dhcp4_client__fetch_initial_delay_honours_custom_sysctl_bounds(self) -> None:
+    async def test__dhcp4_client__fetch_initial_delay_honours_custom_sysctl_bounds(self) -> None:
         """
         Ensure operator overrides on 'dhcp.init_delay_min_ms' /
         'dhcp.init_delay_max_ms' propagate through to the
@@ -1184,35 +1190,41 @@ class TestDhcp4ClientFetchInitialDelay(_Dhcp4ClientFixture):
 
         with (
             patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.random.uniform", return_value=1.0) as mock_uniform,
-            patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.sleep"),
+            patch(
+                "pmd_pytcp.protocols.dhcp4.dhcp4__client.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
         ):
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         # 500 ms / 1000 = 0.5 s; 2500 ms / 1000 = 2.5 s.
         mock_uniform.assert_any_call(0.5, 2.5)
 
-    def test__dhcp4_client__fetch_initial_delay_disabled_when_max_ms_zero(self) -> None:
+    async def test__dhcp4_client__fetch_initial_delay_disabled_when_max_ms_zero(self) -> None:
         """
         Ensure the startup desync delay is bypassed entirely when
         'dhcp.init_delay_max_ms' is 0 — the canonical
         disable-for-tests configuration that the fixture base
-        applies by default. 'time.sleep' must not be invoked from
-        the initial-delay path on the happy-path 'fetch()'.
+        applies by default. 'asyncio.sleep' must not be awaited
+        from the initial-delay path on the happy-path 'fetch()'.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
         # Fixture base already sets both bounds to 0; no override
         # needed here. The Phase 1 backoff path uses 'recv__mv(timeout=)'
-        # rather than 'time.sleep', so 'time.sleep' should not be
-        # called at all during a happy-path fetch.
+        # rather than a sleep, so 'asyncio.sleep' should not be
+        # awaited at all during a happy-path fetch.
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep:
-            Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        with patch(
+            "pmd_pytcp.protocols.dhcp4.dhcp4__client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as mock_sleep:
+            await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
-        mock_sleep.assert_not_called()
+        mock_sleep.assert_not_awaited()
 
 
 class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
@@ -1224,7 +1236,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
     DISCOVER per RFC 2131 §3.1 step 5.
     """
 
-    def test__dhcp4_client__fetch_probes_leased_address_via_acd(self) -> None:
+    async def test__dhcp4_client__fetch_probes_leased_address_via_acd(self) -> None:
         """
         Ensure 'fetch()' runs the ACD probe exactly once against the
         server-assigned 'yiaddr' after a valid ACK.
@@ -1237,7 +1249,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        result = Dhcp4Client(
+        result = await Dhcp4Client(
             mac_address=_DEFAULT_MAC,
             acd=acd,
         ).fetch()
@@ -1249,7 +1261,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         )
         acd.probe.assert_called_once_with(address=Ip4Address("10.0.0.100"))
 
-    def test__dhcp4_client__fetch_without_acd_returns_lease_unverified(self) -> None:
+    async def test__dhcp4_client__fetch_without_acd_returns_lease_unverified(self) -> None:
         """
         Ensure 'fetch()' returns the lease unverified when no 'acd'
         engine is supplied (sync-mode callers that own conflict
@@ -1261,7 +1273,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsInstance(
             result,
@@ -1269,7 +1281,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="fetch() without an ACD engine must still return the lease unverified.",
         )
 
-    def test__dhcp4_client__fetch_probe_conflict_emits_decline_message(self) -> None:
+    async def test__dhcp4_client__fetch_probe_conflict_emits_decline_message(self) -> None:
         """
         Ensure an ACD probe conflict triggers a DHCPDECLINE TX whose
         message type, Server Identifier, Requested IP Address, and
@@ -1287,7 +1299,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
 
         acd = _acd_mock(probe_results=False, conflict_mac=MacAddress("02:00:00:00:00:99"))
 
-        Dhcp4Client(
+        await Dhcp4Client(
             mac_address=_DEFAULT_MAC,
             acd=acd,
         ).fetch()
@@ -1325,7 +1337,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="DECLINE must carry the same Client Identifier as DISCOVER / REQUEST.",
         )
 
-    def test__dhcp4_client__fetch_probe_false_then_true_restarts_and_returns_lease(self) -> None:
+    async def test__dhcp4_client__fetch_probe_false_then_true_restarts_and_returns_lease(self) -> None:
         """
         Ensure a probe that reports conflict once and then clean on
         the retry produces a usable lease: 'fetch()' emits the
@@ -1343,7 +1355,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
 
         acd = _acd_mock(probe_results=[False, True])
 
-        result = Dhcp4Client(
+        result = await Dhcp4Client(
             mac_address=_DEFAULT_MAC,
             acd=acd,
         ).fetch()
@@ -1365,7 +1377,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="Third TX must be the DECLINE bridging the two rounds.",
         )
 
-    def test__dhcp4_client__fetch_probe_always_false_exhausts_restart_budget(self) -> None:
+    async def test__dhcp4_client__fetch_probe_always_false_exhausts_restart_budget(self) -> None:
         """
         Ensure a probe that always reports conflict exhausts the
         shared restart budget ('dhcp.nak_max_restarts' = 3 means
@@ -1382,7 +1394,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
 
         acd = _acd_mock(probe_results=False, conflict_mac=MacAddress("02:00:00:00:00:99"))
 
-        result = Dhcp4Client(
+        result = await Dhcp4Client(
             mac_address=_DEFAULT_MAC,
             acd=acd,
         ).fetch()
@@ -1399,7 +1411,7 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
             msg="Each restart round must emit one DECLINE; budget=3 yields 4 rounds.",
         )
 
-    def test__dhcp4_client__fetch_decline_path_honours_decline_backoff_sleep(self) -> None:
+    async def test__dhcp4_client__fetch_decline_path_honours_decline_backoff_sleep(self) -> None:
         """
         Ensure 'fetch()' sleeps 'dhcp.decline_backoff_ms / 1000.0'
         seconds after emitting a DECLINE — the canonical
@@ -1418,15 +1430,21 @@ class TestDhcp4ClientFetchArpDad(_Dhcp4ClientFixture):
 
         acd = _acd_mock(probe_results=False, conflict_mac=MacAddress("02:00:00:00:00:99"))
 
-        with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.sleep") as mock_sleep:
-            Dhcp4Client(
+        # The decline backoff is an 'await asyncio.sleep(...)' under
+        # the pure-asyncio runtime; patch it with an AsyncMock so the
+        # backoff is observable without blocking the test loop.
+        with patch(
+            "pmd_pytcp.protocols.dhcp4.dhcp4__client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as mock_sleep:
+            await Dhcp4Client(
                 mac_address=_DEFAULT_MAC,
                 acd=acd,
             ).fetch()
 
         # Initial-delay sleep is disabled by the fixture; only the
         # decline-backoff sleep should fire.
-        mock_sleep.assert_called_once_with(5.0)
+        mock_sleep.assert_awaited_once_with(5.0)
 
 
 class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
@@ -1436,7 +1454,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
     legacy RFC 2131 type-0x01 + MAC form.
     """
 
-    def test__dhcp4_client__fetch_emits_rfc4361_client_id_in_discover_and_request(self) -> None:
+    async def test__dhcp4_client__fetch_emits_rfc4361_client_id_in_discover_and_request(self) -> None:
         """
         Ensure both the DISCOVER and the REQUEST emitted by
         'fetch()' carry the RFC 4361 13-byte Client Identifier
@@ -1449,7 +1467,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         discover_cid = self._server.tx_log[0].client_id
         request_cid = self._server.tx_log[1].client_id
@@ -1465,7 +1483,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
             msg="REQUEST's Client Identifier must equal DISCOVER's (stable across the exchange).",
         )
 
-    def test__dhcp4_client__fetch_honours_dhcp_duid_sysctl_override(self) -> None:
+    async def test__dhcp4_client__fetch_honours_dhcp_duid_sysctl_override(self) -> None:
         """
         Ensure setting 'dhcp.duid' to an operator-supplied hex
         string overrides the MAC-derived DUID portion of the
@@ -1480,7 +1498,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         discover_cid = self._server.tx_log[0].client_id
         assert discover_cid is not None
@@ -1495,7 +1513,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
             msg="DUID portion of the Client Identifier must match the 'dhcp.duid' sysctl override.",
         )
 
-    def test__dhcp4_client__fetch_emits_same_cid_across_two_fetches(self) -> None:
+    async def test__dhcp4_client__fetch_emits_same_cid_across_two_fetches(self) -> None:
         """
         Ensure two consecutive 'fetch()' calls with the same MAC
         emit byte-for-byte identical Client Identifiers — DUID
@@ -1510,8 +1528,8 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
-        client.fetch()
+        await client.fetch()
+        await client.fetch()
 
         first_cid = self._server.tx_log[0].client_id
         third_cid = self._server.tx_log[2].client_id  # 2nd fetch's DISCOVER
@@ -1522,7 +1540,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
             msg="Two fetches with the same MAC must emit identical Client Identifiers.",
         )
 
-    def test__dhcp4_client__fetch_rejects_server_echo_of_legacy_cid_form(self) -> None:
+    async def test__dhcp4_client__fetch_rejects_server_echo_of_legacy_cid_form(self) -> None:
         """
         Ensure a server that mistakenly echoes the legacy
         RFC 2131 type-0x01 + MAC form (instead of the emitted
@@ -1536,7 +1554,7 @@ class TestDhcp4ClientFetchRfc4361Cid(_Dhcp4ClientFixture):
         legacy_cid = b"\x01" + bytes(_DEFAULT_MAC)
         self._server.enqueue_offer(client_id_echo=legacy_cid)
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         self.assertIsNone(
             result,
@@ -1564,7 +1582,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
             if len(args) >= 2 and args[0] == "dhcp4"
         ]
 
-    def test__dhcp4_client__fetch_logs_rx_line_for_offer_and_ack(self) -> None:
+    async def test__dhcp4_client__fetch_logs_rx_line_for_offer_and_ack(self) -> None:
         """
         Ensure 'fetch()' emits a '<lg>RX</>' log line for the OFFER
         and the ACK so operators see the inbound side of the
@@ -1577,7 +1595,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         rx_messages = [msg for msg in self._log_messages(self._mock_log.call_args_list) if "<lg>RX</>" in msg]
         self.assertGreaterEqual(
@@ -1590,7 +1608,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
             ),
         )
 
-    def test__dhcp4_client__fetch_logs_acquisition_start_and_lease_acquired(self) -> None:
+    async def test__dhcp4_client__fetch_logs_acquisition_start_and_lease_acquired(self) -> None:
         """
         Ensure 'fetch()' emits a "Starting DHCPv4 acquisition" log
         line at the top and a "Lease acquired" log line on
@@ -1603,7 +1621,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         messages = self._log_messages(self._mock_log.call_args_list)
         self.assertTrue(
@@ -1615,7 +1633,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
             msg="fetch() must log a 'Lease acquired' lifecycle line on success.",
         )
 
-    def test__dhcp4_client__fetch_logs_acquisition_failure_on_none_return(self) -> None:
+    async def test__dhcp4_client__fetch_logs_acquisition_failure_on_none_return(self) -> None:
         """
         Ensure 'fetch()' emits a "DHCPv4 acquisition failed" log
         line when the exchange fails so operators see a single
@@ -1629,7 +1647,7 @@ class TestDhcp4ClientFetchLogging(_Dhcp4ClientFixture):
         # window times out.
         self._server.enqueue_timeout()
 
-        result = Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        result = await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
         self.assertIsNone(result)
 
         messages = self._log_messages(self._mock_log.call_args_list)
@@ -1697,7 +1715,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
             msg="Dhcp4Client._lease must be None until the FSM reaches BOUND.",
         )
 
-    def test__dhcp4_client__sync_fetch_does_not_mutate_state_or_lease(self) -> None:
+    async def test__dhcp4_client__sync_fetch_does_not_mutate_state_or_lease(self) -> None:
         """
         Ensure sync 'fetch()' does NOT update the client's
         internal FSM state or '_lease' attribute. Sync mode is
@@ -1711,7 +1729,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 
-        result = client.fetch()
+        result = await client.fetch()
 
         self.assertIsInstance(
             result,
@@ -1728,7 +1746,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
             msg="Sync fetch() must NOT populate _lease — the caller owns the returned lease.",
         )
 
-    def test__dhcp4_client__subsystem_loop_init_transitions_to_bound_on_success(self) -> None:
+    async def test__dhcp4_client__subsystem_loop_init_transitions_to_bound_on_success(self) -> None:
         """
         Ensure one '_subsystem_loop' iteration starting in INIT
         runs the wire exchange and transitions to BOUND, storing
@@ -1741,7 +1759,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertIs(
             client._state,
@@ -1754,7 +1772,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
             msg="Daemon-mode INIT handler must store the acquired lease on _lease.",
         )
 
-    def test__dhcp4_client__subsystem_loop_init_signals_stop_on_failure(self) -> None:
+    async def test__dhcp4_client__subsystem_loop_init_signals_stop_on_failure(self) -> None:
         """
         Ensure one '_subsystem_loop' iteration starting in INIT
         signals the subsystem stop event when the wire exchange
@@ -1770,7 +1788,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
         self._server.enqueue_timeout()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertTrue(
             client._event__stop_subsystem.is_set(),
@@ -1786,7 +1804,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
             msg="No lease must be recorded on INIT-handler failure.",
         )
 
-    def test__dhcp4_client__subsystem_loop_halts_on_unexpected_exception(self) -> None:
+    async def test__dhcp4_client__subsystem_loop_halts_on_unexpected_exception(self) -> None:
         """
         Ensure an unexpected exception raised from a state handler does
         not propagate out of '_subsystem_loop' — an escaping exception
@@ -1809,7 +1827,7 @@ class TestDhcp4ClientFsmScaffolding(_Dhcp4ClientFixture):
 
         # Must return normally — a propagating exception would fail the
         # test by escaping this call.
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertTrue(
             client._event__stop_subsystem.is_set(),
@@ -1826,7 +1844,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
     'start_and_wait_for_bind' watchers via '_event__bound'.
     """
 
-    def test__dhcp4_client__bound_transition_invokes_address_api_add_host(self) -> None:
+    async def test__dhcp4_client__bound_transition_invokes_address_api_add_host(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition calls
         'address_api.add' with the leased Ip4IfAddr — the
@@ -1841,14 +1859,14 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         mock_address_api = MagicMock(name="AddressApi")
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         assert client._lease is not None
         mock_address_api.add.assert_called_once_with(
             ifaddr=client._lease.ip4_host,
         )
 
-    def test__dhcp4_client__bound_transition_installs_default_route(self) -> None:
+    async def test__dhcp4_client__bound_transition_installs_default_route(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition installs
         the leased gateway as a protocol=DHCP default route via
@@ -1862,14 +1880,14 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         mock_route_api = MagicMock(name="RouteApi")
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, route_api=mock_route_api)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         mock_route_api.replace_default.assert_called_once_with(
             gateway=Ip4Address("10.0.0.1"),
             protocol=RouteProtocol.DHCP,
         )
 
-    def test__dhcp4_client__bound_transition_no_router_skips_route_install(self) -> None:
+    async def test__dhcp4_client__bound_transition_no_router_skips_route_install(self) -> None:
         """
         Ensure the BOUND transition installs no default route
         when the DHCP Ack carries no Router option.
@@ -1882,7 +1900,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         mock_route_api = MagicMock(name="RouteApi")
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, route_api=mock_route_api)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         mock_route_api.replace_default.assert_not_called()
 
@@ -1909,7 +1927,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
 
         mock_route_api.remove_default.assert_called_once_with(family=AddressFamily.INET4)
 
-    def test__dhcp4_client__bound_transition_begins_acd_defense(self) -> None:
+    async def test__dhcp4_client__bound_transition_begins_acd_defense(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition begins
         ongoing conflict defense via 'acd.start_defense' with the
@@ -1925,12 +1943,12 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         acd = _acd_mock(probe_results=True)
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         assert client._lease is not None
         acd.start_defense.assert_called_once_with(address=client._lease.ip4_host.address)
 
-    def test__dhcp4_client__bound_transition_sets_event_bound(self) -> None:
+    async def test__dhcp4_client__bound_transition_sets_event_bound(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition sets
         '_event__bound' so 'start_and_wait_for_bind' watchers
@@ -1947,14 +1965,14 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
             client._event__bound.is_set(),
             msg="Pre-condition: '_event__bound' must be clear on fresh construction.",
         )
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertTrue(
             client._event__bound.is_set(),
             msg="INIT → BOUND transition must set '_event__bound'.",
         )
 
-    def test__dhcp4_client__bound_transition_skips_collaborators_when_none(self) -> None:
+    async def test__dhcp4_client__bound_transition_skips_collaborators_when_none(self) -> None:
         """
         Ensure the daemon-mode INIT → BOUND transition silently
         skips the address-API and ACD calls when neither
@@ -1969,7 +1987,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 
-        client._subsystem_loop()
+        await client._subsystem_loop()
 
         self.assertIs(
             client._state,
@@ -1977,7 +1995,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
             msg="State must reach BOUND even when callbacks are absent.",
         )
 
-    def test__dhcp4_client__start_and_wait_for_bind_returns_true_on_success(self) -> None:
+    async def test__dhcp4_client__start_and_wait_for_bind_returns_true_on_success(self) -> None:
         """
         Ensure 'start_and_wait_for_bind' returns True when the
         FSM reaches BOUND within the timeout. Spawns the
@@ -1991,7 +2009,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 
         try:
-            bound = client.start_and_wait_for_bind(timeout_s=2.0)
+            bound = await client.start_and_wait_for_bind(timeout_s=2.0)
         finally:
             client.stop()
 
@@ -2005,7 +2023,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
             msg="Sanity: client state must be BOUND after the daemon thread completes the cycle.",
         )
 
-    def test__dhcp4_client__start_and_wait_for_bind_returns_false_on_timeout(self) -> None:
+    async def test__dhcp4_client__start_and_wait_for_bind_returns_false_on_timeout(self) -> None:
         """
         Ensure 'start_and_wait_for_bind' returns False when the
         FSM does not reach BOUND within the timeout — the
@@ -2024,7 +2042,7 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
 
         try:
-            bound = client.start_and_wait_for_bind(timeout_s=0.2)
+            bound = await client.start_and_wait_for_bind(timeout_s=0.2)
         finally:
             client.stop()
 
@@ -2033,11 +2051,11 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
             msg="start_and_wait_for_bind must return False on FSM-acquisition failure.",
         )
 
-    def test__dhcp4_client__stop_joins_subsystem_thread_cleanly(self) -> None:
+    async def test__dhcp4_client__stop_joins_subsystem_task_cleanly(self) -> None:
         """
-        Ensure 'stop()' joins the Subsystem thread cleanly after
-        a successful BOUND — the BOUND idle handler must respect
-        the stop event.
+        Ensure 'stop()' + 'wait_stopped()' join the Subsystem
+        worker task cleanly after a successful BOUND — the BOUND
+        idle handler must respect the stop event / cancellation.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -2045,18 +2063,19 @@ class TestDhcp4ClientDaemonModeBindWiring(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.start_and_wait_for_bind(timeout_s=2.0)
+        await client.start_and_wait_for_bind(timeout_s=2.0)
 
         client.stop()
+        await client.wait_stopped()
 
         self.assertTrue(
             client._event__stop_subsystem.is_set(),
             msg="stop() must signal the subsystem stop event.",
         )
-        assert client._thread is not None
-        self.assertFalse(
-            client._thread.is_alive(),
-            msg="Subsystem thread must terminate cleanly after stop().",
+        assert client._task is not None
+        self.assertTrue(
+            client._task.done(),
+            msg="Subsystem worker task must terminate cleanly after stop().",
         )
 
 
@@ -2084,7 +2103,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             acquired_at_monotonic=acquired_at,
         )
 
-    def test__dhcp4_client__do_bound_transitions_to_renewing_when_t1_elapsed(self) -> None:
+    async def test__dhcp4_client__do_bound_transitions_to_renewing_when_t1_elapsed(self) -> None:
         """
         Ensure '_do_bound' transitions the FSM to RENEWING when
         'time.monotonic()' has reached the T1 deadline
@@ -2100,7 +2119,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         # Default T1 factor = 0.5; T1 deadline = 0.0 + 1800. Jump
         # to t = 1801 (> T1) to trigger the transition.
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1801.0):
-            client._do_bound()
+            await client._do_bound()
 
         self.assertIs(
             client._state,
@@ -2108,7 +2127,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="BOUND → RENEWING must fire when T1 has elapsed.",
         )
 
-    def test__dhcp4_client__do_bound_stays_bound_when_t1_not_elapsed(self) -> None:
+    async def test__dhcp4_client__do_bound_stays_bound_when_t1_not_elapsed(self) -> None:
         """
         Ensure '_do_bound' stays in BOUND and waits on the stop
         event when T1 has not yet been reached.
@@ -2120,22 +2139,30 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._lease = self._make_lease(lease_time__sec=3600, acquired_at=0.0)
         client._state = Dhcp4State.BOUND
 
-        # T1 deadline = 1800. At t = 100, T1 has not elapsed.
+        # T1 deadline = 1800. At t = 100, T1 has not elapsed. The
+        # stop-event wait goes through the '_compat.wait_event'
+        # helper under the pure-asyncio runtime; patch the module's
+        # imported name so the wait is observable without blocking
+        # the test loop for the remaining 1700 s.
         with (
             patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=100.0),
-            patch.object(client._event__stop_subsystem, "wait") as mock_wait,
+            patch(
+                "pmd_pytcp.protocols.dhcp4.dhcp4__client.wait_event",
+                new_callable=AsyncMock,
+                return_value=False,
+            ) as mock_wait,
         ):
-            client._do_bound()
+            await client._do_bound()
 
         self.assertIs(
             client._state,
             Dhcp4State.BOUND,
             msg="State must remain BOUND when T1 has not elapsed.",
         )
-        # Remaining = 1800 - 100 = 1700; verify wait called with that.
-        mock_wait.assert_called_once_with(timeout=1700.0)
+        # Remaining = 1800 - 100 = 1700; verify the wait used that.
+        mock_wait.assert_awaited_once_with(client._event__stop_subsystem, 1700.0)
 
-    def test__dhcp4_client__do_bound_polls_acd_when_no_conflict(self) -> None:
+    async def test__dhcp4_client__do_bound_polls_acd_when_no_conflict(self) -> None:
         """
         Ensure '_do_bound' polls the ACD conflict signal each tick;
         when 'poll_conflict' reports no conflict the handler falls
@@ -2150,7 +2177,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._state = Dhcp4State.BOUND
 
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1801.0):
-            client._do_bound()
+            await client._do_bound()
 
         acd.poll_conflict.assert_called_once_with()
         self.assertIs(
@@ -2159,7 +2186,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="A clean ACD poll must let '_do_bound' proceed to the T1 transition.",
         )
 
-    def test__dhcp4_client__do_bound_conflict_declines_and_resets_to_init(self) -> None:
+    async def test__dhcp4_client__do_bound_conflict_declines_and_resets_to_init(self) -> None:
         """
         Ensure a BOUND-state ACD conflict makes the client yield the
         leased address: emit DHCPDECLINE to the leasing server, drop
@@ -2175,7 +2202,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         client._lease = self._make_lease()
         client._state = Dhcp4State.BOUND
 
-        client._do_bound()
+        await client._do_bound()
 
         self.assertEqual(
             self._server.tx_log[-1].message_type,
@@ -2210,7 +2237,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         acd.release.assert_called_once_with()
 
-    def test__dhcp4_client__do_renewing_returns_to_bound_on_ack(self) -> None:
+    async def test__dhcp4_client__do_renewing_returns_to_bound_on_ack(self) -> None:
         """
         Ensure '_do_renewing' refreshes the lease and returns to
         BOUND when the unicast REQUEST receives a valid ACK.
@@ -2226,7 +2253,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         # Run at t = 1850 — past T1 (1800), before T2 (3150).
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
-            client._do_renewing()
+            await client._do_renewing()
 
         self.assertIs(
             client._state,
@@ -2240,7 +2267,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="Lease IP must be retained across a successful RENEW.",
         )
 
-    def test__dhcp4_client__do_renewing_falls_back_to_init_on_nak(self) -> None:
+    async def test__dhcp4_client__do_renewing_falls_back_to_init_on_nak(self) -> None:
         """
         Ensure '_do_renewing' returns the FSM to INIT and clears
         the lease when the server replies with DHCPNAK.
@@ -2258,7 +2285,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         self._server.enqueue_nak()
 
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
-            client._do_renewing()
+            await client._do_renewing()
 
         self.assertIs(
             client._state,
@@ -2270,7 +2297,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="Lease must be cleared after a RENEW NAK.",
         )
 
-    def test__dhcp4_client__do_renewing_escalates_to_rebinding_when_t2_elapsed(self) -> None:
+    async def test__dhcp4_client__do_renewing_escalates_to_rebinding_when_t2_elapsed(self) -> None:
         """
         Ensure '_do_renewing' transitions the FSM to REBINDING
         when 'time.monotonic()' has reached the T2 deadline
@@ -2285,7 +2312,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         # T2 deadline = 0.0 + 3600 × 0.875 = 3150. Jump to t = 3200.
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=3200.0):
-            client._do_renewing()
+            await client._do_renewing()
 
         self.assertIs(
             client._state,
@@ -2293,7 +2320,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="RENEWING → REBINDING must fire when T2 has elapsed.",
         )
 
-    def test__dhcp4_client__do_rebinding_returns_to_bound_on_ack(self) -> None:
+    async def test__dhcp4_client__do_rebinding_returns_to_bound_on_ack(self) -> None:
         """
         Ensure '_do_rebinding' refreshes the lease and returns
         to BOUND when the broadcast REQUEST receives a valid
@@ -2310,7 +2337,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         # T2 elapsed; lease still valid (expiry = 3600). t = 3200.
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=3200.0):
-            client._do_rebinding()
+            await client._do_rebinding()
 
         self.assertIs(
             client._state,
@@ -2318,7 +2345,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             msg="REBIND ACK must transition the FSM back to BOUND.",
         )
 
-    def test__dhcp4_client__do_rebinding_halts_ipv4_on_lease_expiry(self) -> None:
+    async def test__dhcp4_client__do_rebinding_halts_ipv4_on_lease_expiry(self) -> None:
         """
         Ensure '_do_rebinding' halts IPv4 (removes the address
         via the address API) and re-enters INIT when the lease
@@ -2334,7 +2361,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
 
         # Lease expiry = 3600. Jump to t = 3700.
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=3700.0):
-            client._do_rebinding()
+            await client._do_rebinding()
 
         self.assertIs(
             client._state,
@@ -2350,7 +2377,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
             abort_bound_sessions=True,
         )
 
-    def test__dhcp4_client__renewing_emits_unicast_request_with_ciaddr(self) -> None:
+    async def test__dhcp4_client__renewing_emits_unicast_request_with_ciaddr(self) -> None:
         """
         Ensure '_do_renewing' emits a DHCPREQUEST with ciaddr set
         to the current lease's IP, no Server Identifier option,
@@ -2367,7 +2394,7 @@ class TestDhcp4ClientLeaseLifecycle(_Dhcp4ClientFixture):
         self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
 
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
-            client._do_renewing()
+            await client._do_renewing()
 
         renew_request = self._server.tx_log[0]
         self.assertEqual(
@@ -2412,7 +2439,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             acquired_at_monotonic=0.0,
         )
 
-    def test__dhcp4_client__sync_release_emits_dhcprelease_with_correct_options(self) -> None:
+    async def test__dhcp4_client__sync_release_emits_dhcprelease_with_correct_options(self) -> None:
         """
         Ensure 'release(lease)' emits a single DHCPRELEASE
         message carrying message-type 7, ciaddr = lease IP,
@@ -2425,7 +2452,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
         lease = self._make_lease()
 
-        client.release(lease)
+        await client.release(lease)
 
         self.assertEqual(
             len(self._server.tx_log),
@@ -2454,7 +2481,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="RELEASE must carry the same Client Identifier as DISCOVER / REQUEST.",
         )
 
-    def test__dhcp4_client__sync_renew_returns_refreshed_lease_on_ack(self) -> None:
+    async def test__dhcp4_client__sync_renew_returns_refreshed_lease_on_ack(self) -> None:
         """
         Ensure 'renew(lease)' performs a single unicast RENEW
         exchange and returns the refreshed 'Dhcp4Lease' on a
@@ -2468,7 +2495,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
         lease = self._make_lease()
-        new_lease = client.renew(lease)
+        new_lease = await client.renew(lease)
 
         assert new_lease is not None
         self.assertEqual(
@@ -2481,7 +2508,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="Sync renew() must NOT mutate the client's internal '_lease' attribute.",
         )
 
-    def test__dhcp4_client__sync_renew_returns_none_on_nak(self) -> None:
+    async def test__dhcp4_client__sync_renew_returns_none_on_nak(self) -> None:
         """
         Ensure 'renew(lease)' returns None when the server
         replies with DHCPNAK — the caller is expected to fall
@@ -2494,14 +2521,14 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self._server.enqueue_nak()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        result = client.renew(self._make_lease())
+        result = await client.renew(self._make_lease())
 
         self.assertIsNone(
             result,
             msg="renew(lease) must return None on DHCPNAK.",
         )
 
-    def test__dhcp4_client__sync_rebind_emits_broadcast_request(self) -> None:
+    async def test__dhcp4_client__sync_rebind_emits_broadcast_request(self) -> None:
         """
         Ensure 'rebind(lease)' emits a broadcast REQUEST (flag_b
         set) with ciaddr = current IP and returns the refreshed
@@ -2514,7 +2541,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self._server.enqueue_ack(yiaddr=Ip4Address("10.0.0.100"))
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.rebind(self._make_lease())
+        await client.rebind(self._make_lease())
 
         rebind_request = self._server.tx_log[0]
         self.assertEqual(
@@ -2531,10 +2558,12 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="REBIND REQUEST MUST NOT carry the Server Identifier option.",
         )
 
-    def test__dhcp4_client__stop_emits_release_when_bound(self) -> None:
+    async def test__dhcp4_client__stop_emits_release_when_bound(self) -> None:
         """
-        Ensure 'stop()' on a BOUND client emits a DHCPRELEASE
-        for the held lease before joining the Subsystem thread.
+        Ensure 'stop()' on a BOUND client emits a DHCPRELEASE for
+        the held lease. The wire RELEASE runs on the best-effort
+        release-on-stop task, so the test awaits 'wait_stopped()'
+        — the shutdown join point — before asserting on the TX log.
 
         Reference: RFC 2131 §4.4.6 (client SHOULD send DHCPRELEASE to relinquish a lease).
         """
@@ -2543,9 +2572,10 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.start_and_wait_for_bind(timeout_s=2.0)
+        await client.start_and_wait_for_bind(timeout_s=2.0)
 
         client.stop()
+        await client.wait_stopped()
 
         # tx_log: DISCOVER, REQUEST, RELEASE.
         release_messages = [tx for tx in self._server.tx_log if tx.message_type == Dhcp4MessageType.RELEASE]
@@ -2555,7 +2585,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="stop() while BOUND must emit exactly one DHCPRELEASE.",
         )
 
-    def test__dhcp4_client__stop_skips_release_when_not_bound(self) -> None:
+    async def test__dhcp4_client__stop_skips_release_when_not_bound(self) -> None:
         """
         Ensure 'stop()' on a never-bound (INIT) client does NOT
         emit a DHCPRELEASE — there is no lease to relinquish.
@@ -2566,7 +2596,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self.enterContext(sysctl.override("dhcp.retrans_max_attempts", 1))
         self._server.enqueue_timeout()  # INIT fails immediately
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.start_and_wait_for_bind(timeout_s=0.5)
+        await client.start_and_wait_for_bind(timeout_s=0.5)
 
         client.stop()
 
@@ -2577,7 +2607,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="stop() on an INIT-state client must NOT emit a DHCPRELEASE.",
         )
 
-    def test__dhcp4_client__stop_removes_host_via_address_api_when_bound(self) -> None:
+    async def test__dhcp4_client__stop_removes_host_via_address_api_when_bound(self) -> None:
         """
         Ensure 'stop()' on a BOUND client removes the leased
         address via 'address_api.remove' with the
@@ -2591,7 +2621,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
-        client.start_and_wait_for_bind(timeout_s=2.0)
+        await client.start_and_wait_for_bind(timeout_s=2.0)
 
         client.stop()
 
@@ -2600,7 +2630,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             abort_bound_sessions=True,
         )
 
-    def test__dhcp4_client__cross_ip_renew_calls_replace_host(self) -> None:
+    async def test__dhcp4_client__cross_ip_renew_calls_replace_host(self) -> None:
         """
         Ensure a RENEW ACK that returns a DIFFERENT yiaddr
         triggers an 'address_api.replace' swap (the
@@ -2619,7 +2649,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         client._state = Dhcp4State.RENEWING
 
         with patch("pmd_pytcp.protocols.dhcp4.dhcp4__client.time.monotonic", return_value=1850.0):
-            client._do_renewing()
+            await client._do_renewing()
 
         mock_address_api.replace.assert_called_once()
         kwargs = mock_address_api.replace.call_args.kwargs
@@ -2638,7 +2668,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
             msg="Default sysctl 'dhcp.abort_sessions_on_lease_change' = 1 must surface as abort_bound_sessions=True.",
         )
 
-    def test__dhcp4_client__abort_sessions_sysctl_zero_disables_abort(self) -> None:
+    async def test__dhcp4_client__abort_sessions_sysctl_zero_disables_abort(self) -> None:
         """
         Ensure the 'dhcp.abort_sessions_on_lease_change' sysctl
         gates the 'abort_bound_sessions' kwarg — operator
@@ -2654,7 +2684,7 @@ class TestDhcp4ClientReleaseAndShutdown(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, address_api=mock_address_api)
-        client.start_and_wait_for_bind(timeout_s=2.0)
+        await client.start_and_wait_for_bind(timeout_s=2.0)
 
         client.stop()
 
@@ -2746,7 +2776,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
             msg="The cached lease must be preloaded on the client.",
         )
 
-    def test__dhcp4_client__do_init_reboot_emits_request_with_cached_ip(self) -> None:
+    async def test__dhcp4_client__do_init_reboot_emits_request_with_cached_ip(self) -> None:
         """
         Ensure '_do_init_reboot' emits a DHCPREQUEST whose
         'requested-ip' option carries the cached IP, ciaddr is 0,
@@ -2762,7 +2792,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         client._state = Dhcp4State.INIT_REBOOT
         self._server.enqueue_ack(yiaddr=Ip4Address("192.168.1.145"))
 
-        client._do_init_reboot()
+        await client._do_init_reboot()
 
         # The first server-captured TX is the INIT-REBOOT REQUEST.
         self.assertGreaterEqual(
@@ -2795,7 +2825,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
             msg="INIT-REBOOT BROADCAST flag must be set (host has not yet bound the cached IP).",
         )
 
-    def test__dhcp4_client__do_init_reboot_transitions_to_bound_on_ack(self) -> None:
+    async def test__dhcp4_client__do_init_reboot_transitions_to_bound_on_ack(self) -> None:
         """
         Ensure a valid ACK to the INIT-REBOOT REQUEST refreshes
         the lease and transitions the FSM to BOUND.
@@ -2812,7 +2842,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
             lease_time=7200,  # Server may extend the lease.
         )
 
-        client._do_init_reboot()
+        await client._do_init_reboot()
 
         self.assertIs(
             client._state,
@@ -2826,7 +2856,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
             msg="BOUND lease must carry the server-supplied (refreshed) lease_time.",
         )
 
-    def test__dhcp4_client__do_init_reboot_falls_back_to_init_on_nak(self) -> None:
+    async def test__dhcp4_client__do_init_reboot_falls_back_to_init_on_nak(self) -> None:
         """
         Ensure a DHCPNAK on the INIT-REBOOT REQUEST invalidates
         the cached lease and falls back to INIT. The cache file
@@ -2849,7 +2879,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         client._state = Dhcp4State.INIT_REBOOT
         self._server.enqueue_nak()
 
-        client._do_init_reboot()
+        await client._do_init_reboot()
 
         self.assertIs(
             client._state,
@@ -2862,7 +2892,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         )
         mock_delete.assert_called()
 
-    def test__dhcp4_client__do_init_reboot_adopts_cached_on_timeout(self) -> None:
+    async def test__dhcp4_client__do_init_reboot_adopts_cached_on_timeout(self) -> None:
         """
         Ensure that when no ACK or NAK arrives within the bounded
         recv window, '_do_init_reboot' adopts the cached lease as
@@ -2887,7 +2917,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
         client._state = Dhcp4State.INIT_REBOOT
         # Server queue empty → server silent → timeout.
 
-        client._do_init_reboot()
+        await client._do_init_reboot()
 
         self.assertIs(
             client._state,
@@ -2900,7 +2930,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
             msg="The adopted lease must be the cached one (no server override).",
         )
 
-    def test__dhcp4_client__on_bound_writes_cache_when_path_set(self) -> None:
+    async def test__dhcp4_client__on_bound_writes_cache_when_path_set(self) -> None:
         """
         Ensure '_on_bound' calls 'write_cached_lease' with the
         configured cache path on every BOUND transition so the
@@ -2921,7 +2951,7 @@ class TestDhcp4ClientInitReboot(_Dhcp4ClientFixture):
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
         new_lease = self._cached_lease()
-        client._on_bound(new_lease)
+        await client._on_bound(new_lease)
 
         mock_write.assert_called_once_with("/tmp/dhcp4_lease", new_lease)
 
@@ -2990,7 +3020,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         client = Dhcp4Client(mac_address=_DEFAULT_MAC, acd=acd)
         return client, acd
 
-    def test__dhcp4_client__dnav4_disabled_by_default_for_lease_without_mac(self) -> None:
+    async def test__dhcp4_client__dnav4_disabled_by_default_for_lease_without_mac(self) -> None:
         """
         Ensure '_dnav4_probe' returns False when the cached
         lease has no recorded 'gateway_mac' (the typical
@@ -3012,11 +3042,11 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         )
 
         self.assertFalse(
-            client._dnav4_probe(lease_no_mac_stripped),
+            await client._dnav4_probe(lease_no_mac_stripped),
             msg="DNAv4 must not engage when the cached lease has no gateway_mac.",
         )
 
-    def test__dhcp4_client__dnav4_disabled_by_sysctl_returns_false(self) -> None:
+    async def test__dhcp4_client__dnav4_disabled_by_sysctl_returns_false(self) -> None:
         """
         Ensure setting 'dhcp.dnav4' to 0 forces '_dnav4_probe'
         to return False without sending any ARP traffic. The
@@ -3029,7 +3059,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         self.enterContext(sysctl.override("dhcp.dnav4", 0))
         client, acd = self._client_with_acd()
 
-        result = client._dnav4_probe(self._cached_lease_with_mac())
+        result = await client._dnav4_probe(self._cached_lease_with_mac())
 
         self.assertFalse(
             result,
@@ -3037,7 +3067,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         )
         acd.probe_reachable.assert_not_called()
 
-    def test__dhcp4_client__dnav4_returns_true_when_gateway_answers(self) -> None:
+    async def test__dhcp4_client__dnav4_returns_true_when_gateway_answers(self) -> None:
         """
         Ensure '_dnav4_probe' returns True when the ACD engine's
         reachability probe reports the cached gateway answered. The probe
@@ -3055,7 +3085,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         acd.probe_reachable.return_value = True
         cached = self._cached_lease_with_mac()
 
-        result = client._dnav4_probe(cached)
+        result = await client._dnav4_probe(cached)
 
         self.assertTrue(
             result,
@@ -3068,7 +3098,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             timeout=1.0,
         )
 
-    def test__dhcp4_client__dnav4_returns_false_on_silent_gateway(self) -> None:
+    async def test__dhcp4_client__dnav4_returns_false_on_silent_gateway(self) -> None:
         """
         Ensure '_dnav4_probe' returns False when the ACD engine's
         reachability probe times out (no Reply). The caller falls through
@@ -3080,7 +3110,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         client, acd = self._client_with_acd()
         acd.probe_reachable.return_value = False
 
-        result = client._dnav4_probe(self._cached_lease_with_mac())
+        result = await client._dnav4_probe(self._cached_lease_with_mac())
 
         self.assertFalse(
             result,
@@ -3088,7 +3118,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         )
         acd.probe_reachable.assert_called_once()
 
-    def test__dhcp4_client__dnav4_returns_false_without_acd_engine(self) -> None:
+    async def test__dhcp4_client__dnav4_returns_false_without_acd_engine(self) -> None:
         """
         Ensure '_dnav4_probe' returns False (and falls through to
         INIT-REBOOT) when no ACD engine is wired — the sync-mode 'fetch()'
@@ -3100,11 +3130,11 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)  # no acd
 
         self.assertFalse(
-            client._dnav4_probe(self._cached_lease_with_mac()),
+            await client._dnav4_probe(self._cached_lease_with_mac()),
             msg="DNAv4 must not engage without a raw-link ACD engine.",
         )
 
-    def test__dhcp4_client__init_reboot_short_circuits_on_dnav4_success(self) -> None:
+    async def test__dhcp4_client__init_reboot_short_circuits_on_dnav4_success(self) -> None:
         """
         Ensure that when '_dnav4_probe' returns True the
         INIT-REBOOT handler adopts the cached lease and
@@ -3123,7 +3153,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             patch.object(client, "_dnav4_probe", return_value=True),
         )
 
-        client._do_init_reboot()
+        await client._do_init_reboot()
 
         self.assertIs(
             client._state,
@@ -3138,7 +3168,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
             msg="DNAv4 short-circuit must emit zero DHCP frames.",
         )
 
-    def test__dhcp4_client__init_reboot_falls_through_when_dnav4_fails(self) -> None:
+    async def test__dhcp4_client__init_reboot_falls_through_when_dnav4_fails(self) -> None:
         """
         Ensure that when '_dnav4_probe' returns False the
         INIT-REBOOT handler proceeds with the standard
@@ -3159,7 +3189,7 @@ class TestDhcp4ClientDnav4(_Dhcp4ClientFixture):
         )
         self._server.enqueue_ack(yiaddr=Ip4Address("192.168.1.145"))
 
-        client._do_init_reboot()
+        await client._do_init_reboot()
 
         # On DNAv4 miss, the standard REQUEST goes on the wire.
         self.assertGreaterEqual(
@@ -3181,7 +3211,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
     (RFC 2131 §3.5, option 51 in DISCOVER).
     """
 
-    def test__dhcp4_client__discover_emits_max_msg_size(self) -> None:
+    async def test__dhcp4_client__discover_emits_max_msg_size(self) -> None:
         """
         Ensure 'fetch()' emits a Maximum DHCP Message Size option
         in the DISCOVER it sends, defaulting to the
@@ -3195,7 +3225,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         discover = self._server.tx_log[0]
         self.assertEqual(
@@ -3204,7 +3234,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
             msg="DISCOVER must carry Max DHCP Message Size = 1500 by default.",
         )
 
-    def test__dhcp4_client__request_emits_max_msg_size(self) -> None:
+    async def test__dhcp4_client__request_emits_max_msg_size(self) -> None:
         """
         Ensure the SELECTING-state REQUEST also carries the
         Maximum DHCP Message Size option so the server may emit
@@ -3217,7 +3247,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         request = self._server.tx_log[1]
         self.assertEqual(
@@ -3226,7 +3256,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
             msg="SELECTING REQUEST must carry Max DHCP Message Size = 1500 by default.",
         )
 
-    def test__dhcp4_client__discover_emits_lease_time_hint(self) -> None:
+    async def test__dhcp4_client__discover_emits_lease_time_hint(self) -> None:
         """
         Ensure DISCOVER carries the Lease Time hint at the default
         sysctl value of 86400 seconds (1 day) — the operator's
@@ -3239,7 +3269,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         discover = self._server.tx_log[0]
         self.assertEqual(
@@ -3248,7 +3278,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
             msg="DISCOVER must carry the default 86400 s Lease Time hint.",
         )
 
-    def test__dhcp4_client__discover_omits_lease_time_hint_when_sysctl_zero(self) -> None:
+    async def test__dhcp4_client__discover_omits_lease_time_hint_when_sysctl_zero(self) -> None:
         """
         Ensure that setting 'dhcp.requested_lease_time__sec' to 0
         omits the hint entirely (a server that prefers picking
@@ -3263,7 +3293,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         discover = self._server.tx_log[0]
         self.assertIsNone(
@@ -3271,7 +3301,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
             msg="dhcp.requested_lease_time__sec=0 must omit the Lease Time option from DISCOVER.",
         )
 
-    def test__dhcp4_client__max_msg_size_sysctl_override_propagates(self) -> None:
+    async def test__dhcp4_client__max_msg_size_sysctl_override_propagates(self) -> None:
         """
         Ensure that an operator override of 'dhcp.max_msg_size'
         propagates to the option value emitted on the wire.
@@ -3284,7 +3314,7 @@ class TestDhcp4ClientPhase8Polish(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         discover = self._server.tx_log[0]
         self.assertEqual(
@@ -3305,7 +3335,7 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
     server choice.
     """
 
-    def test__dhcp4_client__collection_window_disabled_picks_first_offer(self) -> None:
+    async def test__dhcp4_client__collection_window_disabled_picks_first_offer(self) -> None:
         """
         Ensure that with 'dhcp.offer_collection_ms' = 0 (the
         fixture default), the client does not wait after the
@@ -3318,7 +3348,7 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        client.fetch()
+        await client.fetch()
 
         # First OFFER → immediate REQUEST. The mock server only
         # captures TX frames; its 'recv__mv' queue records the
@@ -3331,7 +3361,7 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
             msg="With collection disabled the TX log must be exactly [DISCOVER, REQUEST].",
         )
 
-    def test__dhcp4_client__collection_window_logs_additional_offers(self) -> None:
+    async def test__dhcp4_client__collection_window_logs_additional_offers(self) -> None:
         """
         Ensure that with a non-zero 'dhcp.offer_collection_ms',
         the client polls for additional OFFERs after the first
@@ -3360,7 +3390,7 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        lease = client.fetch()
+        lease = await client.fetch()
 
         assert lease is not None
         self.assertEqual(
@@ -3369,7 +3399,7 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
             msg="The first OFFER's server_id must remain the selection.",
         )
 
-    def test__dhcp4_client__collection_window_silence_terminates_loop(self) -> None:
+    async def test__dhcp4_client__collection_window_silence_terminates_loop(self) -> None:
         """
         Ensure the collection window terminates promptly when
         no additional OFFERs arrive — the loop must return
@@ -3388,7 +3418,7 @@ class TestDhcp4ClientMultiOfferCollection(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        lease = client.fetch()
+        lease = await client.fetch()
 
         self.assertIsNotNone(
             lease,
@@ -3404,7 +3434,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
     the T1 / T2 deadlines, overriding the factor-based defaults.
     """
 
-    def test__dhcp4_client__ack_overrides_populate_lease_fields(self) -> None:
+    async def test__dhcp4_client__ack_overrides_populate_lease_fields(self) -> None:
         """
         Ensure that when the ACK carries options 58 (Renewal)
         and 59 (Rebinding), the resulting 'Dhcp4Lease' carries
@@ -3441,7 +3471,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
         self._server.enqueue_ack()
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        lease = client.fetch()
+        lease = await client.fetch()
 
         assert lease is not None
         self.assertEqual(
@@ -3455,7 +3485,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
             msg="Server-supplied T2 must be captured verbatim on the lease.",
         )
 
-    def test__dhcp4_client__lease_without_overrides_uses_factor_defaults(self) -> None:
+    async def test__dhcp4_client__lease_without_overrides_uses_factor_defaults(self) -> None:
         """
         Ensure that an ACK without options 58 / 59 yields a
         lease whose 't1_override' / 't2_override' are None,
@@ -3470,7 +3500,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
         self._server.enqueue_ack(lease_time=3600)
 
         client = Dhcp4Client(mac_address=_DEFAULT_MAC)
-        lease = client.fetch()
+        lease = await client.fetch()
 
         assert lease is not None
         self.assertIsNone(
@@ -3611,7 +3641,7 @@ class TestDhcp4ClientServerT1T2Overrides(_Dhcp4ClientFixture):
         )
 
 
-class TestDhcp4ClientClasslessStaticRoutes(TestCase):
+class TestDhcp4ClientClasslessStaticRoutes(IsolatedAsyncioTestCase):
     """
     The 'Dhcp4Client' RFC 3442 Classless Static Route install /
     remove tests.
@@ -3742,7 +3772,7 @@ class TestDhcp4ClientClasslessStaticRoutes(TestCase):
             gateway=Ip4Address("10.0.21.2"),
         )
 
-    def test__dhcp4_client__renew_removes_previous_classless_routes(self) -> None:
+    async def test__dhcp4_client__renew_removes_previous_classless_routes(self) -> None:
         """
         Ensure binding a refreshed lease first removes the previous
         lease's classless routes so a RENEW does not accumulate
@@ -3761,8 +3791,8 @@ class TestDhcp4ClientClasslessStaticRoutes(TestCase):
             classless_static_routes=[(Ip4Network("172.16.0.0/12"), Ip4Address("10.0.21.3"))],
         )
 
-        self._client._on_bound(first)
-        self._client._on_bound(second)
+        await self._client._on_bound(first)
+        await self._client._on_bound(second)
 
         self._route_api.remove_route.assert_called_once_with(
             destination=Ip4Network("192.168.0.0/24"),
@@ -3775,7 +3805,7 @@ class TestDhcp4ClientParamReqListOrdering(_Dhcp4ClientFixture):
     The 'Dhcp4Client' RFC 3442 Parameter Request List ordering tests.
     """
 
-    def test__dhcp4_client__prl_requests_classless_before_router(self) -> None:
+    async def test__dhcp4_client__prl_requests_classless_before_router(self) -> None:
         """
         Ensure the DISCOVER / REQUEST Parameter Request List requests
         the Classless Static Route option and places it before the
@@ -3787,7 +3817,7 @@ class TestDhcp4ClientParamReqListOrdering(_Dhcp4ClientFixture):
         self._server.enqueue_offer()
         self._server.enqueue_ack()
 
-        Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
+        await Dhcp4Client(mac_address=_DEFAULT_MAC).fetch()
 
         # DISCOVER (tx_log[0]) and REQUEST (tx_log[1]) both carry a PRL.
         for emitted in self._server.tx_log:

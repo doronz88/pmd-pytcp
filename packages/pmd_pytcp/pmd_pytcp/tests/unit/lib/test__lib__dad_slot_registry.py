@@ -46,7 +46,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
+import asyncio
 from typing_extensions import override
 from unittest import TestCase
 
@@ -180,8 +180,8 @@ class TestDadSlotRegistry__InstallTeardown(TestCase):
 
     def test__dad_slot_registry__install_returns_event(self) -> None:
         """
-        Ensure 'install' returns a 'threading.Event' the
-        worker can poll / wait on.
+        Ensure 'install' returns an 'asyncio.Event' the
+        DAD coroutine can await.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -189,8 +189,8 @@ class TestDadSlotRegistry__InstallTeardown(TestCase):
         event = self._registry.install(_IP6_A)
         self.assertIsInstance(
             event,
-            threading.Event,
-            msg="install must return a threading.Event handle.",
+            asyncio.Event,
+            msg="install must return an asyncio.Event handle.",
         )
         self.assertFalse(
             event.is_set(),
@@ -446,116 +446,4 @@ class TestDadSlotRegistry__IPv4Generic(TestCase):
         self.assertTrue(
             registry.has_signal(_IP4_A),
             msg="has_signal must return True after a SIGNALED outcome.",
-        )
-
-
-class TestDadSlotRegistry__Concurrency(TestCase):
-    """
-    Concurrent worker install + tear-down + RX-thread
-    'try_signal_conflict' calls must not raise — the
-    internal lock makes every public operation atomic.
-    """
-
-    def test__dad_slot_registry__install_teardown_vs_rx_signal__no_exception(
-        self,
-    ) -> None:
-        """
-        Ensure 500 iterations of worker install / tear-down
-        racing against an RX-thread signal loop produce no
-        exception. Without the lock, the RX path could see
-        the slot present during the membership check and
-        absent during the Event.set() call, raising
-        KeyError.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        registry: DadSlotRegistry[Ip6Address] = DadSlotRegistry()
-        iterations = 500
-        errors: list[BaseException] = []
-        stop = threading.Event()
-
-        def _worker_loop() -> None:
-            try:
-                for _ in range(iterations):
-                    registry.install(_IP6_A)
-                    registry.teardown(_IP6_A)
-            except BaseException as exc:  # pylint: disable=broad-except
-                errors.append(exc)
-            finally:
-                stop.set()
-
-        def _rx_loop() -> None:
-            try:
-                while not stop.is_set():
-                    registry.try_signal_conflict(
-                        _IP6_A,
-                        peer_info=_PEER_MAC,
-                        inbound_nonce=None,
-                    )
-            except BaseException as exc:  # pylint: disable=broad-except
-                errors.append(exc)
-
-        t_worker = threading.Thread(target=_worker_loop, name="dad-registry-worker")
-        t_rx = threading.Thread(target=_rx_loop, name="dad-registry-rx")
-        t_worker.start()
-        t_rx.start()
-        t_worker.join(timeout=10.0)
-        t_rx.join(timeout=10.0)
-
-        self.assertEqual(
-            errors,
-            [],
-            msg=f"Concurrent install / tear-down vs RX signal must not raise. Got: {errors!r}",
-        )
-
-    def test__dad_slot_registry__nonce_register_vs_rx_signal__no_exception(self) -> None:
-        """
-        Ensure 500 iterations of worker 'register_nonce'
-        calls racing against an RX-thread
-        'try_signal_conflict' with the same probe nonce
-        produce no exception — the registry serialises set
-        mutation against the nonce-membership check.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        registry: DadSlotRegistry[Ip6Address] = DadSlotRegistry()
-        registry.install(_IP6_A)
-        iterations = 500
-        errors: list[BaseException] = []
-        stop = threading.Event()
-
-        def _worker_loop() -> None:
-            try:
-                for i in range(iterations):
-                    registry.register_nonce(_IP6_A, i.to_bytes(6, "big"))
-            except BaseException as exc:  # pylint: disable=broad-except
-                errors.append(exc)
-            finally:
-                stop.set()
-
-        def _rx_loop() -> None:
-            try:
-                probe = b"\xfe\xfe\xfe\xfe\xfe\xfe"
-                while not stop.is_set():
-                    registry.try_signal_conflict(
-                        _IP6_A,
-                        peer_info=_PEER_MAC,
-                        inbound_nonce=probe,
-                    )
-            except BaseException as exc:  # pylint: disable=broad-except
-                errors.append(exc)
-
-        t_worker = threading.Thread(target=_worker_loop, name="dad-registry-nonce")
-        t_rx = threading.Thread(target=_rx_loop, name="dad-registry-rx-nonce")
-        t_worker.start()
-        t_rx.start()
-        t_worker.join(timeout=10.0)
-        t_rx.join(timeout=10.0)
-
-        self.assertEqual(
-            errors,
-            [],
-            msg=f"Concurrent nonce-register vs RX nonce-check must not raise. Got: {errors!r}",
         )

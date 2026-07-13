@@ -60,7 +60,7 @@ class TestArpDad(ArpTestCase):
     observes the resulting '_ip4_ifaddr' state and engine calls.
     """
 
-    def test__arp__dad__clean_probe_admits_candidate(self) -> None:
+    async def test__arp__dad__clean_probe_admits_candidate(self) -> None:
         """
         Ensure the static-host path admits the candidate IP to
         '_ip4_ifaddr' and drains the candidate list when the
@@ -77,7 +77,7 @@ class TestArpDad(ArpTestCase):
             msg="Pre-condition: candidate IP must not already be in '_ip4_ifaddr'.",
         )
 
-        self._drive_dad()
+        await self._drive_dad()
 
         addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertIn(
@@ -91,7 +91,7 @@ class TestArpDad(ArpTestCase):
             msg="'_ip4_ifaddr_candidate' must be drained once each candidate has been resolved.",
         )
 
-    def test__arp__dad__clean_probe_announces_before_install(self) -> None:
+    async def test__arp__dad__clean_probe_announces_before_install(self) -> None:
         """
         Ensure a clean probe is followed by the gratuitous-ARP
         Announcement: the static path calls 'Ip4Acd.probe' then
@@ -102,12 +102,12 @@ class TestArpDad(ArpTestCase):
 
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
-        self._drive_dad()
+        await self._drive_dad()
 
         self._acd.probe.assert_called_once_with(address=candidate_address)
         self._acd.announce.assert_called_once_with(address=candidate_address)
 
-    def test__arp__dad__probe_conflict_aborts_claim(self) -> None:
+    async def test__arp__dad__probe_conflict_aborts_claim(self) -> None:
         """
         Ensure a probe conflict reported by the engine prevents
         admission to '_ip4_ifaddr' and suppresses the §2.3
@@ -119,7 +119,7 @@ class TestArpDad(ArpTestCase):
 
         candidate_address = STACK__IP4_HOST__CANDIDATE.address
 
-        self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
+        await self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
 
         addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertNotIn(
@@ -134,7 +134,7 @@ class TestArpDad(ArpTestCase):
         )
         self._acd.announce.assert_not_called()
 
-    def test__arp__dad__candidate_already_in_ip4_host_unchanged(self) -> None:
+    async def test__arp__dad__candidate_already_in_ip4_host_unchanged(self) -> None:
         """
         Ensure DAD does not displace already-claimed addresses
         from '_ip4_ifaddr' regardless of probe outcome — the
@@ -146,7 +146,7 @@ class TestArpDad(ArpTestCase):
 
         existing_address = STACK__IP4_HOST.address
 
-        self._drive_dad()
+        await self._drive_dad()
 
         addresses_after = {host.address for host in self._packet_handler._ip4_ifaddr}
         self.assertIn(
@@ -158,7 +158,7 @@ class TestArpDad(ArpTestCase):
             ),
         )
 
-    def test__arp__dad__no_ongoing_defender_held(self) -> None:
+    async def test__arp__dad__no_ongoing_defender_held(self) -> None:
         """
         Ensure a statically claimed address gets probe + announce
         only and NO ongoing §2.4 defender — matching a bare Linux
@@ -170,13 +170,13 @@ class TestArpDad(ArpTestCase):
         Reference: RFC 5227 §2.4 (ongoing defense is the address manager's role).
         """
 
-        self._drive_dad()
+        await self._drive_dad()
 
         self._acd.claim.assert_not_called()
         self._acd.poll_conflict.assert_not_called()
         self._acd.defend.assert_not_called()
 
-    def test__arp__dad__disables_ip4_when_no_address_claimed(self) -> None:
+    async def test__arp__dad__disables_ip4_when_no_address_claimed(self) -> None:
         """
         Ensure IPv4 support is turned off when the only static
         candidate loses its probe and DHCP is not running — the
@@ -190,7 +190,7 @@ class TestArpDad(ArpTestCase):
         self._packet_handler._ip4_dhcp = False
         self._packet_handler._ip4_support = True
 
-        self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
+        await self._drive_dad(probe_success=False, conflict_mac=HOST_A__MAC_ADDRESS)
 
         self.assertFalse(
             self._packet_handler._ip4_support,

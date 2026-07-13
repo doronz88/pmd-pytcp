@@ -50,7 +50,7 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
     The client-side TCP socket shim integration tests.
     """
 
-    def test__client_socket__open_has_real_fileno(self) -> None:
+    async def test__client_socket__open_has_real_fileno(self) -> None:
         """
         Ensure an opened client socket exposes a real, selectable file
         descriptor (its data-channel end), so it works with select /
@@ -59,9 +59,9 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
-        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
-        self.addCleanup(sock.close)
+        client = await self._connect()
+        sock = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
+        self.addAsyncCleanup(sock.close)
 
         self.assertGreaterEqual(
             sock.fileno(),
@@ -69,7 +69,7 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
             msg="A client socket must expose a real data-channel file descriptor.",
         )
 
-    def test__client_socket__bind_then_getsockname(self) -> None:
+    async def test__client_socket__bind_then_getsockname(self) -> None:
         """
         Ensure a bind through the client shim is reflected by a
         subsequent getsockname over the same socket.
@@ -77,19 +77,19 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         Reference: RFC 9293 §3.9 (User/TCP interface).
         """
 
-        client = self._connect()
-        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
-        self.addCleanup(sock.close)
+        client = await self._connect()
+        sock = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
+        self.addAsyncCleanup(sock.close)
 
-        sock.bind(("0.0.0.0", 40010))
+        await sock.bind(("0.0.0.0", 40010))
 
         self.assertEqual(
-            sock.getsockname(),
+            await sock.getsockname(),
             ("0.0.0.0", 40010),
             msg="getsockname must reflect the address bound through the client shim.",
         )
 
-    def test__client_socket__setsockopt_getsockopt_round_trip(self) -> None:
+    async def test__client_socket__setsockopt_getsockopt_round_trip(self) -> None:
         """
         Ensure a setsockopt through the client shim is observable via a
         subsequent getsockopt over the same socket.
@@ -97,19 +97,19 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         Reference: RFC 1122 §4.2.3.6 (TCP keep-alive SO_KEEPALIVE).
         """
 
-        client = self._connect()
-        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
-        self.addCleanup(sock.close)
+        client = await self._connect()
+        sock = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
+        self.addAsyncCleanup(sock.close)
 
-        sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        await sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
 
         self.assertEqual(
-            sock.getsockopt(SOL_SOCKET, SO_KEEPALIVE),
+            await sock.getsockopt(SOL_SOCKET, SO_KEEPALIVE),
             1,
             msg="getsockopt must read back the value set through the client shim.",
         )
 
-    def test__client_socket__close_releases_daemon_handle(self) -> None:
+    async def test__client_socket__close_releases_daemon_handle(self) -> None:
         """
         Ensure closing the client socket releases the daemon handle, so a
         later control call over it surfaces a remote error.
@@ -117,10 +117,10 @@ class TestIpcClientTcpSocket(IpcControlTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
-        sock = cast(ClientTcpSocket, client.socket(AddressFamily.INET4, SocketType.STREAM))
+        client = await self._connect()
+        sock = cast(ClientTcpSocket, await client.socket(AddressFamily.INET4, SocketType.STREAM))
 
-        sock.close()
+        await sock.close()
 
         with self.assertRaises(IpcRemoteError):
-            sock.getsockname()
+            await sock.getsockname()

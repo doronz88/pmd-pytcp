@@ -32,7 +32,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-import threading
 from typing import cast
 from unittest import TestCase
 from unittest.mock import create_autospec
@@ -382,20 +381,23 @@ class TestSocketTableReusePortCohort(TestCase):
         )
 
 
-class TestSocketTableConcurrency(TestCase):
+class TestSocketTableInterleaved(TestCase):
     """
-    The 'SocketTable' thread-safety tests — concurrent register /
-    unregister / lookup must neither raise nor corrupt the registry.
+    The 'SocketTable' interleaved-mutation tests. The old
+    thread-safety guarantee (and its guarding lock) is gone with the
+    pure-asyncio runtime — all table access happens on the one stack
+    event loop — so this exercises the loop-reentrancy equivalent:
+    heavily interleaved register / lookup / snapshot / unregister
+    sequences must neither raise nor corrupt the registry.
     """
 
-    def test__socket_table__concurrent_register_unregister_consistent(self) -> None:
+    def test__socket_table__interleaved_register_unregister_consistent(self) -> None:
         """
-        Ensure concurrent register / unregister / get from many
-        threads never raises and leaves the table in a consistent
-        state (every id either present-with-its-socket or absent).
-        The bare 'dict' is GIL-atomic per-op but the wrapper makes
-        the registry safe under free-threaded builds where compound
-        access is not.
+        Ensure interleaved register / unregister / get / values churn
+        across many ids never raises and leaves the table in a
+        consistent state (every id either present-with-its-socket or
+        absent) — the invariant callbacks on the single stack loop
+        rely on between reentrant mutations.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -403,29 +405,20 @@ class TestSocketTableConcurrency(TestCase):
         table = SocketTable()
         ids = [_make_socket_id(str(i)) for i in range(64)]
         socks = {sid: _make_socket() for sid in ids}
-        errors: list[BaseException] = []
 
-        def churn(sid: SocketId) -> None:
-            try:
-                for _ in range(200):
-                    table[sid] = socks[sid]
-                    table.get(sid)
-                    _ = list(table.values())
-                    table.pop(sid, None)
-            except BaseException as exc:  # pylint: disable=broad-exception-caught
-                errors.append(exc)
+        # Interleave the per-id churn steps round-robin so snapshots
+        # ('values') observe the table mid-mutation across many ids,
+        # mirroring how loop callbacks interleave at await points.
+        for _ in range(20):
+            for sid in ids:
+                table[sid] = socks[sid]
+                self.assertIs(table.get(sid), socks[sid])
+            snapshot = list(table.values())
+            self.assertEqual(len(snapshot), len(ids))
+            for sid in ids:
+                table.pop(sid, None)
+            self.assertEqual(len(table), 0)
 
-        threads = [threading.Thread(target=churn, args=(sid,)) for sid in ids]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        self.assertEqual(
-            errors,
-            [],
-            msg=f"Concurrent table access must not raise; got: {errors!r}",
-        )
         # Every surviving entry must map an id to its own socket.
         for sid, sock in table.items():
             self.assertIs(

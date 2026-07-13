@@ -34,11 +34,9 @@ ver 3.0.7
 from __future__ import annotations
 
 import errno
-import fcntl
-import select
 from types import SimpleNamespace
 from typing import Any
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
@@ -70,7 +68,7 @@ def _make_packet_handler(
     )
 
 
-class _RawSocketTestCase(TestCase):
+class _RawSocketTestCase(IsolatedAsyncioTestCase):
     """
     Shared fixture for 'RawSocket' tests that pins the module-level
     'log' and 'stack' dependencies so the real stack singletons are
@@ -364,7 +362,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
     The 'RawSocket.connect' tests.
     """
 
-    def test__raw_socket__connect_sets_remote_and_picks_local(self) -> None:
+    async def test__raw_socket__connect_sets_remote_and_picks_local(self) -> None:
         """
         Ensure connect() validates the remote IP, delegates to
         'pick_local_ip_address' when the local IP is unspecified, and
@@ -378,7 +376,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
             "pmd_pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
         ) as pick:
-            s.connect(("10.0.0.5", 7))
+            await s.connect(("10.0.0.5", 7))
 
         pick.assert_called_once()
         self.assertEqual(
@@ -393,7 +391,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
         )
         self.assertEqual(s.remote_port, 7, msg="connect() must store the remote port verbatim.")
 
-    def test__raw_socket__connect_rejects_out_of_range_port(self) -> None:
+    async def test__raw_socket__connect_rejects_out_of_range_port(self) -> None:
         """
         Ensure connect() raises 'OverflowError' for a port value
         outside the 0-65535 inclusive range.
@@ -403,9 +401,9 @@ class TestRawSocketConnect(_RawSocketTestCase):
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(OverflowError):
-            s.connect(("10.0.0.5", 70000))
+            await s.connect(("10.0.0.5", 70000))
 
-    def test__raw_socket__connect_rejects_malformed_remote_address(self) -> None:
+    async def test__raw_socket__connect_rejects_malformed_remote_address(self) -> None:
         """
         Ensure connect() raises 'gaierror' when the remote address
         literal is malformed.
@@ -415,9 +413,9 @@ class TestRawSocketConnect(_RawSocketTestCase):
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(gaierror):
-            s.connect(("not-an-ip", 7))
+            await s.connect(("not-an-ip", 7))
 
-    def test__raw_socket__connect_rejects_unroutable_remote(self) -> None:
+    async def test__raw_socket__connect_rejects_unroutable_remote(self) -> None:
         """
         Ensure connect() raises 'gaierror' when the helper cannot pick
         a local IP address (both the stack-provided and fallback
@@ -432,7 +430,7 @@ class TestRawSocketConnect(_RawSocketTestCase):
             return_value=Ip4Address(),
         ):
             with self.assertRaises(gaierror):
-                s.connect(("10.0.0.5", 7))
+                await s.connect(("10.0.0.5", 7))
 
 
 class TestRawSocketSend(_RawSocketTestCase):
@@ -440,7 +438,7 @@ class TestRawSocketSend(_RawSocketTestCase):
     The 'RawSocket.send' / 'RawSocket.sendto' tests.
     """
 
-    def test__raw_socket__send_requires_connect(self) -> None:
+    async def test__raw_socket__send_requires_connect(self) -> None:
         """
         Ensure send() raises 'OSError' with the Errno 89 message when
         called before connect(), because the remote IP is still the
@@ -451,14 +449,14 @@ class TestRawSocketSend(_RawSocketTestCase):
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(OSError) as context:
-            s.send(b"data")
+            await s.send(b"data")
         self.assertIn(
             "[Errno 89]",
             str(context.exception),
             msg="send() must raise with Errno 89 when no destination is set.",
         )
 
-    def test__raw_socket__send_ip4_returns_bytes_sent(self) -> None:
+    async def test__raw_socket__send_ip4_returns_bytes_sent(self) -> None:
         """
         Ensure send() dispatches to 'send_ip4_packet' for an IPv4 raw
         socket and returns 'len(data)' on 'PASSED__ETHERNET__TO_TX_RING'.
@@ -471,14 +469,14 @@ class TestRawSocketSend(_RawSocketTestCase):
             "pmd_pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
         ):
-            s.connect(("10.0.0.5", 7))
+            await s.connect(("10.0.0.5", 7))
         self.assertEqual(
-            s.send(b"hello"),
+            await s.send(b"hello"),
             5,
             msg="send() must return the number of bytes enqueued for transmission.",
         )
 
-    def test__raw_socket__send_ip6_returns_bytes_sent(self) -> None:
+    async def test__raw_socket__send_ip6_returns_bytes_sent(self) -> None:
         """
         Ensure send() dispatches to 'send_ip6_packet' for an IPv6 raw
         socket.
@@ -491,14 +489,14 @@ class TestRawSocketSend(_RawSocketTestCase):
             "pmd_pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip6Address("2001:db8::1"),
         ):
-            s.connect(("2001:db8::2", 7))
+            await s.connect(("2001:db8::2", 7))
         self.assertEqual(
-            s.send(b"data"),
+            await s.send(b"data"),
             4,
             msg="send() on an IPv6 raw socket must route through send_ip6_packet.",
         )
 
-    def test__raw_socket__send_returns_len_data_even_on_drop(self) -> None:
+    async def test__raw_socket__send_returns_len_data_even_on_drop(self) -> None:
         """
         Ensure send() returns 'len(data)' even when the TX path would
         ultimately drop the packet. Phase 4b made the raw send path
@@ -518,14 +516,14 @@ class TestRawSocketSend(_RawSocketTestCase):
             "pmd_pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
         ):
-            s.connect(("10.0.0.5", 7))
+            await s.connect(("10.0.0.5", 7))
         self.assertEqual(
-            s.send(b"data"),
+            await s.send(b"data"),
             4,
             msg="send() must return len(data) — fire-and-forget accepts the packet regardless of drop.",
         )
 
-    def test__raw_socket__sendto_does_not_require_connect(self) -> None:
+    async def test__raw_socket__sendto_does_not_require_connect(self) -> None:
         """
         Ensure sendto() can transmit without a prior connect() — it
         derives the remote from its 'address' argument and the local
@@ -540,12 +538,12 @@ class TestRawSocketSend(_RawSocketTestCase):
             return_value=Ip4Address("10.0.0.1"),
         ):
             self.assertEqual(
-                s.sendto(b"hello", ("10.0.0.5", 7)),
+                await s.sendto(b"hello", ("10.0.0.5", 7)),
                 5,
                 msg="sendto() must return the number of bytes enqueued without requiring connect().",
             )
 
-    def test__raw_socket__sendto_ip6_returns_bytes_sent(self) -> None:
+    async def test__raw_socket__sendto_ip6_returns_bytes_sent(self) -> None:
         """
         Ensure sendto() dispatches to 'send_ip6_packet' for an IPv6
         raw socket.
@@ -559,7 +557,7 @@ class TestRawSocketSend(_RawSocketTestCase):
             return_value=Ip6Address("2001:db8::1"),
         ):
             self.assertEqual(
-                s.sendto(b"data", ("2001:db8::2", 7)),
+                await s.sendto(b"data", ("2001:db8::2", 7)),
                 4,
                 msg="sendto() on an IPv6 raw socket must route through send_ip6_packet.",
             )
@@ -584,7 +582,7 @@ class TestRawSocketSendmsg(_RawSocketTestCase):
             raw__data=b"payload",
         )
 
-    def test__raw_socket__sendmsg_concatenates_buffers_with_address(self) -> None:
+    async def test__raw_socket__sendmsg_concatenates_buffers_with_address(self) -> None:
         """
         Ensure sendmsg() with an explicit 'address' concatenates the
         scatter-gather buffers and sends like sendto() on an
@@ -599,12 +597,12 @@ class TestRawSocketSendmsg(_RawSocketTestCase):
             return_value=Ip4Address("10.0.0.1"),
         ):
             self.assertEqual(
-                s.sendmsg([b"AB", b"CD"], address=("10.0.0.5", 7)),
+                await s.sendmsg([b"AB", b"CD"], address=("10.0.0.5", 7)),
                 4,
                 msg="sendmsg(address=...) must concatenate buffers and send like sendto().",
             )
 
-    def test__raw_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
+    async def test__raw_socket__sendmsg_rejects_malformed_ancdata(self) -> None:
         """
         Ensure sendmsg() rejects an ancillary-data entry that is not a
         3-tuple with a TypeError, matching the stdlib structural
@@ -616,9 +614,9 @@ class TestRawSocketSendmsg(_RawSocketTestCase):
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         bad_ancdata: list[Any] = [(1, 2)]
         with self.assertRaises(TypeError):
-            s.sendmsg([b"x"], bad_ancdata, address=("10.0.0.5", 7))
+            await s.sendmsg([b"x"], bad_ancdata, address=("10.0.0.5", 7))
 
-    def test__raw_socket__recvmsg_returns_quadruple_with_empty_ancdata(self) -> None:
+    async def test__raw_socket__recvmsg_returns_quadruple_with_empty_ancdata(self) -> None:
         """
         Ensure recvmsg() returns the stdlib
         '(data, ancdata, msg_flags, address)' quadruple with an empty
@@ -630,7 +628,7 @@ class TestRawSocketSendmsg(_RawSocketTestCase):
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.process_raw_packet(self._make_md())
 
-        data, ancdata, msg_flags, address = s.recvmsg()
+        data, ancdata, msg_flags, address = await s.recvmsg()
         self.assertEqual(
             data,
             b"payload",
@@ -687,7 +685,7 @@ class TestRawSocketDscp(_RawSocketTestCase):
         self.assertEqual(s._effective_ip_dscp(), 46, msg="DSCP must be the high 6 bits of IPV6_TCLASS.")
         self.assertEqual(s._effective_ip_ecn(), 2, msg="ECN must be the low 2 bits of IPV6_TCLASS.")
 
-    def test__raw_socket__send_threads_ipv4_dscp_to_ip_layer(self) -> None:
+    async def test__raw_socket__send_threads_ipv4_dscp_to_ip_layer(self) -> None:
         """
         Ensure send() passes the socket's effective DSCP through to
         'send_ip4_packet' as 'ip4__dscp'.
@@ -704,8 +702,8 @@ class TestRawSocketDscp(_RawSocketTestCase):
             "pmd_pytcp.socket.raw__socket.pick_local_ip_address",
             return_value=Ip4Address("10.0.0.1"),
         ):
-            s.connect(("10.0.0.5", 7))
-        s.send(b"data")
+            await s.connect(("10.0.0.5", 7))
+        await s.send(b"data")
 
         self.assertEqual(
             captured.get("ip4__dscp"),
@@ -754,7 +752,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
             msg="process_raw_packet must enqueue exactly one metadata entry.",
         )
 
-    def test__raw_socket__recv_returns_payload(self) -> None:
+    async def test__raw_socket__recv_returns_payload(self) -> None:
         """
         Ensure recv() dequeues the next metadata entry, returns its
         'raw__data' as 'bytes', and honors the queued-packet ordering.
@@ -766,12 +764,12 @@ class TestRawSocketReceive(_RawSocketTestCase):
         s.process_raw_packet(self._make_md())
 
         self.assertEqual(
-            s.recv(),
+            await s.recv(),
             b"payload",
             msg="recv() must return the queued metadata's raw__data as bytes.",
         )
 
-    def test__raw_socket__recv_timeout_raises(self) -> None:
+    async def test__raw_socket__recv_timeout_raises(self) -> None:
         """
         Ensure recv() with a finite timeout raises 'TimeoutError' when
         no packet arrives within the window.
@@ -781,9 +779,9 @@ class TestRawSocketReceive(_RawSocketTestCase):
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(TimeoutError):
-            s.recv(timeout=0.01)
+            await s.recv(timeout=0.01)
 
-    def test__raw_socket__recvfrom_returns_payload_and_addr(self) -> None:
+    async def test__raw_socket__recvfrom_returns_payload_and_addr(self) -> None:
         """
         Ensure recvfrom() returns a (bytes, (str_ip, 0)) tuple. The
         port is always 0 for raw sockets since there is no L4 port.
@@ -794,7 +792,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         s.process_raw_packet(self._make_md())
 
-        data, addr = s.recvfrom()
+        data, addr = await s.recvfrom()
         self.assertEqual(
             data,
             b"payload",
@@ -806,7 +804,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
             msg="recvfrom() must return (remote_ip_str, 0) as the second tuple element.",
         )
 
-    def test__raw_socket__recvfrom_timeout_raises(self) -> None:
+    async def test__raw_socket__recvfrom_timeout_raises(self) -> None:
         """
         Ensure recvfrom() with a finite timeout raises 'TimeoutError'
         when no packet arrives within the window.
@@ -816,7 +814,7 @@ class TestRawSocketReceive(_RawSocketTestCase):
 
         s = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
         with self.assertRaises(TimeoutError):
-            s.recvfrom(timeout=0.01)
+            await s.recvfrom(timeout=0.01)
 
 
 class TestRawSocketClose(_RawSocketTestCase):
@@ -861,142 +859,6 @@ class TestRawSocketClose(_RawSocketTestCase):
         s.close()  # must not raise
 
 
-class TestRawSocketFileno(_RawSocketTestCase):
-    """
-    The 'RawSocket.fileno' / read-readiness signal-and-drain tests.
-    """
-
-    def _make_md(self, data: bytes = b"payload") -> RawMetadata:
-        """
-        Build a canonical IPv4 'RawMetadata' envelope.
-        """
-
-        from pmd_net_addr import IpVersion
-
-        return RawMetadata(
-            ip__ver=IpVersion.IP4,
-            ip__local_address=Ip4Address("10.0.0.1"),
-            ip__remote_address=Ip4Address("10.0.0.2"),
-            ip__proto=IpProto.ICMP4,
-            raw__data=data,
-        )
-
-    def setUp(self) -> None:
-        """
-        Build a fresh raw socket. 'tearDown' closes it before the
-        parent fixture stops the 'log' patch so the close-time log
-        line stays suppressed.
-        """
-
-        super().setUp()
-        self._socket = RawSocket(family=AddressFamily.INET4, protocol=IpProto.ICMP4)
-
-    def tearDown(self) -> None:
-        """
-        Close the socket while the 'log' patch is still active, then
-        let the parent tear down the stack stubs.
-        """
-
-        try:
-            self._socket.close()
-        except OSError:
-            pass
-        super().tearDown()
-
-    def test__raw_socket__fileno_returns_non_negative_int(self) -> None:
-        """
-        Ensure 'fileno()' on a raw socket returns a non-negative
-        integer file descriptor for selector consumption.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-
-        self.assertIsInstance(
-            fd,
-            int,
-            msg="RawSocket.fileno() must return an int.",
-        )
-        self.assertGreaterEqual(
-            fd,
-            0,
-            msg="RawSocket.fileno() must return a non-negative fd.",
-        )
-
-    def test__raw_socket__fileno_initially_not_select_ready(self) -> None:
-        """
-        Ensure a freshly-constructed raw socket is not select-readable
-        before any packet has been delivered.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="A fresh RawSocket must not be select-readable.",
-        )
-
-    def test__raw_socket__fileno_select_ready_after_packet_arrives(self) -> None:
-        """
-        Ensure 'process_raw_packet' transitions the fd into the
-        select-readable state.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.process_raw_packet(self._make_md())
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [self._socket.fileno()],
-            msg="process_raw_packet must mark the fd as select-readable.",
-        )
-
-    def test__raw_socket__fileno_drained_after_recv_consumes_last_packet(self) -> None:
-        """
-        Ensure 'recv()' returns the fd to the not-readable state
-        once the last queued packet has been consumed.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        self._socket.process_raw_packet(self._make_md())
-        self._socket.recv()
-
-        rlist, _, _ = select.select([self._socket.fileno()], [], [], 0)
-
-        self.assertEqual(
-            rlist,
-            [],
-            msg="recv() draining the last packet must clear the readable bit.",
-        )
-
-    def test__raw_socket__close_closes_underlying_fd(self) -> None:
-        """
-        Ensure 'close()' tears down the eventfd backing 'fileno()'.
-
-        Reference: PyTCP test infrastructure (no RFC clause).
-        """
-
-        fd = self._socket.fileno()
-        self._socket.close()
-
-        with self.assertRaises(OSError) as context:
-            fcntl.fcntl(fd, fcntl.F_GETFD)
-
-        self.assertEqual(
-            context.exception.errno,
-            errno.EBADF,
-            msg="close() must close the eventfd backing fileno() (EBADF on syscall).",
-        )
-
-
 class TestRawSocketNonBlocking(_RawSocketTestCase):
     """
     The 'RawSocket.setblocking' non-blocking-recv tests.
@@ -1023,7 +885,7 @@ class TestRawSocketNonBlocking(_RawSocketTestCase):
             pass
         super().tearDown()
 
-    def test__raw_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
+    async def test__raw_socket__recv_raises_blocking_io_error_when_no_data(self) -> None:
         """
         Ensure 'recv()' on a non-blocking raw socket with an empty
         queue raises 'BlockingIOError(EAGAIN)' to match POSIX
@@ -1033,7 +895,7 @@ class TestRawSocketNonBlocking(_RawSocketTestCase):
         """
 
         with self.assertRaises(BlockingIOError) as context:
-            self._socket.recv()
+            await self._socket.recv()
 
         self.assertEqual(
             context.exception.errno,
@@ -1041,7 +903,7 @@ class TestRawSocketNonBlocking(_RawSocketTestCase):
             msg="Non-blocking recv() with no data must raise BlockingIOError(EAGAIN).",
         )
 
-    def test__raw_socket__recvfrom_raises_blocking_io_error_when_no_data(self) -> None:
+    async def test__raw_socket__recvfrom_raises_blocking_io_error_when_no_data(self) -> None:
         """
         Ensure 'recvfrom()' parallels 'recv()' in raising
         'BlockingIOError(EAGAIN)' on a non-blocking socket with an
@@ -1051,7 +913,7 @@ class TestRawSocketNonBlocking(_RawSocketTestCase):
         """
 
         with self.assertRaises(BlockingIOError) as context:
-            self._socket.recvfrom()
+            await self._socket.recvfrom()
 
         self.assertEqual(
             context.exception.errno,
@@ -1100,7 +962,7 @@ class TestRawSocketRecvBufsize(_RawSocketTestCase):
             pass
         super().tearDown()
 
-    def test__raw_socket__recv_truncates_oversized_packet_to_bufsize(self) -> None:
+    async def test__raw_socket__recv_truncates_oversized_packet_to_bufsize(self) -> None:
         """
         Ensure 'recv(bufsize)' on a raw socket returns at most
         'bufsize' bytes when the queued packet exceeds it; the
@@ -1113,12 +975,12 @@ class TestRawSocketRecvBufsize(_RawSocketTestCase):
         self._socket.process_raw_packet(self._make_md(b"abcdefghij"))
 
         self.assertEqual(
-            self._socket.recv(bufsize=4),
+            await self._socket.recv(bufsize=4),
             b"abcd",
             msg="recv(bufsize=4) on a 10-byte raw packet must return the first 4 bytes only.",
         )
 
-    def test__raw_socket__recv_with_bufsize_returns_full_when_smaller(self) -> None:
+    async def test__raw_socket__recv_with_bufsize_returns_full_when_smaller(self) -> None:
         """
         Ensure 'recv(bufsize)' returns the full packet when the
         packet is smaller than 'bufsize' — the bufsize is a ceiling.
@@ -1129,12 +991,12 @@ class TestRawSocketRecvBufsize(_RawSocketTestCase):
         self._socket.process_raw_packet(self._make_md(b"hi"))
 
         self.assertEqual(
-            self._socket.recv(bufsize=1024),
+            await self._socket.recv(bufsize=1024),
             b"hi",
             msg="recv(bufsize=1024) on a 2-byte raw packet must return the full payload.",
         )
 
-    def test__raw_socket__recv_with_bufsize_none_returns_full_payload(self) -> None:
+    async def test__raw_socket__recv_with_bufsize_none_returns_full_payload(self) -> None:
         """
         Ensure 'recv()' with no 'bufsize' argument returns the
         complete raw packet — preserves the existing default
@@ -1147,12 +1009,12 @@ class TestRawSocketRecvBufsize(_RawSocketTestCase):
         self._socket.process_raw_packet(self._make_md(payload))
 
         self.assertEqual(
-            self._socket.recv(),
+            await self._socket.recv(),
             payload,
             msg="recv() without bufsize must return the full raw packet.",
         )
 
-    def test__raw_socket__recvfrom_truncates_oversized_packet_to_bufsize(self) -> None:
+    async def test__raw_socket__recvfrom_truncates_oversized_packet_to_bufsize(self) -> None:
         """
         Ensure 'recvfrom(bufsize)' parallels 'recv(bufsize)' by
         truncating while still returning the sender's (ip, 0)
@@ -1163,7 +1025,7 @@ class TestRawSocketRecvBufsize(_RawSocketTestCase):
 
         self._socket.process_raw_packet(self._make_md(b"abcdefghij"))
 
-        data, addr = self._socket.recvfrom(bufsize=3)
+        data, addr = await self._socket.recvfrom(bufsize=3)
 
         self.assertEqual(
             data,
@@ -1202,7 +1064,7 @@ class TestRawSocketErrnoMapping(_RawSocketTestCase):
             msg="foreign-IP bind OSError must carry errno=EADDRNOTAVAIL.",
         )
 
-    def test__raw_socket__send_no_destination_carries_edestaddrreq_errno(self) -> None:
+    async def test__raw_socket__send_no_destination_carries_edestaddrreq_errno(self) -> None:
         """
         Ensure 'send()' on a socket with no remote IP raises
         'OSError' with '.errno == errno.EDESTADDRREQ'.
@@ -1214,7 +1076,7 @@ class TestRawSocketErrnoMapping(_RawSocketTestCase):
         self.addCleanup(s.close)
 
         with self.assertRaises(OSError) as context:
-            s.send(b"data")
+            await s.send(b"data")
 
         self.assertEqual(
             context.exception.errno,

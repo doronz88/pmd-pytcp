@@ -32,11 +32,11 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
-import threading
 from typing_extensions import override
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_pytcp import stack
 from pmd_pytcp.ipc.ipc__client import IpcClient
@@ -66,16 +66,17 @@ def tearDownModule() -> None:
     stack.LOG__CHANNEL = _LOG__CHANNEL_PRIOR
 
 
-class TestIpcServerPing(TestCase):
+class TestIpcServerPing(IsolatedAsyncioTestCase):
     """
     The IPC AF_UNIX server + client PING round-trip tests.
     """
 
     @override
-    def setUp(self) -> None:
+    async def asyncSetUp(self) -> None:
         """
-        Stand up an 'IpcServer' on a temp AF_UNIX path and register its
-        teardown before opening any client.
+        Stand up an 'IpcServer' on a temp AF_UNIX path (armed on the
+        test's loop) and register its teardown before opening any
+        client.
         """
 
         self._tmp_dir = tempfile.mkdtemp(prefix="pmd_pytcp-ipc-")
@@ -83,8 +84,16 @@ class TestIpcServerPing(TestCase):
 
         self._socket_path = os.path.join(self._tmp_dir, "pmd_pytcp.sock")
         self._server = IpcServer(socket_path=self._socket_path)
-        self._server.start()
-        self.addCleanup(self._server.stop)
+        await self._server.start()
+        self.addAsyncCleanup(self._stop_server)
+
+    async def _stop_server(self) -> None:
+        """
+        Stop the server and await its per-client connection tasks' exit.
+        """
+
+        self._server.stop()
+        await self._server.wait_stopped()
 
     def _cleanup_tmp_dir(self) -> None:
         """
@@ -98,16 +107,16 @@ class TestIpcServerPing(TestCase):
             pass
         os.rmdir(self._tmp_dir)
 
-    def _connect(self) -> IpcClient:
+    async def _connect(self) -> IpcClient:
         """
         Open a client against the server and register its close.
         """
 
-        client = IpcClient(socket_path=self._socket_path)
+        client = await IpcClient(socket_path=self._socket_path).open()
         self.addCleanup(client.close)
         return client
 
-    def test__ipc__server__ping_returns_pong(self) -> None:
+    async def test__ipc__server__ping_returns_pong(self) -> None:
         """
         Ensure a client PING over the AF_UNIX control channel elicits
         a 'PONG' reply from the daemon, proving the end-to-end frame +
@@ -116,15 +125,15 @@ class TestIpcServerPing(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            client.ping(),
+            await client.ping(),
             b"PONG",
             msg="A PING request must elicit a b'PONG' reply body.",
         )
 
-    def test__ipc__server__ping_response_envelope(self) -> None:
+    async def test__ipc__server__ping_response_envelope(self) -> None:
         """
         Ensure the PING response is a success-kind message carrying the
         same op and the request's correlation id, so the client can
@@ -133,9 +142,9 @@ class TestIpcServerPing(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
-        response = client.request(IpcOp.PING)
+        response = await client.request(IpcOp.PING)
 
         self.assertEqual(
             (response.kind, response.op),
@@ -143,7 +152,7 @@ class TestIpcServerPing(TestCase):
             msg="A PING reply must be RESPONSE_OK with op PING.",
         )
 
-    def test__ipc__server__correlation_id_echoed(self) -> None:
+    async def test__ipc__server__correlation_id_echoed(self) -> None:
         """
         Ensure the server echoes the request's correlation id back in
         the response, and the client increments it per request, so
@@ -152,10 +161,10 @@ class TestIpcServerPing(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
-        first = client.request(IpcOp.PING)
-        second = client.request(IpcOp.PING)
+        first = await client.request(IpcOp.PING)
+        second = await client.request(IpcOp.PING)
 
         self.assertEqual(
             (second.req_id, second.req_id - first.req_id),
@@ -163,7 +172,7 @@ class TestIpcServerPing(TestCase):
             msg="The client must increment req_id per request and the server echo it.",
         )
 
-    def test__ipc__server__sequential_pings(self) -> None:
+    async def test__ipc__server__sequential_pings(self) -> None:
         """
         Ensure many sequential requests on one connection all succeed,
         proving the per-client dispatch loop keeps serving after the
@@ -172,15 +181,15 @@ class TestIpcServerPing(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         self.assertEqual(
-            [client.ping() for _ in range(50)],
+            [await client.ping() for _ in range(50)],
             [b"PONG"] * 50,
             msg="Every sequential PING on one connection must return b'PONG'.",
         )
 
-    def test__ipc__server__concurrent_clients(self) -> None:
+    async def test__ipc__server__concurrent_clients(self) -> None:
         """
         Ensure multiple client connections are served simultaneously,
         proving the server spawns an independent dispatch loop per
@@ -189,28 +198,19 @@ class TestIpcServerPing(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        clients = [self._connect() for _ in range(4)]
-        results: list[bytes] = []
-        results_lock = threading.Lock()
+        clients = [await self._connect() for _ in range(4)]
 
-        def _ping_worker(client: IpcClient) -> None:
-            reply = client.ping()
-            with results_lock:
-                results.append(reply)
-
-        workers = [threading.Thread(target=_ping_worker, args=(client,)) for client in clients]
-        for worker in workers:
-            worker.start()
-        for worker in workers:
-            worker.join(timeout=5.0)
+        # Issue the four PINGs concurrently (the loop-native analogue
+        # of the old one-thread-per-client concurrency check).
+        results = await asyncio.gather(*(client.ping() for client in clients))
 
         self.assertEqual(
-            results,
+            list(results),
             [b"PONG"] * 4,
             msg="Each concurrently-connected client must receive its own b'PONG'.",
         )
 
-    def test__ipc__server__unknown_op_returns_error(self) -> None:
+    async def test__ipc__server__unknown_op_returns_error(self) -> None:
         """
         Ensure a request the server has no handler for elicits a
         RESPONSE_ERROR rather than a dropped connection, so a client
@@ -219,12 +219,12 @@ class TestIpcServerPing(TestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        client = self._connect()
+        client = await self._connect()
 
         # IpcOp has only PING (0) today; 0xFFFF is a not-yet-defined op
         # the client sends directly (op is a raw int vocabulary) to
         # exercise the unsupported-op error path.
-        response = client.request(0xFFFF)
+        response = await client.request(0xFFFF)
 
         self.assertEqual(
             response.kind,

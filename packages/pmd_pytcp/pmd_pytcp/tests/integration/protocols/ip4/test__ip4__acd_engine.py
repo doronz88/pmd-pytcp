@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -73,7 +74,7 @@ def _conflict_frame() -> bytes:
     )
 
 
-class TestIp4AcdEngine(NetworkTestCase):
+class TestIp4AcdEngine(NetworkTestCase, IsolatedAsyncioTestCase):
     """
     The RFC 5227 'Ip4Acd' probe / announce integration tests.
     """
@@ -109,7 +110,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         self.addCleanup(sock.close)
         return sock
 
-    def test__ip4_acd__probe_clean_succeeds_and_emits_probes(self) -> None:
+    async def test__ip4_acd__probe_clean_succeeds_and_emits_probes(self) -> None:
         """
         Ensure a clean probe (no conflicting ARP) succeeds and emits
         PROBE_NUM ARP Probes onto the interface's TxRing.
@@ -117,7 +118,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: RFC 5227 §2.1.1 (PROBE_NUM Probes, no conflict).
         """
 
-        result = self._acd.probe(address=_CANDIDATE)
+        result = await self._acd.probe(address=_CANDIDATE)
 
         self.assertTrue(result.success, msg="A clean probe must succeed.")
         self.assertEqual(
@@ -126,7 +127,7 @@ class TestIp4AcdEngine(NetworkTestCase):
             msg="A clean probe must emit exactly PROBE_NUM ARP Probes.",
         )
 
-    def test__ip4_acd__probe_detects_conflict(self) -> None:
+    async def test__ip4_acd__probe_detects_conflict(self) -> None:
         """
         Ensure a probe that observes an ARP for the candidate from a
         peer fails and reports the conflicting peer MAC.
@@ -137,7 +138,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         sock = self._arp_socket()
         sock.process_packet(PacketMetadata(frame=_conflict_frame(), sockaddr_ll=SockAddrLl(ifindex=self._ifindex)))
 
-        result = self._acd._run_probe(sock, _CANDIDATE)
+        result = await self._acd._run_probe(sock, _CANDIDATE)
 
         self.assertFalse(result.success, msg="A probe observing a conflict must fail.")
         self.assertEqual(
@@ -146,7 +147,7 @@ class TestIp4AcdEngine(NetworkTestCase):
             msg="The probe result must report the conflicting peer MAC.",
         )
 
-    def test__ip4_acd__announce_emits_announce_num_frames(self) -> None:
+    async def test__ip4_acd__announce_emits_announce_num_frames(self) -> None:
         """
         Ensure 'announce' emits ANNOUNCE_NUM gratuitous ARPs onto the
         interface's TxRing.
@@ -154,7 +155,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: RFC 5227 §2.3 (ANNOUNCE_NUM Announcements).
         """
 
-        self._acd.announce(address=_CANDIDATE)
+        await self._acd.announce(address=_CANDIDATE)
 
         self.assertEqual(
             self._tx_ring.enqueue_raw_frame.call_count,
@@ -162,7 +163,7 @@ class TestIp4AcdEngine(NetworkTestCase):
             msg="announce must emit exactly ANNOUNCE_NUM ARP Announcements.",
         )
 
-    def test__ip4_acd__claim_clean_holds_defense_socket(self) -> None:
+    async def test__ip4_acd__claim_clean_holds_defense_socket(self) -> None:
         """
         Ensure a clean 'claim' probes, announces, and leaves the defense
         socket open so the address can be guarded afterward.
@@ -170,7 +171,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: RFC 5227 §2.1.1 / §2.3 (claim = probe + announce).
         """
 
-        result = self._acd.claim(address=_CANDIDATE)
+        result = await self._acd.claim(address=_CANDIDATE)
         self.addCleanup(self._acd.release)
 
         self.assertTrue(result.success, msg="A clean claim must succeed.")
@@ -184,7 +185,7 @@ class TestIp4AcdEngine(NetworkTestCase):
             msg="A clean claim must emit PROBE_NUM Probes plus ANNOUNCE_NUM Announcements.",
         )
 
-    def test__ip4_acd__start_defense_announces_and_holds_socket(self) -> None:
+    async def test__ip4_acd__start_defense_announces_and_holds_socket(self) -> None:
         """
         Ensure 'start_defense' announces an already-probed address
         (ANNOUNCE_NUM gratuitous ARPs) and holds the defense socket
@@ -197,7 +198,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: RFC 5227 §2.4 (ongoing defense over the held socket).
         """
 
-        self._acd.start_defense(address=_CANDIDATE)
+        await self._acd.start_defense(address=_CANDIDATE)
         self.addCleanup(self._acd.release)
 
         self.assertIsNotNone(
@@ -215,7 +216,7 @@ class TestIp4AcdEngine(NetworkTestCase):
             msg="start_defense must emit exactly ANNOUNCE_NUM Announcements and no Probes.",
         )
 
-    def test__ip4_acd__poll_conflict_detects_then_drains(self) -> None:
+    async def test__ip4_acd__poll_conflict_detects_then_drains(self) -> None:
         """
         Ensure 'poll_conflict' reports the peer MAC of an ARP using the
         claimed address, then returns None once the socket is drained.
@@ -223,7 +224,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: RFC 5227 §2.4 (ongoing conflict detection).
         """
 
-        self._acd.claim(address=_CANDIDATE)
+        await self._acd.claim(address=_CANDIDATE)
         self.addCleanup(self._acd.release)
         assert self._acd._sock is not None
         cast(PacketSocket, self._acd._sock).process_packet(
@@ -231,16 +232,16 @@ class TestIp4AcdEngine(NetworkTestCase):
         )
 
         self.assertEqual(
-            self._acd.poll_conflict(),
+            await self._acd.poll_conflict(),
             _PEER_MAC,
             msg="poll_conflict must report the conflicting peer MAC.",
         )
         self.assertIsNone(
-            self._acd.poll_conflict(),
+            await self._acd.poll_conflict(),
             msg="poll_conflict must return None once the socket is drained.",
         )
 
-    def test__ip4_acd__defend_emits_gratuitous_arp(self) -> None:
+    async def test__ip4_acd__defend_emits_gratuitous_arp(self) -> None:
         """
         Ensure 'defend' broadcasts one defensive gratuitous ARP for the
         claimed address onto the interface's TxRing.
@@ -248,15 +249,15 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: RFC 5227 §2.4(b) (single defensive ARP).
         """
 
-        self._acd.claim(address=_CANDIDATE)
+        await self._acd.claim(address=_CANDIDATE)
         self.addCleanup(self._acd.release)
         self._tx_ring.enqueue_raw_frame.reset_mock()
 
-        self._acd.defend()
+        await self._acd.defend()
 
         self._tx_ring.enqueue_raw_frame.assert_called_once()
 
-    def test__ip4_acd__release_closes_defense_socket(self) -> None:
+    async def test__ip4_acd__release_closes_defense_socket(self) -> None:
         """
         Ensure 'release' drops the claim and closes the defense socket,
         and is idempotent on a second call.
@@ -264,7 +265,7 @@ class TestIp4AcdEngine(NetworkTestCase):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._acd.claim(address=_CANDIDATE)
+        await self._acd.claim(address=_CANDIDATE)
 
         self._acd.release()
         self._acd.release()

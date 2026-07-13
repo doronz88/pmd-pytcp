@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import errno
 from typing_extensions import override
+from unittest import IsolatedAsyncioTestCase
 
 from pmd_net_addr import Ip4Address, Ip4Network
 from pmd_pytcp import stack
@@ -53,7 +54,7 @@ _OFF_LINK_DST = Ip4Address("8.8.8.8")
 _REMOTE_PORT = 5555
 
 
-class TestUdpSendtoNoRoute(UdpTestCase):
+class TestUdpSendtoNoRoute(UdpTestCase, IsolatedAsyncioTestCase):
     """
     The no-route synchronous-EHOSTUNREACH 'sendto' tests.
     """
@@ -70,7 +71,7 @@ class TestUdpSendtoNoRoute(UdpTestCase):
         self._socket = self._bind_udp_socket(family=AddressFamily.INET4)
         stack.ip4_fib.remove(destination=Ip4Network("0.0.0.0/0"))
 
-    def test__udp__sendto_no_route_raises_ehostunreach(self) -> None:
+    async def test__udp__sendto_no_route_raises_ehostunreach(self) -> None:
         """
         Ensure 'sendto' to a destination the FIB cannot reach raises a
         synchronous 'OSError(EHOSTUNREACH)' rather than silently
@@ -81,7 +82,7 @@ class TestUdpSendtoNoRoute(UdpTestCase):
         """
 
         with self.assertRaises(OSError) as ctx:
-            self._socket.sendto(b"unreachable", (str(_OFF_LINK_DST), _REMOTE_PORT))
+            await self._socket.sendto(b"unreachable", (str(_OFF_LINK_DST), _REMOTE_PORT))
 
         self.assertEqual(
             ctx.exception.errno,
@@ -89,7 +90,7 @@ class TestUdpSendtoNoRoute(UdpTestCase):
             msg="sendto() to an unrouted destination must raise OSError(EHOSTUNREACH).",
         )
 
-    def test__udp__sendto_with_route_still_succeeds(self) -> None:
+    async def test__udp__sendto_with_route_still_succeeds(self) -> None:
         """
         Ensure re-installing a default route makes the same off-link
         'sendto' succeed again (the EHOSTUNREACH is route-driven, not a
@@ -108,7 +109,7 @@ class TestUdpSendtoNoRoute(UdpTestCase):
             )
         )
 
-        sent = self._socket.sendto(b"reachable", (str(_OFF_LINK_DST), _REMOTE_PORT))
+        sent = await self._socket.sendto(b"reachable", (str(_OFF_LINK_DST), _REMOTE_PORT))
 
         self.assertEqual(
             sent,

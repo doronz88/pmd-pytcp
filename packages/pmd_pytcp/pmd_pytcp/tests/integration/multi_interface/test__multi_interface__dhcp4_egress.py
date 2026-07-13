@@ -118,7 +118,7 @@ class TestMultiInterfaceDhcp4BroadcastEgress(IcmpTestCase, TestCase):
         # (the harness '_add_interface' leaves '_interface_name' unset).
         self._iface2.handler._interface_name = IFACE2__NAME
 
-    def test__multi_interface__dhcp4__limited_broadcast_egresses_bound_interface(self) -> None:
+    async def test__multi_interface__dhcp4__limited_broadcast_egresses_bound_interface(self) -> None:
         """
         Ensure a DHCPv4 client on a multi-homed host that binds its
         socket to its interface (SO_BINDTODEVICE, the Linux dhclient
@@ -140,7 +140,7 @@ class TestMultiInterfaceDhcp4BroadcastEgress(IcmpTestCase, TestCase):
         client_socket.setsockopt(SOL_SOCKET, SO_BINDTODEVICE, IFACE2__NAME.encode())
         # H5 SO_BROADCAST gate: limited-broadcast sends require the flag.
         client_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        client_socket.connect((DHCP4__LIMITED_BROADCAST, DHCP4__SERVER_PORT))
+        await client_socket.connect((DHCP4__LIMITED_BROADCAST, DHCP4__SERVER_PORT))
 
         boot_tx_before = len(self._frames_tx)
         iface2_tx_before = len(self._iface2.frames_tx)
@@ -148,7 +148,7 @@ class TestMultiInterfaceDhcp4BroadcastEgress(IcmpTestCase, TestCase):
         # Without SO_BINDTODEVICE the limited broadcast has no FIB-resolved
         # egress on a multi-homed host (the observed 'make run_multi'
         # RuntimeError). The device binding pins the egress to iface2.
-        client_socket.send(discover)
+        await client_socket.send(discover)
 
         self.assertEqual(
             len(self._iface2.frames_tx) - iface2_tx_before,

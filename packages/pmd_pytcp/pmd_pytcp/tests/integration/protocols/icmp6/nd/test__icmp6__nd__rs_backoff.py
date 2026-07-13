@@ -86,7 +86,7 @@ class TestIcmp6Nd__RsBackoff__SendsAllRsWhenNoRa(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__rs_backoff__no_ra_sends_max_rtr_solicitations(self) -> None:
+    async def test__icmp6__nd__rs_backoff__no_ra_sends_max_rtr_solicitations(self) -> None:
         """
         Ensure absent any RA the host emits exactly
         'icmp6.max_rtr_solicitations' RS messages before
@@ -99,7 +99,7 @@ class TestIcmp6Nd__RsBackoff__SendsAllRsWhenNoRa(NdTestCase):
         # Tiny intervals so the loop runs sub-millisecond.
         with sysctl_module.override("icmp6.default.rtr_solicitation_interval_ms", 1):
             with sysctl_module.override("icmp6.default.max_rtr_solicitations", 3):
-                self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
+                await self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
 
         self.assertEqual(
             _count_rs_frames(self._frames_tx),
@@ -125,7 +125,7 @@ class TestIcmp6Nd__RsBackoff__StopsOnRaReceipt(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__rs_backoff__ra_after_first_rs_stops_loop(self) -> None:
+    async def test__icmp6__nd__rs_backoff__ra_after_first_rs_stops_loop(self) -> None:
         """
         Ensure an RA delivered after the first RS short-circuits
         the loop — only one RS goes out.
@@ -133,25 +133,23 @@ class TestIcmp6Nd__RsBackoff__StopsOnRaReceipt(NdTestCase):
         Reference: RFC 7559 §2 (host stops retransmitting on RA receipt).
         """
 
-        # Mock acquire to return True on the first call (RA arrived
-        # right after the first RS) and False thereafter.
-        original_acquire = self._packet_handler._icmp6_ra__event.acquire
+        # Mock the RA-wait to return True on the first call (RA
+        # arrived right after the first RS) and False thereafter.
         call_count = [0]
 
-        def mock_acquire(timeout: float | None = None) -> bool:
+        async def mock_acquire_semaphore(semaphore: object, timeout: float | None = None) -> bool:
             call_count[0] += 1
             if call_count[0] == 1:
                 return True  # RA received on first wait.
-            return original_acquire(timeout=0)  # Should never be hit.
+            return False  # Should never be hit.
 
-        with patch.object(
-            self._packet_handler._icmp6_ra__event,
-            "acquire",
-            side_effect=mock_acquire,
+        with patch(
+            "pmd_pytcp.runtime.packet_handler.acquire_semaphore",
+            side_effect=mock_acquire_semaphore,
         ):
             with sysctl_module.override("icmp6.default.rtr_solicitation_interval_ms", 1):
                 with sysctl_module.override("icmp6.default.max_rtr_solicitations", 3):
-                    self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
+                    await self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
 
         self.assertEqual(
             _count_rs_frames(self._frames_tx),
@@ -175,31 +173,31 @@ class TestIcmp6Nd__RsBackoff__ExponentialBackoffTimings(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__rs_backoff__timeouts_double_each_round(self) -> None:
+    async def test__icmp6__nd__rs_backoff__timeouts_double_each_round(self) -> None:
         """
-        Ensure the timeout passed to '_icmp6_ra__event.acquire'
-        doubles between retransmissions — IRT, 2*IRT, 4*IRT —
-        with the random-factor mocked to zero so the bare
-        algorithm is observable.
+        Ensure the timeout passed to the RA-wait doubles between
+        retransmissions — IRT, 2*IRT, 4*IRT — with the
+        random-factor mocked to zero so the bare algorithm is
+        observable.
 
         Reference: RFC 7559 §2 (RT[k+1] = 2*RT[k] + RAND*RT[k], capped at MRT).
         """
 
         observed_timeouts: list[float] = []
 
-        def mock_acquire(timeout: float | None = None) -> bool:
+        async def mock_acquire_semaphore(semaphore: object, timeout: float | None = None) -> bool:
             assert timeout is not None
             observed_timeouts.append(timeout)
             return False
 
         with (
-            patch.object(self._packet_handler._icmp6_ra__event, "acquire", side_effect=mock_acquire),
+            patch("pmd_pytcp.runtime.packet_handler.acquire_semaphore", side_effect=mock_acquire_semaphore),
             patch("pmd_pytcp.runtime.packet_handler.random.uniform", return_value=0.0),
             sysctl_module.override("icmp6.default.rtr_solicitation_interval_ms", 1000),
             sysctl_module.override("icmp6.default.rtr_solicitation_max_rt_ms", 8000),
             sysctl_module.override("icmp6.default.max_rtr_solicitations", 4),
         ):
-            self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
+            await self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
 
         # 4 RSes → 4 acquire calls with timeouts: 1.0, 2.0, 4.0, 8.0
         # (the last one is capped at MRT=8s; without the cap it would
@@ -211,7 +209,7 @@ class TestIcmp6Nd__RsBackoff__ExponentialBackoffTimings(NdTestCase):
             msg=f"Backoff timeouts must double each round, capped at MRT. Got: {observed_timeouts!r}",
         )
 
-    def test__icmp6__nd__rs_backoff__timeouts_capped_at_mrt(self) -> None:
+    async def test__icmp6__nd__rs_backoff__timeouts_capped_at_mrt(self) -> None:
         """
         Ensure once the doubling exceeds 'rtr_solicitation_max_rt_ms'
         the timeout stays at MRT instead of continuing to double.
@@ -221,19 +219,19 @@ class TestIcmp6Nd__RsBackoff__ExponentialBackoffTimings(NdTestCase):
 
         observed_timeouts: list[float] = []
 
-        def mock_acquire(timeout: float | None = None) -> bool:
+        async def mock_acquire_semaphore(semaphore: object, timeout: float | None = None) -> bool:
             assert timeout is not None
             observed_timeouts.append(timeout)
             return False
 
         with (
-            patch.object(self._packet_handler._icmp6_ra__event, "acquire", side_effect=mock_acquire),
+            patch("pmd_pytcp.runtime.packet_handler.acquire_semaphore", side_effect=mock_acquire_semaphore),
             patch("pmd_pytcp.runtime.packet_handler.random.uniform", return_value=0.0),
             sysctl_module.override("icmp6.default.rtr_solicitation_interval_ms", 1000),
             sysctl_module.override("icmp6.default.rtr_solicitation_max_rt_ms", 3000),
             sysctl_module.override("icmp6.default.max_rtr_solicitations", 5),
         ):
-            self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
+            await self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
 
         # 5 RSes → 5 acquire calls. IRT=1, then 2 (uncapped), then
         # 3 (clamped from 4 → MRT), then 3 (already at MRT), then 3.
@@ -258,7 +256,7 @@ class TestIcmp6Nd__RsBackoff__SysctlKillSwitch(NdTestCase):
         sysctl_module.reset_to_defaults()
         super().tearDown()
 
-    def test__icmp6__nd__rs_backoff__zero_max_attempts_sends_no_rs(self) -> None:
+    async def test__icmp6__nd__rs_backoff__zero_max_attempts_sends_no_rs(self) -> None:
         """
         Ensure 'icmp6.max_rtr_solicitations = 0' suppresses RS
         emission entirely.
@@ -267,7 +265,7 @@ class TestIcmp6Nd__RsBackoff__SysctlKillSwitch(NdTestCase):
         """
 
         with sysctl_module.override("icmp6.default.max_rtr_solicitations", 0):
-            self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
+            await self._packet_handler._send_icmp6_nd_router_solicitations_with_backoff()
 
         self.assertEqual(
             _count_rs_frames(self._frames_tx),

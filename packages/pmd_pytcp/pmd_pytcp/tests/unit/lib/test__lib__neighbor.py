@@ -34,7 +34,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address, MacAddress
@@ -54,12 +54,16 @@ MAC_A = MacAddress("02:00:00:00:00:01")
 MAC_B = MacAddress("02:00:00:00:00:02")
 
 
-class _NeighborCacheFixture(TestCase):
+class _NeighborCacheFixture(IsolatedAsyncioTestCase):
     """
     Shared fixture: build a cache with recorder callbacks and
     a controllable monotonic clock. Every test enters with the
     sysctl defaults and exits restoring them via 'reset_to_defaults'
-    so per-test overrides do not leak.
+    so per-test overrides do not leak. The base class is
+    'IsolatedAsyncioTestCase' because the FSM's timer pass
+    ('_subsystem_loop') is a coroutine on the pure-asyncio
+    runtime ('docs/refactor/pure_asyncio.md') — loop-driving
+    tests are 'async def'; pure-logic tests stay sync.
     """
 
     def setUp(self) -> None:
@@ -106,18 +110,22 @@ class _NeighborCacheFixture(TestCase):
 
         self._flush_calls.append((packet, mac))
 
-    def _run_loop_once(self, *, now: float) -> None:
+    async def _run_loop_once(self, *, now: float) -> None:
         """
-        Run a single iteration of '_subsystem_loop' with the
-        monotonic clock pinned to 'now'. The 'wait' patch
-        prevents the inter-iteration sleep from delaying tests.
+        Run a single iteration of the '_subsystem_loop' coroutine
+        with the monotonic clock pinned to 'now'. Pre-setting the
+        stop event makes the trailing 'wait_event' inter-iteration
+        sleep return immediately instead of delaying tests; it is
+        cleared again afterwards so the fixture cache is left
+        restartable.
         """
 
-        with (
-            patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=now),
-            patch.object(self._cache._event__stop_subsystem, "wait", return_value=False),
-        ):
-            self._cache._subsystem_loop()
+        self._cache._event__stop_subsystem.set()
+        try:
+            with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=now):
+                await self._cache._subsystem_loop()
+        finally:
+            self._cache._event__stop_subsystem.clear()
 
 
 class TestNeighborCacheFindMiss(_NeighborCacheFixture):
@@ -340,7 +348,7 @@ class TestNeighborCacheReachableToStale(_NeighborCacheFixture):
     The REACHABLE → STALE timer-driven transition tests.
     """
 
-    def test__lib__neighbor__reachable_transitions_to_stale_after_reachable_time(self) -> None:
+    async def test__lib__neighbor__reachable_transitions_to_stale_after_reachable_time(self) -> None:
         """
         Ensure the loop transitions a REACHABLE entry to STALE
         once REACHABLE_TIME has elapsed since the last
@@ -354,7 +362,7 @@ class TestNeighborCacheReachableToStale(_NeighborCacheFixture):
             self._cache._add_entry(ADDR_A, MAC_A)
 
         # REACHABLE_TIME default is 30 s; advance to 1000 + 31.
-        self._run_loop_once(now=1031.0)
+        await self._run_loop_once(now=1031.0)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -362,7 +370,7 @@ class TestNeighborCacheReachableToStale(_NeighborCacheFixture):
             msg="REACHABLE entry past REACHABLE_TIME must transition to STALE.",
         )
 
-    def test__lib__neighbor__reachable_within_window_unchanged(self) -> None:
+    async def test__lib__neighbor__reachable_within_window_unchanged(self) -> None:
         """
         Ensure a REACHABLE entry whose age is BELOW
         REACHABLE_TIME is left in REACHABLE — the loop must
@@ -375,7 +383,7 @@ class TestNeighborCacheReachableToStale(_NeighborCacheFixture):
             self._cache._add_entry(ADDR_A, MAC_A)
 
         # 5 s elapsed, well below the 30 s default.
-        self._run_loop_once(now=1005.0)
+        await self._run_loop_once(now=1005.0)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -389,7 +397,7 @@ class TestNeighborCacheStaleToDelay(_NeighborCacheFixture):
     The STALE → DELAY on-TX transition tests.
     """
 
-    def test__lib__neighbor__find_on_stale_transitions_to_delay_returns_mac(self) -> None:
+    async def test__lib__neighbor__find_on_stale_transitions_to_delay_returns_mac(self) -> None:
         """
         Ensure 'find_entry' on a STALE entry returns the
         cached MAC AND transitions the entry to NUD_DELAY —
@@ -403,7 +411,7 @@ class TestNeighborCacheStaleToDelay(_NeighborCacheFixture):
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
 
-        self._run_loop_once(now=1031.0)
+        await self._run_loop_once(now=1031.0)
         self.assertIs(
             self._cache._entries[ADDR_A].state,
             NudState.STALE,
@@ -430,7 +438,7 @@ class TestNeighborCacheDelayToProbe(_NeighborCacheFixture):
     The DELAY → PROBE timer-driven transition tests.
     """
 
-    def test__lib__neighbor__delay_transitions_to_probe_after_delay_first_probe_time(self) -> None:
+    async def test__lib__neighbor__delay_transitions_to_probe_after_delay_first_probe_time(self) -> None:
         """
         Ensure the loop transitions a DELAY entry to PROBE
         after DELAY_FIRST_PROBE_TIME has elapsed without an
@@ -442,14 +450,14 @@ class TestNeighborCacheDelayToProbe(_NeighborCacheFixture):
 
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
-        self._run_loop_once(now=1031.0)  # → STALE
+        await self._run_loop_once(now=1031.0)  # → STALE
 
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
             self._cache._find_entry(ADDR_A)  # → DELAY
         self._solicit_calls.clear()
 
         # DELAY_FIRST_PROBE_TIME default = 5 s.
-        self._run_loop_once(now=1031.5 + 5.5)
+        await self._run_loop_once(now=1031.5 + 5.5)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -471,7 +479,7 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
     The PROBE retransmit and PROBE → FAILED tests.
     """
 
-    def test__lib__neighbor__probe_retransmits_at_retrans_timer_cadence(self) -> None:
+    async def test__lib__neighbor__probe_retransmits_at_retrans_timer_cadence(self) -> None:
         """
         Ensure the loop re-fires the unicast solicit each
         RETRANS_TIMER seconds while in PROBE state, until
@@ -483,15 +491,15 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
         # Drive entry into PROBE state.
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
-        self._run_loop_once(now=1031.0)
+        await self._run_loop_once(now=1031.0)
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
             self._cache._find_entry(ADDR_A)
-        self._run_loop_once(now=1037.5)  # DELAY → PROBE; one solicit fired.
+        await self._run_loop_once(now=1037.5)  # DELAY → PROBE; one solicit fired.
         self._solicit_calls.clear()
 
         # RETRANS_TIMER default = 1 s; advance through two more retries.
-        self._run_loop_once(now=1038.6)
-        self._run_loop_once(now=1039.7)
+        await self._run_loop_once(now=1038.6)
+        await self._run_loop_once(now=1039.7)
 
         # MAX_UNICAST_SOLICIT default = 3, of which one fired on
         # the DELAY → PROBE transition; two more here = three total.
@@ -504,7 +512,7 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
             ),
         )
 
-    def test__lib__neighbor__probe_transitions_to_failed_after_max_unicast_solicit(self) -> None:
+    async def test__lib__neighbor__probe_transitions_to_failed_after_max_unicast_solicit(self) -> None:
         """
         Ensure PROBE transitions to FAILED after
         MAX_UNICAST_SOLICIT unicast probes have gone
@@ -517,16 +525,16 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
 
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
-        self._run_loop_once(now=1031.0)  # → STALE
+        await self._run_loop_once(now=1031.0)  # → STALE
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
             self._cache._find_entry(ADDR_A)  # → DELAY
-        self._run_loop_once(now=1037.5)  # DELAY → PROBE, probe_count=1
+        await self._run_loop_once(now=1037.5)  # DELAY → PROBE, probe_count=1
 
         # Two more retransmits, then one more loop pass to
         # detect probe_count >= MAX_UNICAST_SOLICIT.
-        self._run_loop_once(now=1038.6)  # probe_count=2
-        self._run_loop_once(now=1039.7)  # probe_count=3
-        self._run_loop_once(now=1040.8)  # check → FAILED
+        await self._run_loop_once(now=1038.6)  # probe_count=2
+        await self._run_loop_once(now=1039.7)  # probe_count=3
+        await self._run_loop_once(now=1040.8)  # check → FAILED
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -571,7 +579,7 @@ class TestNeighborCacheProbeToReachable(_NeighborCacheFixture):
     The PROBE → REACHABLE on-Reply transition tests.
     """
 
-    def test__lib__neighbor__add_entry_in_probe_returns_to_reachable(self) -> None:
+    async def test__lib__neighbor__add_entry_in_probe_returns_to_reachable(self) -> None:
         """
         Ensure 'add_entry' on a PROBE entry returns it to
         REACHABLE and resets probe_count — a successful
@@ -582,10 +590,10 @@ class TestNeighborCacheProbeToReachable(_NeighborCacheFixture):
 
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
-        self._run_loop_once(now=1031.0)
+        await self._run_loop_once(now=1031.0)
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
             self._cache._find_entry(ADDR_A)
-        self._run_loop_once(now=1037.5)
+        await self._run_loop_once(now=1037.5)
         self.assertIs(
             self._cache._entries[ADDR_A].state,
             NudState.PROBE,
@@ -613,7 +621,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
     The 'confirm_reachability' upper-layer hook tests.
     """
 
-    def test__lib__neighbor__confirm_on_stale_promotes_to_reachable(self) -> None:
+    async def test__lib__neighbor__confirm_on_stale_promotes_to_reachable(self) -> None:
         """
         Ensure 'confirm_reachability' on a STALE entry
         promotes it directly to REACHABLE without firing a
@@ -625,7 +633,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
 
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
-        self._run_loop_once(now=1031.0)
+        await self._run_loop_once(now=1031.0)
         self.assertIs(
             self._cache._entries[ADDR_A].state,
             NudState.STALE,
@@ -641,7 +649,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
             msg="confirm_reachability on STALE must promote to REACHABLE.",
         )
 
-    def test__lib__neighbor__confirm_on_delay_promotes_to_reachable(self) -> None:
+    async def test__lib__neighbor__confirm_on_delay_promotes_to_reachable(self) -> None:
         """
         Ensure 'confirm_reachability' on a DELAY entry
         promotes it to REACHABLE — the upper-layer evidence
@@ -652,7 +660,7 @@ class TestNeighborCacheConfirmReachability(_NeighborCacheFixture):
 
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
             self._cache._add_entry(ADDR_A, MAC_A)
-        self._run_loop_once(now=1031.0)
+        await self._run_loop_once(now=1031.0)
         with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1031.5):
             self._cache._find_entry(ADDR_A)
         self.assertIs(
@@ -715,7 +723,7 @@ class TestNeighborCachePermanent(_NeighborCacheFixture):
     The PERMANENT-state tests.
     """
 
-    def test__lib__neighbor__permanent_skips_all_aging(self) -> None:
+    async def test__lib__neighbor__permanent_skips_all_aging(self) -> None:
         """
         Ensure a PERMANENT entry never transitions to STALE
         regardless of how much time has elapsed — the entry
@@ -729,7 +737,7 @@ class TestNeighborCachePermanent(_NeighborCacheFixture):
             self._cache._add_permanent_entry(ADDR_A, MAC_A)
 
         # Advance well past REACHABLE_TIME.
-        self._run_loop_once(now=1_000_000.0)
+        await self._run_loop_once(now=1_000_000.0)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -743,7 +751,7 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
     The INCOMPLETE retransmit + INCOMPLETE → FAILED tests.
     """
 
-    def test__lib__neighbor__incomplete_retransmits_at_retrans_timer(self) -> None:
+    async def test__lib__neighbor__incomplete_retransmits_at_retrans_timer(self) -> None:
         """
         Ensure the loop re-fires the multicast/broadcast
         solicit each RETRANS_TIMER seconds while in
@@ -757,8 +765,8 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
             self._cache._find_entry(ADDR_A)  # initial solicit
         self._solicit_calls.clear()
 
-        self._run_loop_once(now=1001.5)
-        self._run_loop_once(now=1002.6)
+        await self._run_loop_once(now=1001.5)
+        await self._run_loop_once(now=1002.6)
 
         self.assertEqual(
             len(self._solicit_calls),
@@ -775,7 +783,7 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
                 msg="INCOMPLETE-state retransmits must use cached_mac=None (multicast/broadcast).",
             )
 
-    def test__lib__neighbor__incomplete_transitions_to_failed_after_max_multicast_solicit(self) -> None:
+    async def test__lib__neighbor__incomplete_transitions_to_failed_after_max_multicast_solicit(self) -> None:
         """
         Ensure INCOMPLETE transitions to FAILED after
         MAX_MULTICAST_SOLICIT solicits have gone unanswered
@@ -788,9 +796,9 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
             self._cache._find_entry(ADDR_A)
         # MAX_MULTICAST_SOLICIT default = 3 — initial + 2 retries
         # then loop pass detects the cap.
-        self._run_loop_once(now=1001.5)
-        self._run_loop_once(now=1002.6)
-        self._run_loop_once(now=1003.7)
+        await self._run_loop_once(now=1001.5)
+        await self._run_loop_once(now=1002.6)
+        await self._run_loop_once(now=1003.7)
 
         self.assertIs(
             self._cache._entries[ADDR_A].state,
@@ -804,7 +812,7 @@ class TestNeighborCacheSysctlOverrides(_NeighborCacheFixture):
     The sysctl-driven knob override tests.
     """
 
-    def test__lib__neighbor__reachable_time_sysctl_override_honoured(self) -> None:
+    async def test__lib__neighbor__reachable_time_sysctl_override_honoured(self) -> None:
         """
         Ensure 'pmd_pytcp.stack.sysctl["neighbor.reachable_time"]'
         overrides the REACHABLE → STALE timer at runtime —
@@ -819,7 +827,7 @@ class TestNeighborCacheSysctlOverrides(_NeighborCacheFixture):
                 self._cache._add_entry(ADDR_A, MAC_A)
 
             # 6 s elapsed (above override of 5).
-            self._run_loop_once(now=1006.0)
+            await self._run_loop_once(now=1006.0)
 
             self.assertIs(
                 self._cache._entries[ADDR_A].state,

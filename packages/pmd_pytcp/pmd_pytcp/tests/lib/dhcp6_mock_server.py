@@ -493,13 +493,23 @@ def autospec_dhcp6_socket() -> MagicMock:
     call. Wire 'Dhcp6MockServer.wire(mock_socket)' into the
     returned-value instance.
 
+    Under the pure-asyncio runtime ('docs/refactor/pure_asyncio.md')
+    every blocking socket call is a coroutine, so the waiting-capable
+    methods are pinned to 'AsyncMock' explicitly — the mock surface
+    stays await-correct regardless of autospec's own detection.
+
     Defined here rather than inline in test modules so every
     DHCP6-client test uses the same locked-down mock surface.
     """
+
+    from unittest.mock import AsyncMock
 
     from pmd_pytcp.socket import socket as _pytcp_socket
 
     factory: MagicMock = cast(MagicMock, create_autospec(_pytcp_socket, spec_set=True))
     instance: MagicMock = cast(MagicMock, create_autospec(_pytcp_socket, spec_set=True, instance=True))
+    for coroutine_method in ("connect", "send", "sendto", "recv", "recv__mv", "recvfrom", "recvfrom__mv", "accept"):
+        if hasattr(instance, coroutine_method):
+            setattr(instance, coroutine_method, AsyncMock(name=f"socket.{coroutine_method}"))
     factory.return_value = instance
     return factory

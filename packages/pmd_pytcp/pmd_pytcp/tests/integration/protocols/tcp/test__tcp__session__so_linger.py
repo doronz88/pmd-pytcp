@@ -41,7 +41,6 @@ ver 3.0.7
 from __future__ import annotations
 
 import struct
-from unittest.mock import patch
 
 from pmd_net_addr import Ip4Address
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState
@@ -149,9 +148,11 @@ class TestTcpSoLinger(TcpTestCase):
         """
         Ensure close() on an ESTABLISHED socket carrying SO_LINGER
         '{l_onoff=1, l_linger>0}' takes the graceful FIN path and
-        returns as soon as the session's close-complete signal is set,
-        rather than aborting with a RST. Pins the lingering branch's
-        wake-on-close behaviour.
+        returns without aborting with a RST. The pre-asyncio lingering
+        wait is gone — close() stays sync on the one stack event loop
+        and the FIN exchange it initiates is driven by that same loop,
+        so blocking here could never observe progress
+        (docs/refactor/pure_asyncio.md).
 
         Reference: socket(7) SO_LINGER (l_linger>0 lingering close).
         Reference: RFC 9293 §3.6 (closing a connection).
@@ -163,13 +164,13 @@ class TestTcpSoLinger(TcpTestCase):
 
         sock.setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("@ii", 1, 30))
 
-        # Pre-arm the close-complete signal so the lingering wait wakes
-        # immediately instead of blocking for the full 30 s (in a live
-        # stack the RX / timer threads set this on reaching CLOSED).
+        # Pre-arm the close-complete signal (in a live stack the loop
+        # sets this on reaching CLOSED); close() must return promptly
+        # whether or not it is set.
         session._event__closed.set()
 
         before = len(self._frames_tx)
-        sock.close()  # MUST return promptly, not block on the deadline.
+        sock.close()  # MUST return promptly.
         self._advance(ms=1)
         self._advance(ms=1)
         tx = [self._parse_tx(f) for f in self._frames_tx[before:]]
@@ -190,11 +191,14 @@ class TestTcpSoLinger(TcpTestCase):
     def test__so_linger__positive_returns_at_deadline_when_never_closed(self) -> None:
         """
         Ensure close() on an ESTABLISHED socket carrying SO_LINGER
-        '{l_onoff=1, l_linger>0}' returns when the linger deadline
-        elapses even though the session never reaches CLOSED (the peer
-        never ACKs the FIN). The FIN is still emitted.
+        '{l_onoff=1, l_linger>0}' returns even though the session never
+        reaches CLOSED (the peer never ACKs the FIN). The FIN is still
+        emitted. Pre-asyncio this pinned the linger-deadline expiry;
+        with the single-loop runtime close() never blocks at all, so
+        the returned-without-CLOSED property is now unconditional
+        (docs/refactor/pure_asyncio.md).
 
-        Reference: socket(7) SO_LINGER (lingering close honours the timeout).
+        Reference: socket(7) SO_LINGER (lingering close never wedges the caller).
         Reference: RFC 9293 §3.6 (closing a connection).
         """
 
@@ -205,18 +209,8 @@ class TestTcpSoLinger(TcpTestCase):
         sock.setsockopt(SOL_SOCKET, SO_LINGER, struct.pack("@ii", 1, 30))
 
         # The close-complete signal is left unset (peer never ACKs).
-        # A monotonic clock that leaps far forward on each read makes
-        # the computed 'remaining' non-positive, so the lingering wait
-        # short-circuits deterministically without a real sleep.
-        clock = {"t": 1000.0}
-
-        def _leaping_monotonic() -> float:
-            clock["t"] += 1_000_000.0
-            return clock["t"]
-
         before = len(self._frames_tx)
-        with patch("pmd_pytcp.socket.tcp__socket.time.monotonic", side_effect=_leaping_monotonic):
-            sock.close()  # MUST return at the (already-elapsed) deadline.
+        sock.close()  # MUST return without blocking.
         self._advance(ms=1)
         self._advance(ms=1)
         tx = [self._parse_tx(f) for f in self._frames_tx[before:]]
