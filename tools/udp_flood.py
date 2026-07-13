@@ -39,7 +39,7 @@ Optional third arg = payload size in bytes (default 100, matching
 
 Prints throughput every 50k packets sent. Ctrl-C for final stats.
 This is NOT an iperf3 server peer — iperf3 negotiates over TCP
-first, so 'iperf3 -u -c <pytcp>' fails because PyTCP has no
+first, so 'iperf3 -u -c <pmd_pytcp>' fails because PyTCP has no
 iperf3 server. Use this script instead.
 
 tools/udp_flood.py

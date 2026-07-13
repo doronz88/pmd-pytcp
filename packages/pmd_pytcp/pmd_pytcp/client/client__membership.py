@@ -52,23 +52,23 @@ class ClientMembership(_DeviceScopedProxy):
 
     _api_name = "membership"
 
-    def join(self, *, group: Ip4Address) -> None:
+    async def join(self, *, group: Ip4Address) -> None:
         """
         Join the IPv4 multicast group 'group' on the bound interface.
         """
 
-        self._call("join", {"group": group})
+        await self._call("join", {"group": group})
 
-    def leave(self, *, group: Ip4Address) -> None:
+    async def leave(self, *, group: Ip4Address) -> None:
         """
         Leave the IPv4 multicast group 'group' on the bound interface.
         """
 
-        self._call("leave", {"group": group})
+        await self._call("leave", {"group": group})
 
-    def list_memberships(self) -> tuple[Ip4Address, ...]:
+    async def list_memberships(self) -> tuple[Ip4Address, ...]:
         """
         List the bound interface's IPv4 multicast group memberships.
         """
 
-        return cast(tuple[Ip4Address, ...], self._call("list_memberships", {}))
+        return cast(tuple[Ip4Address, ...], await self._call("list_memberships", {}))

@@ -29,20 +29,26 @@ This module contains code that runs the stack without any 'user space' services.
 Stack should only respond to the ping packets. This example is also used as a
 base to run other examples provided as the subsystems.
 
+The stack is pure-asyncio ('docs/refactor/pure_asyncio.md'): the click
+command parses options synchronously, then drives the whole embedding —
+'stack.init()' (sync construction), 'await stack.start()', subsystem
+tasks, the run loop and 'await stack.stop()' — inside one
+'asyncio.run(...)'.
+
 examples/stack.py
 
 ver 3.0.7
 """
 
+import asyncio
 import signal
 import time
-from types import FrameType
 from typing import Any
 
 import click
 
 from examples.lib.subsystem import Subsystem
-from net_addr import (
+from pmd_net_addr import (
     ClickTypeIp4Address,
     ClickTypeIp4IfAddr,
     ClickTypeIp6Address,
@@ -54,9 +60,9 @@ from net_addr import (
     Ip6IfAddr,
     MacAddress,
 )
-from pytcp import stack
-from pytcp.ipc.ipc__server import IpcServer
-from pytcp.stack import RouteProtocol
+from pmd_pytcp import stack
+from pmd_pytcp.ipc.ipc__server import IpcServer
+from pmd_pytcp.stack import RouteProtocol
 
 
 def _capture_stats_snapshot() -> dict[str, int]:
@@ -128,32 +134,31 @@ def _resolve_interface_args(
     host address its point-to-point link requires.
     """
 
-    match interface_name[:3]:
-        case "tap":
-            return stack.initialize_interface__tap(interface_name=interface_name, mac_address=mac_address)
-        case "tun":
-            addressing_issue = False
-            if ip4_support and not ip4_host:
-                click.secho(
-                    "IPv4 host address must be provided for TUN interface when IPv4 support is enabled.",
-                    fg="red",
-                )
-                addressing_issue = True
-            if ip6_support and not ip6_host:
-                click.secho(
-                    "IPv6 host address must be provided for TUN interface when IPv6 support is enabled.",
-                    fg="red",
-                )
-                addressing_issue = True
-            if addressing_issue:
-                ctx.exit(1)
-            return stack.initialize_interface__tun(interface_name=interface_name)
-        case _:
+    interface_kind = interface_name[:3]
+    if interface_kind == "tap":
+        return stack.initialize_interface__tap(interface_name=interface_name, mac_address=mac_address)
+    if interface_kind == "tun":
+        addressing_issue = False
+        if ip4_support and not ip4_host:
             click.secho(
-                f"Invalid interface type '{interface_name[:3]}'. Only 'tap' and 'tun' interfaces are supported.",
+                "IPv4 host address must be provided for TUN interface when IPv4 support is enabled.",
                 fg="red",
             )
+            addressing_issue = True
+        if ip6_support and not ip6_host:
+            click.secho(
+                "IPv6 host address must be provided for TUN interface when IPv6 support is enabled.",
+                fg="red",
+            )
+            addressing_issue = True
+        if addressing_issue:
             ctx.exit(1)
+        return stack.initialize_interface__tun(interface_name=interface_name)
+    click.secho(
+        f"Invalid interface type '{interface_name[:3]}'. Only 'tap' and 'tun' interfaces are supported.",
+        fg="red",
+    )
+    ctx.exit(1)
 
 
 @click.command()
@@ -225,7 +230,7 @@ def _resolve_interface_args(
     help=(
         "Run as a daemon: also listen on this AF_UNIX path so out-of-"
         "process clients can open sockets and drive the control APIs via "
-        "'pytcp.client' (e.g. '--ipc-socket /tmp/pytcp.sock')."
+        "'pmd_pytcp.client' (e.g. '--ipc-socket /tmp/pmd_pytcp.sock')."
     ),
 )
 @click.pass_context
@@ -284,6 +289,51 @@ def cli(
     if subsystems is None:
         subsystems = []
 
+    # The stack (and everything on it) runs on ONE asyncio event loop
+    # ('docs/refactor/pure_asyncio.md'); 'init()' constructs asyncio
+    # primitives, so even the sync construction happens inside the
+    # coroutine with the target loop current.
+    try:
+        asyncio.run(
+            _run_stack(
+                ctx,
+                interfaces=interfaces,
+                multi=multi,
+                subsystems=subsystems,
+                stack__mac_address=stack__mac_address,
+                stack__ip6_support=stack__ip6_support,
+                stack__ip6_host=stack__ip6_host,
+                stack__ip6_gateway=stack__ip6_gateway,
+                stack__ip4_support=stack__ip4_support,
+                stack__ip4_host=stack__ip4_host,
+                stack__ip4_gateway=stack__ip4_gateway,
+                stack__ipc_socket=stack__ipc_socket,
+            )
+        )
+    except KeyboardInterrupt:
+        pass
+
+
+async def _run_stack(
+    ctx: click.Context,
+    *,
+    interfaces: tuple[str, ...],
+    multi: bool,
+    subsystems: list[Subsystem],
+    stack__mac_address: MacAddress | None,
+    stack__ip6_support: bool,
+    stack__ip6_host: Ip6IfAddr | None,
+    stack__ip6_gateway: Ip6Address | None,
+    stack__ip4_support: bool,
+    stack__ip4_host: Ip4IfAddr | None,
+    stack__ip4_gateway: Ip4Address | None,
+    stack__ipc_socket: str | None,
+) -> None:
+    """
+    Boot, run and tear down the stack (plus the provided subsystems and
+    the optional IPC server) on the running event loop.
+    """
+
     # Daemon-shaped boot: bring the stack core up with no interface,
     # then attach the operator's interface(s) as runtime devices. This is
     # the 'ip link add' / RTM_NEWLINK flow — 'init()' is the kernel boot,
@@ -338,16 +388,16 @@ def cli(
     ipc_server: IpcServer | None = None
 
     try:
-        stack.start()
+        await stack.start()
 
         # Daemon mode: expose the AF_UNIX control socket so out-of-process
-        # 'pytcp.client' consumers can open sockets / drive the control
+        # 'pmd_pytcp.client' consumers can open sockets / drive the control
         # APIs against this running stack. The socket syscalls and the
         # six control APIs are served once the stack singletons are up.
         if stack__ipc_socket is not None:
             ipc_server = IpcServer(socket_path=stack__ipc_socket)
-            ipc_server.start()
-            click.echo(f"IPC: listening on {stack__ipc_socket} (out-of-process clients via pytcp.client)")
+            await ipc_server.start()
+            click.echo(f"IPC: listening on {stack__ipc_socket} (out-of-process clients via pmd_pytcp.client)")
 
         for subsystem in subsystems:
             if stack__ip6_support:
@@ -358,18 +408,26 @@ def cli(
 
         # Runtime interface removal (RTM_DELLINK) over the daemon's
         # "control channel": SIGUSR1 tears down the most-recently-added
-        # interface on the live stack. The handler only sets a flag (the
-        # async-signal-safe minimum); the run loop below does the actual
-        # 'remove_interface', which runs the teardown cascade (abort bound
-        # sessions, drop addresses, flush neighbour caches, purge egress
-        # routes, stop the interface threads). Try it with:
+        # interface on the live stack. The handler only sets a flag (via
+        # the loop's own signal plumbing when available, a plain
+        # 'signal.signal' fallback elsewhere); the run loop below does
+        # the actual 'remove_interface', which runs the teardown cascade
+        # (abort bound sessions, drop addresses, flush neighbour caches,
+        # purge egress routes, stop the interface tasks). Try it with:
         #   kill -USR1 $(pgrep -f 'examples/stack.py')
         _remove_requested = [False]
 
-        def _on_sigusr1(_signum: int, _frame: FrameType | None) -> None:
+        def _on_sigusr1() -> None:
             _remove_requested[0] = True
 
-        signal.signal(signal.SIGUSR1, _on_sigusr1)
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(signal.SIGUSR1, _on_sigusr1)
+        except (NotImplementedError, RuntimeError, AttributeError):
+            # Platforms without loop signal handlers (or without
+            # SIGUSR1 at all) fall back to the interpreter-level hook.
+            if hasattr(signal, "SIGUSR1"):
+                signal.signal(signal.SIGUSR1, lambda _signum, _frame: _on_sigusr1())
 
         # Periodic stats snapshot — disabled by default; opt-in for
         # flood-testing / benchmarking by setting the
@@ -383,7 +441,7 @@ def cli(
         _last_snapshot = _capture_stats_snapshot()
 
         while any(subsystem.is_alive for subsystem in subsystems if subsystem) or not subsystems:
-            time.sleep(1)
+            await asyncio.sleep(1)
             if _remove_requested[0]:
                 _remove_requested[0] = False
                 if added_ifindexes:
@@ -398,16 +456,16 @@ def cli(
                 _last_snapshot = now_snapshot
                 _last_stats = time.monotonic()
 
-    except KeyboardInterrupt:
-        pass
-
     finally:
         for subsystem in subsystems:
             if subsystem.is_alive:
                 subsystem.stop()
+        for subsystem in subsystems:
+            await subsystem.wait_stopped()
         if ipc_server is not None:
             ipc_server.stop()
-        stack.stop()
+            await ipc_server.wait_stopped()
+        await stack.stop()
 
 
 if __name__ == "__main__":

@@ -25,18 +25,26 @@
 """
 This module contains the base class for servers and clients used in examples.
 
+Under the pure-asyncio runtime ('docs/refactor/pure_asyncio.md') an
+example subsystem is a set of asyncio tasks on the stack's event loop —
+'start()' spawns them (it needs a running loop), 'stop()' sets the stop
+event and cancels them, and 'is_alive' reads the stop event, exactly
+the shape the thread-based helper used to have.
+
 examples/lib/subsystem.py
 
 ver 3.0.7
 """
 
-import threading
+import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Coroutine
+from typing import Any
 
 import click
 
-from net_addr import Ip4Address, Ip6Address, IpVersion
-from pytcp.socket import (
+from pmd_net_addr import Ip4Address, Ip6Address, IpVersion
+from pmd_pytcp.socket import (
     AF_INET4,
     AF_INET6,
     IPPROTO_ICMP4,
@@ -58,30 +66,51 @@ class Subsystem(ABC):
 
     _subsystem_name: str
 
-    _event__stop_subsystem: threading.Event
+    _event__stop_subsystem: asyncio.Event
+    _tasks: "list[asyncio.Task[None]]"
 
     def __init__(self) -> None:
         """
         Initialize the subsystem.
         """
 
-        self._event__stop_subsystem = threading.Event()
+        self._event__stop_subsystem = asyncio.Event()
+        self._tasks = []
 
     @abstractmethod
     def start(self) -> None:
         """
-        Start the subsystem.
+        Start the subsystem (spawn its tasks; requires a running loop).
         """
 
         raise NotImplementedError
 
-    @abstractmethod
     def stop(self) -> None:
         """
-        Stop the subsystem.
+        Stop the subsystem: set the stop event and cancel its tasks.
         """
 
-        raise NotImplementedError
+        self._log("Stopping the subsystem.")
+
+        self._event__stop_subsystem.set()
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+
+    async def wait_stopped(self) -> None:
+        """
+        Await the subsystem tasks' completion after 'stop()'.
+        """
+
+        if self._tasks:
+            await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    def _spawn(self, coroutine: "Coroutine[Any, Any, None]", /) -> None:
+        """
+        Track one worker task on the running loop.
+        """
+
+        self._tasks.append(asyncio.get_running_loop().create_task(coroutine))
 
     @property
     def is_alive(self) -> bool:
@@ -108,21 +137,21 @@ class Subsystem(ABC):
         Create and bind the subsystem socket.
         """
 
-        match (ip_version, protocol_name):
-            case IpVersion.IP6, "TCP":
-                subsystem_socket = socket(family=AF_INET6, type=SOCK_STREAM)
-            case IpVersion.IP4, "TCP":
-                subsystem_socket = socket(family=AF_INET4, type=SOCK_STREAM)
-            case IpVersion.IP6, "UDP":
-                subsystem_socket = socket(family=AF_INET6, type=SOCK_DGRAM)
-            case IpVersion.IP4, "UDP":
-                subsystem_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
-            case IpVersion.IP6, "ICMP":
-                subsystem_socket = socket(family=AF_INET6, type=SOCK_RAW, protocol=IPPROTO_ICMP6)
-            case IpVersion.IP4, "ICMP":
-                subsystem_socket = socket(family=AF_INET4, type=SOCK_RAW, protocol=IPPROTO_ICMP4)
-            case _:
-                raise ValueError("Invalid IP versions or protocol combination.")
+        selector = (ip_version, protocol_name)
+        if selector == (IpVersion.IP6, "TCP"):
+            subsystem_socket = socket(family=AF_INET6, type=SOCK_STREAM)
+        elif selector == (IpVersion.IP4, "TCP"):
+            subsystem_socket = socket(family=AF_INET4, type=SOCK_STREAM)
+        elif selector == (IpVersion.IP6, "UDP"):
+            subsystem_socket = socket(family=AF_INET6, type=SOCK_DGRAM)
+        elif selector == (IpVersion.IP4, "UDP"):
+            subsystem_socket = socket(family=AF_INET4, type=SOCK_DGRAM)
+        elif selector == (IpVersion.IP6, "ICMP"):
+            subsystem_socket = socket(family=AF_INET6, type=SOCK_RAW, protocol=IPPROTO_ICMP6)
+        elif selector == (IpVersion.IP4, "ICMP"):
+            subsystem_socket = socket(family=AF_INET4, type=SOCK_RAW, protocol=IPPROTO_ICMP4)
+        else:
+            raise ValueError("Invalid IP versions or protocol combination.")
 
         self._log(f"Created socket [{subsystem_socket}].")
 

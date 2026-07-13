@@ -28,12 +28,15 @@ This module contains the daemon-side per-socket data bridge.
 When a client opens a stream socket the daemon creates a socketpair, hands
 one end to the client as its real socket fd, and runs a 'SocketBridge'
 shuttling bytes between the other end and the internal stack socket. Two
-blocking pump threads carry the two directions: RX (stack socket ->
-client) and TX (client -> stack socket). Each blocks on a short-timeout
-read so it can re-check the stop flag, and propagates a half-close (a
-'recv' of b"") as a 'shutdown' on the far side. Backpressure falls out of
-the socketpair: a slow reader blocks the pump, which stalls the stack
-socket and closes the TCP window.
+asyncio pump tasks carry the two directions ('docs/refactor/pure_asyncio.md'):
+RX (stack socket -> client) awaits the stack socket's async 'recv'; TX
+(client -> stack socket) awaits 'loop.sock_recv' on the socketpair end.
+Each propagates a half-close (a read of b"") as a 'shutdown' on the far
+side. Teardown is task cancellation — 'stop()' cancels both pumps and
+defers the socketpair close to a finaliser task so a pump still parked
+inside a loop sock call never races the close. Backpressure falls out of
+the socketpair: a slow reader stalls the pump's 'sock_sendall', which
+stalls the stack socket and closes the TCP window.
 
 pmd_pytcp/ipc/ipc__socket_bridge.py
 
@@ -42,35 +45,38 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
-import threading
 from typing import Protocol
+
 from pmd_pytcp._compat import as_buffer
 
-IPC__BRIDGE__POLL_TIMEOUT__SEC: float = 0.2
 IPC__BRIDGE__CHUNK_SIZE: int = 65536
-IPC__BRIDGE__JOIN_TIMEOUT__SEC: float = 2.0
 
 
 class BridgedSocket(Protocol):
     """
-    The stack-socket surface the data bridge drives.
+    The stack-socket surface the data bridge drives (the pure-asyncio
+    socket API — 'recv' / 'send' are coroutines, 'shutdown' stays sync).
     """
 
-    def recv(self, bufsize: int, timeout: float) -> bytes:
+    async def recv(self, bufsize: int, timeout: float | None = None) -> bytes:
         """
-        Receive up to 'bufsize' bytes, blocking up to 'timeout' seconds.
+        Receive up to 'bufsize' bytes, waiting up to 'timeout' seconds.
         """
+        ...
 
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send some of 'data', returning the number of bytes accepted.
         """
+        ...
 
     def shutdown(self, how: int, /) -> None:
         """
         Shut down one or both halves of the connection.
         """
+        ...
 
 
 class SocketBridge:
@@ -86,31 +92,30 @@ class SocketBridge:
 
         self._stack_socket = stack_socket
         self._data_end = data_end
-        self._data_end.settimeout(IPC__BRIDGE__POLL_TIMEOUT__SEC)
-        self._event__stop = threading.Event()
-        self._thread__rx: threading.Thread | None = None
-        self._thread__tx: threading.Thread | None = None
+        self._data_end.setblocking(False)
+        self._task__rx: "asyncio.Task[None] | None" = None
+        self._task__tx: "asyncio.Task[None] | None" = None
+        self._stopped = False
 
     def start(self) -> None:
         """
-        Spawn the RX and TX pump threads.
+        Spawn the RX and TX pump tasks (requires a running loop).
         """
 
-        self._thread__rx = threading.Thread(target=self._pump_rx, name="IPC-Bridge-RX")
-        self._thread__tx = threading.Thread(target=self._pump_tx, name="IPC-Bridge-TX")
-        self._thread__rx.start()
-        self._thread__tx.start()
+        loop = asyncio.get_running_loop()
+        self._task__rx = loop.create_task(self._pump_rx(), name="IPC-Bridge-RX")
+        self._task__tx = loop.create_task(self._pump_tx(), name="IPC-Bridge-TX")
 
-    def _pump_rx(self) -> None:
+    async def _pump_rx(self) -> None:
         """
         Pump stack-socket RX data out to the client socketpair end.
         """
 
-        while not self._event__stop.is_set():
+        loop = asyncio.get_running_loop()
+
+        while True:
             try:
-                data = self._stack_socket.recv(IPC__BRIDGE__CHUNK_SIZE, IPC__BRIDGE__POLL_TIMEOUT__SEC)
-            except TimeoutError:
-                continue
+                data = await self._stack_socket.recv(IPC__BRIDGE__CHUNK_SIZE)
             except OSError:
                 break
 
@@ -124,20 +129,20 @@ class SocketBridge:
                 break
 
             try:
-                self._data_end.sendall(data)
+                await loop.sock_sendall(self._data_end, data)
             except OSError:
                 break
 
-    def _pump_tx(self) -> None:
+    async def _pump_tx(self) -> None:
         """
         Pump client-written bytes into the stack socket.
         """
 
-        while not self._event__stop.is_set():
+        loop = asyncio.get_running_loop()
+
+        while True:
             try:
-                data = self._data_end.recv(IPC__BRIDGE__CHUNK_SIZE)
-            except TimeoutError:
-                continue
+                data = await loop.sock_recv(self._data_end, IPC__BRIDGE__CHUNK_SIZE)
             except OSError:
                 break
 
@@ -150,10 +155,10 @@ class SocketBridge:
                     pass
                 break
 
-            if not self._send_all(data):
+            if not await self._send_all(data):
                 break
 
-    def _send_all(self, data: bytes, /) -> bool:
+    async def _send_all(self, data: bytes, /) -> bool:
         """
         Send every byte of 'data' into the stack socket; return False on
         a send error so the caller can stop the pump.
@@ -162,29 +167,59 @@ class SocketBridge:
         offset = 0
         while offset < len(data):
             try:
-                offset += as_buffer(self._stack_socket.send(data[offset:]))
+                offset += as_buffer(await self._stack_socket.send(data[offset:]))
             except OSError:
                 return False
         return True
 
     def stop(self) -> None:
         """
-        Stop both pump threads and close the client-facing socketpair end.
+        Cancel both pump tasks and close the client-facing socketpair
+        end. Sync-safe from loop context: the close is deferred to a
+        finaliser task that awaits the cancelled pumps first, so a pump
+        still parked in a loop sock call never touches a closed fd. With
+        no loop running (the bridge never started) the close is
+        immediate.
         """
 
-        self._event__stop.set()
-        # Interrupt a pump blocked in 'data_end' I/O (e.g. a backpressured
-        # 'sendall') so it observes the stop flag promptly.
+        if self._stopped:
+            return
+        self._stopped = True
+
+        tasks = [task for task in (self._task__rx, self._task__tx) if task is not None]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
         try:
-            self._data_end.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-        for thread in (self._thread__rx, self._thread__tx):
-            if thread is not None:
-                thread.join(timeout=IPC__BRIDGE__JOIN_TIMEOUT__SEC)
+        if loop is None or not tasks:
+            try:
+                self._data_end.close()
+            except OSError:
+                pass
+        else:
+            loop.create_task(self._finalize(tasks), name="IPC-Bridge-Finalize")
 
+    async def _finalize(self, tasks: "list[asyncio.Task[None]]", /) -> None:
+        """
+        Await the cancelled pumps' exit, then close the socketpair end.
+        """
+
+        await asyncio.gather(*tasks, return_exceptions=True)
         try:
             self._data_end.close()
         except OSError:
             pass
+
+    async def wait_stopped(self) -> None:
+        """
+        Await both pump tasks' completion after 'stop()'.
+        """
+
+        tasks = [task for task in (self._task__rx, self._task__tx) if task is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)

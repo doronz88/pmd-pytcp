@@ -25,14 +25,19 @@
 """
 This module contains the PyTCP daemon run loop.
 
-'run_daemon' boots the in-process stack (init -> add one interface ->
-start), brings up the AF_UNIX control server so out-of-process
-'pmd_pytcp.client' consumers can open sockets and drive the control APIs, and
-then blocks until SIGINT / SIGTERM, tearing the IPC server and the stack
-back down on the way out. 'default_socket_path' is the canonical control
-socket location ('$XDG_RUNTIME_DIR/pmd_pytcp.sock', falling back to the
-system temp dir). Readiness is reported through an 'on_ready' callback so
-the run loop stays output-free and testable; the '__main__' CLI prints it.
+'run_daemon' is a coroutine ('docs/refactor/pure_asyncio.md') that boots
+the in-process stack (init -> add one interface -> await start), brings
+up the AF_UNIX control server so out-of-process 'pmd_pytcp.client' consumers
+can open sockets and drive the control APIs, and then waits until
+SIGINT / SIGTERM, tearing the IPC server and the stack back down on the
+way out. The '__main__' CLI drives it with 'asyncio.run'. Signals are
+wired through 'loop.add_signal_handler', with a portable
+'signal.signal' fallback (marshalling back onto the loop via
+'call_soon_threadsafe') for platforms whose loop lacks signal-handler
+support. 'default_socket_path' is the canonical control socket location
+('$XDG_RUNTIME_DIR/pmd_pytcp.sock', falling back to the system temp dir).
+Readiness is reported through an 'on_ready' callback so the run loop
+stays output-free and testable; the '__main__' CLI prints it.
 
 pmd_pytcp/daemon/daemon.py
 
@@ -41,10 +46,10 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 import tempfile
-import threading
 from collections.abc import Callable
 from typing import Any
 
@@ -83,7 +88,34 @@ def _resolve_interface(interface_name: str, *, mac_address: MacAddress | None) -
     raise ValueError(f"Unsupported interface type {interface_name[:3]!r}; only 'tap' and 'tun' are supported.")
 
 
-def run_daemon(
+def _install_signal_handlers(stop: asyncio.Event, /) -> "list[signal.Signals]":
+    """
+    Arm SIGINT / SIGTERM to set the stop event. Prefers the loop's
+    'add_signal_handler' (delivery lands directly on the loop); falls
+    back to 'signal.signal' with a 'call_soon_threadsafe' trampoline on
+    platforms whose loop lacks signal-handler support (e.g. the Windows
+    proactor). Returns the signals armed via the loop so the caller can
+    disarm them on the way out.
+    """
+
+    loop = asyncio.get_running_loop()
+    armed: list[signal.Signals] = []
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(signum, stop.set)
+            armed.append(signum)
+        except (NotImplementedError, RuntimeError):
+
+            def _on_signal(_signum: int, _frame: object, /) -> None:
+                loop.call_soon_threadsafe(stop.set)
+
+            signal.signal(signum, _on_signal)
+
+    return armed
+
+
+async def run_daemon(
     *,
     socket_path: str,
     interface_name: str = "tap7",
@@ -96,7 +128,7 @@ def run_daemon(
 ) -> None:
     """
     Run the PyTCP daemon: boot the stack on one interface, serve the
-    AF_UNIX control socket, and block until SIGINT / SIGTERM.
+    AF_UNIX control socket, and wait until SIGINT / SIGTERM.
 
     With no explicit host address a NIC autoconfigures (DHCPv4 for IPv4,
     SLAAC for IPv6). 'on_ready', if given, is called with 'socket_path'
@@ -114,24 +146,23 @@ def run_daemon(
         ip6_host=ip6_host,
         ip6_gua_autoconfig=ip6_support and ip6_host is None,
     )
-    stack.start()
+    await stack.start()
 
     server = IpcServer(socket_path=socket_path)
-    server.start()
+    await server.start()
 
     if on_ready is not None:
         on_ready(socket_path)
 
-    stop = threading.Event()
-
-    def _on_signal(_signum: int, _frame: object) -> None:
-        stop.set()
-
-    signal.signal(signal.SIGINT, _on_signal)
-    signal.signal(signal.SIGTERM, _on_signal)
+    stop = asyncio.Event()
+    armed_signals = _install_signal_handlers(stop)
 
     try:
-        stop.wait()
+        await stop.wait()
     finally:
+        loop = asyncio.get_running_loop()
+        for signum in armed_signals:
+            loop.remove_signal_handler(signum)
         server.stop()
-        stack.stop()
+        await server.wait_stopped()
+        await stack.stop()

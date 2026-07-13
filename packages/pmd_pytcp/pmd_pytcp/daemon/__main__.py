@@ -38,6 +38,7 @@ ver 3.0.7
 from __future__ import annotations
 
 import argparse
+import asyncio
 
 from pmd_net_addr import (
     Ip4IfAddr,
@@ -140,15 +141,19 @@ def main(argv: list[str] | None = None) -> None:
 
     args = build_parser().parse_args(argv)
 
-    run_daemon(
-        socket_path=args.ipc_socket,
-        interface_name=args.interface,
-        mac_address=args.mac_address,
-        ip4_support=args.ip4_support,
-        ip4_host=args.ip4_address,
-        ip6_support=args.ip6_support,
-        ip6_host=args.ip6_address,
-        on_ready=lambda path: print(f"PyTCP daemon listening on {path}", flush=True),
+    # 'run_daemon' is a coroutine ('docs/refactor/pure_asyncio.md') —
+    # the whole stack runs on this one event loop.
+    asyncio.run(
+        run_daemon(
+            socket_path=args.ipc_socket,
+            interface_name=args.interface,
+            mac_address=args.mac_address,
+            ip4_support=args.ip4_support,
+            ip4_host=args.ip4_address,
+            ip6_support=args.ip6_support,
+            ip6_host=args.ip6_address,
+            on_ready=lambda path: print(f"PyTCP daemon listening on {path}", flush=True),
+        )
     )
 
 

@@ -27,14 +27,16 @@ This module contains the daemon-side per-socket datagram bridge.
 
 The datagram analogue of 'SocketBridge': it shuttles whole datagrams
 between a stack datagram socket and a SOCK_DGRAM socketpair end. Two
-blocking pump threads carry the two directions — RX (stack 'recvfrom' ->
-client) frames each datagram with its sender address; TX (client ->
-stack) decodes the framed address and replays it as 'sendto' (or 'send'
-for a connected socket). A datagram socket has no peer-close EOF (a
-SOCK_DGRAM socketpair read just times out when the far end closes), so
-teardown is driven by 'stop' from the control-channel disconnect, not by
-a data-channel signal. A datagram the stack refuses (e.g. no route) is
-dropped — UDP is best-effort — and the pumps keep running.
+asyncio pump tasks carry the two directions
+('docs/refactor/pure_asyncio.md') — RX (stack 'recvmsg' -> client)
+frames each datagram with its sender address; TX (client -> stack)
+decodes the framed address and replays it as 'sendto' (or 'send' for a
+connected socket). A datagram socket has no peer-close EOF (a SOCK_DGRAM
+socketpair read never yields b"" for a closed peer), so teardown is
+driven by 'stop' — task cancellation — from the control-channel
+disconnect, not by a data-channel signal. A datagram the stack refuses
+(e.g. no route) is dropped — UDP is best-effort — and the pumps keep
+running.
 
 pmd_pytcp/ipc/ipc__dgram_bridge.py
 
@@ -43,16 +45,14 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import asyncio
 import socket
-import threading
 from typing import Protocol
 
 from pmd_pytcp.ipc.ipc__dgram_frame import decode_dgram, encode_dgram
 from pmd_pytcp.ipc.ipc__errors import IpcFrameError
 
-IPC__DGRAM_BRIDGE__POLL_TIMEOUT__SEC: float = 0.2
 IPC__DGRAM_BRIDGE__CHUNK_SIZE: int = 65600
-IPC__DGRAM_BRIDGE__JOIN_TIMEOUT__SEC: float = 2.0
 # Ancillary-data buffer the RX pump offers 'recvmsg', large enough for
 # the data-path cmsgs PyTCP emits (IP_TOS / IPV6_TCLASS / IP_OPTIONS).
 IPC__DGRAM_BRIDGE__ANCBUF_SIZE: int = 256
@@ -60,10 +60,11 @@ IPC__DGRAM_BRIDGE__ANCBUF_SIZE: int = 256
 
 class DatagramSocket(Protocol):
     """
-    The stack datagram-socket surface the datagram bridge drives.
+    The stack datagram-socket surface the datagram bridge drives (the
+    pure-asyncio socket API — the waiting calls are coroutines).
     """
 
-    def recvmsg(
+    async def recvmsg(
         self,
         bufsize: int | None,
         ancbufsize: int,
@@ -72,18 +73,21 @@ class DatagramSocket(Protocol):
     ) -> tuple[bytes, list[tuple[int, int, bytes]], int, tuple[str, int] | tuple[str, int, int, int]]:
         """
         Receive one datagram with its ancillary data and sender address,
-        blocking up to 'timeout' seconds.
+        waiting up to 'timeout' seconds (None = until cancelled).
         """
+        ...
 
-    def sendto(self, data: bytes, address: tuple[str, int]) -> int:
+    async def sendto(self, data: bytes, address: tuple[str, int]) -> int:
         """
         Send 'data' as a datagram to 'address'.
         """
+        ...
 
-    def send(self, data: bytes) -> int:
+    async def send(self, data: bytes) -> int:
         """
         Send 'data' as a datagram to the connected peer.
         """
+        ...
 
 
 class DatagramBridge:
@@ -100,59 +104,61 @@ class DatagramBridge:
 
         self._dgram_socket = dgram_socket
         self._data_end = data_end
-        self._data_end.settimeout(IPC__DGRAM_BRIDGE__POLL_TIMEOUT__SEC)
-        self._event__stop = threading.Event()
-        self._thread__rx: threading.Thread | None = None
-        self._thread__tx: threading.Thread | None = None
+        self._data_end.setblocking(False)
+        self._task__rx: "asyncio.Task[None] | None" = None
+        self._task__tx: "asyncio.Task[None] | None" = None
+        self._stopped = False
 
     def start(self) -> None:
         """
-        Spawn the RX and TX pump threads.
+        Spawn the RX and TX pump tasks (requires a running loop).
         """
 
-        self._thread__rx = threading.Thread(target=self._pump_rx, name="IPC-DgramBridge-RX")
-        self._thread__tx = threading.Thread(target=self._pump_tx, name="IPC-DgramBridge-TX")
-        self._thread__rx.start()
-        self._thread__tx.start()
+        loop = asyncio.get_running_loop()
+        self._task__rx = loop.create_task(self._pump_rx(), name="IPC-DgramBridge-RX")
+        self._task__tx = loop.create_task(self._pump_tx(), name="IPC-DgramBridge-TX")
 
-    def _pump_rx(self) -> None:
+    async def _pump_rx(self) -> None:
         """
         Pump stack-received datagrams out to the client, framed with the
         sender address and any ancillary control messages.
         """
 
-        while not self._event__stop.is_set():
+        loop = asyncio.get_running_loop()
+
+        while True:
             try:
-                data, ancdata, _flags, address = self._dgram_socket.recvmsg(
+                data, ancdata, _flags, address = await self._dgram_socket.recvmsg(
                     None,
                     IPC__DGRAM_BRIDGE__ANCBUF_SIZE,
                     0,
-                    IPC__DGRAM_BRIDGE__POLL_TIMEOUT__SEC,
+                    None,
                 )
-            except TimeoutError:
-                continue
             except OSError:
                 # A transient receive error (e.g. a cached ICMP
                 # unreachable surfaced as ConnectionRefusedError, which
-                # clears itself) — skip this read and keep pumping.
+                # clears itself) — skip this read and keep pumping;
+                # yield a beat so a persistent error cannot hot-spin
+                # the loop.
+                await asyncio.sleep(0)
                 continue
 
             try:
-                self._data_end.send(encode_dgram((address[0], address[1]), data, ancdata))
+                await loop.sock_sendall(self._data_end, encode_dgram((address[0], address[1]), data, ancdata))
             except OSError:
                 break
 
-    def _pump_tx(self) -> None:
+    async def _pump_tx(self) -> None:
         """
         Pump client-written datagrams into the stack, replaying each
         framed address as 'sendto' (or 'send' for a connected socket).
         """
 
-        while not self._event__stop.is_set():
+        loop = asyncio.get_running_loop()
+
+        while True:
             try:
-                blob = self._data_end.recv(IPC__DGRAM_BRIDGE__CHUNK_SIZE)
-            except TimeoutError:
-                continue
+                blob = await loop.sock_recv(self._data_end, IPC__DGRAM_BRIDGE__CHUNK_SIZE)
             except OSError:
                 break
 
@@ -168,9 +174,9 @@ class DatagramBridge:
 
             try:
                 if address is None:
-                    self._dgram_socket.send(payload)
+                    await self._dgram_socket.send(payload)
                 else:
-                    self._dgram_socket.sendto(payload, address)
+                    await self._dgram_socket.sendto(payload, address)
             except OSError:
                 # The stack refused the datagram (e.g. no route, or no
                 # destination on a connected-less send) — drop it; UDP
@@ -179,20 +185,49 @@ class DatagramBridge:
 
     def stop(self) -> None:
         """
-        Stop both pump threads and close the client-facing socketpair end.
+        Cancel both pump tasks and close the client-facing socketpair
+        end (deferred to a finaliser task while the loop runs — see
+        'SocketBridge.stop').
         """
 
-        self._event__stop.set()
+        if self._stopped:
+            return
+        self._stopped = True
+
+        tasks = [task for task in (self._task__rx, self._task__tx) if task is not None]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
         try:
-            self._data_end.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-        for thread in (self._thread__rx, self._thread__tx):
-            if thread is not None:
-                thread.join(timeout=IPC__DGRAM_BRIDGE__JOIN_TIMEOUT__SEC)
+        if loop is None or not tasks:
+            try:
+                self._data_end.close()
+            except OSError:
+                pass
+        else:
+            loop.create_task(self._finalize(tasks), name="IPC-DgramBridge-Finalize")
 
+    async def _finalize(self, tasks: "list[asyncio.Task[None]]", /) -> None:
+        """
+        Await the cancelled pumps' exit, then close the socketpair end.
+        """
+
+        await asyncio.gather(*tasks, return_exceptions=True)
         try:
             self._data_end.close()
         except OSError:
             pass
+
+    async def wait_stopped(self) -> None:
+        """
+        Await both pump tasks' completion after 'stop()'.
+        """
+
+        tasks = [task for task in (self._task__rx, self._task__tx) if task is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)

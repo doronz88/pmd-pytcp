@@ -28,7 +28,9 @@ This module contains the client-side mirror of the link control API.
 'ClientLink' marshals each link operation across the IPC control channel
 to the daemon's 'pmd_pytcp.stack.link' API, mirroring its 'interface(ifindex)'
 selector, its methods, and its per-interface read properties (carried as
-zero-argument reads over the RPC).
+zero-argument reads over the RPC). Pure-asyncio
+('docs/refactor/pure_asyncio.md'): the methods are coroutines and the
+read properties return awaitables — 'mtu = await proxy.mtu'.
 
 pmd_pytcp/client/client__link.py
 
@@ -37,7 +39,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Awaitable, cast
 
 from pmd_net_addr import MacAddress
 from pmd_pytcp.client.client__base import _DeviceScopedProxy
@@ -52,79 +54,79 @@ class ClientLink(_DeviceScopedProxy):
 
     _api_name = "link"
 
-    def list_interfaces(self) -> tuple[int, ...]:
+    async def list_interfaces(self) -> tuple[int, ...]:
         """
         List the ifindexes of every registered interface.
         """
 
-        return cast(tuple[int, ...], self._call("list_interfaces", {}))
+        return cast(tuple[int, ...], await self._call("list_interfaces", {}))
 
-    def set_mtu(self, *, mtu: int) -> None:
+    async def set_mtu(self, *, mtu: int) -> None:
         """
         Set the bound interface's MTU.
         """
 
-        self._call("set_mtu", {"mtu": mtu})
+        await self._call("set_mtu", {"mtu": mtu})
 
-    def set_mac_address(self, *, mac_address: MacAddress) -> None:
+    async def set_mac_address(self, *, mac_address: MacAddress) -> None:
         """
         Set the bound interface's MAC address.
         """
 
-        self._call("set_mac_address", {"mac_address": mac_address})
+        await self._call("set_mac_address", {"mac_address": mac_address})
 
     @property
-    def mac_address(self) -> MacAddress | None:
+    def mac_address(self) -> "Awaitable[MacAddress | None]":
         """
-        Get the bound interface's MAC address.
-        """
-
-        return cast(MacAddress | None, self._call("mac_address", {}))
-
-    @property
-    def mtu(self) -> int:
-        """
-        Get the bound interface's MTU.
+        Get the bound interface's MAC address (awaitable).
         """
 
-        return cast(int, self._call("mtu", {}))
+        return cast("Awaitable[MacAddress | None]", self._call("mac_address", {}))
 
     @property
-    def name(self) -> str | None:
+    def mtu(self) -> "Awaitable[int]":
         """
-        Get the bound interface's name.
-        """
-
-        return cast(str | None, self._call("name", {}))
-
-    @property
-    def interface_layer(self) -> InterfaceLayer:
-        """
-        Get the bound interface's layer (L2 / L3).
+        Get the bound interface's MTU (awaitable).
         """
 
-        return cast(InterfaceLayer, self._call("interface_layer", {}))
+        return cast("Awaitable[int]", self._call("mtu", {}))
 
     @property
-    def is_running(self) -> bool:
+    def name(self) -> "Awaitable[str | None]":
         """
-        Get whether the bound interface is running.
-        """
-
-        return cast(bool, self._call("is_running", {}))
-
-    @property
-    def stats(self) -> LinkStats:
-        """
-        Get the bound interface's counter snapshot.
+        Get the bound interface's name (awaitable).
         """
 
-        return cast(LinkStats, self._call("stats", {}))
+        return cast("Awaitable[str | None]", self._call("name", {}))
 
     @property
-    def flags(self) -> frozenset[LinkFlag]:
+    def interface_layer(self) -> "Awaitable[InterfaceLayer]":
         """
-        Get the bound interface's flags.
+        Get the bound interface's layer (L2 / L3) (awaitable).
         """
 
-        return cast(frozenset[LinkFlag], self._call("flags", {}))
+        return cast("Awaitable[InterfaceLayer]", self._call("interface_layer", {}))
+
+    @property
+    def is_running(self) -> "Awaitable[bool]":
+        """
+        Get whether the bound interface is running (awaitable).
+        """
+
+        return cast("Awaitable[bool]", self._call("is_running", {}))
+
+    @property
+    def stats(self) -> "Awaitable[LinkStats]":
+        """
+        Get the bound interface's counter snapshot (awaitable).
+        """
+
+        return cast("Awaitable[LinkStats]", self._call("stats", {}))
+
+    @property
+    def flags(self) -> "Awaitable[frozenset[LinkFlag]]":
+        """
+        Get the bound interface's flags (awaitable).
+        """
+
+        return cast("Awaitable[frozenset[LinkFlag]]", self._call("flags", {}))

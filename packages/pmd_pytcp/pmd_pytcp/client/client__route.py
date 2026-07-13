@@ -55,21 +55,21 @@ class ClientRoute(_ClientApiProxy):
 
     _api_name = "route"
 
-    def list_routes(self, *, family: AddressFamily | None = None) -> tuple[_AnyRoute, ...]:
+    async def list_routes(self, *, family: AddressFamily | None = None) -> tuple[_AnyRoute, ...]:
         """
         List the installed routes, optionally filtered by address family.
         """
 
-        return cast(tuple[_AnyRoute, ...], self._call("list_routes", {"family": family}))
+        return cast(tuple[_AnyRoute, ...], await self._call("list_routes", {"family": family}))
 
-    def add_route(self, *, route: _AnyRoute) -> None:
+    async def add_route(self, *, route: _AnyRoute) -> None:
         """
         Install a route.
         """
 
-        self._call("add_route", {"route": route})
+        await self._call("add_route", {"route": route})
 
-    def remove_route(
+    async def remove_route(
         self,
         *,
         destination: Ip4Network | Ip6Network,
@@ -79,18 +79,18 @@ class ClientRoute(_ClientApiProxy):
         Remove the routes matching 'destination' (and optional gateway).
         """
 
-        return cast(int, self._call("remove_route", {"destination": destination, "gateway": gateway}))
+        return cast(int, await self._call("remove_route", {"destination": destination, "gateway": gateway}))
 
-    def replace_default(self, *, gateway: Ip4Address | Ip6Address, protocol: RouteProtocol) -> None:
+    async def replace_default(self, *, gateway: Ip4Address | Ip6Address, protocol: RouteProtocol) -> None:
         """
         Replace the default route for the gateway's address family.
         """
 
-        self._call("replace_default", {"gateway": gateway, "protocol": protocol})
+        await self._call("replace_default", {"gateway": gateway, "protocol": protocol})
 
-    def remove_default(self, *, family: AddressFamily) -> int:
+    async def remove_default(self, *, family: AddressFamily) -> int:
         """
         Remove the default route for 'family'.
         """
 
-        return cast(int, self._call("remove_default", {"family": family}))
+        return cast(int, await self._call("remove_default", {"family": family}))

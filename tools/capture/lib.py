@@ -188,7 +188,7 @@ class Harness:
         """
 
         self._cfg = config
-        self._tmp = Path(tempfile.mkdtemp(prefix="pytcp-cap-"))
+        self._tmp = Path(tempfile.mkdtemp(prefix="pmd_pytcp-cap-"))
         self._pcap = self._tmp / "cap.pcap"
         self._log = self._tmp / "stack.log"
         self._out = self._tmp / "client.out"
