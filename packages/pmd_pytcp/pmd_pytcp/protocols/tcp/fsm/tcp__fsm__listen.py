@@ -58,7 +58,7 @@ def fsm__listen__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
     are purely informational. Log only.
     """
 
-    __debug__ and log(
+    log.enabled and log(
         "tcp-ss",
         f"[{session}] - <ly>[{session._state}]</> - got ICMP "
         f"category={metadata.category.name} type={metadata.icmp_type} "
@@ -118,7 +118,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             accept_q_len = len(session._socket._tcp_accept)
             accept_q_cap = session._socket._backlog
             if accept_q_len >= accept_q_cap:
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Accept queue full " f"({accept_q_len}/{accept_q_cap}); " "dropping SYN silently",
                 )
@@ -231,6 +231,10 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                 TCP__MIN_MSS,
                 min(packet_rx_md.tcp__mss, session._mss_ceiling()),
             )
+            # Peer's advertised MSS also bounds the PLPMTUD probe
+            # ladder: probing must never propose a packet larger
+            # than the segment size the peer invited.
+            session._plpmtud_adapter.limit_max(packet_rx_md.tcp__mss + session._ip_tcp_overhead)
             session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2:
             # passive-open mirrors peer's offer. If peer's SYN
@@ -372,7 +376,7 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
             session._peer_contacted = True
             if syn_data:
                 session._enqueue_rx_buffer(syn_data)
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Queued {len(syn_data)} bytes "
                     "of SYN-piggybacked data for delivery after ESTABLISHED",

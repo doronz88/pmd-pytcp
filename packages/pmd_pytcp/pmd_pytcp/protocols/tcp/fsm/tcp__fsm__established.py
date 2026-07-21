@@ -111,7 +111,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
     # current RCV.NXT, and would otherwise be silently dropped.
     if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-established (RFC 9293 §3.10.7.4)",
         )
@@ -165,13 +165,13 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
             session._keepalive_arm_idle()
             new_wnd = packet_rx_md.tcp__win << session._win.snd_wsc
             if new_wnd != session._win.snd_wnd:
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Updated sending window size " f"{session._win.snd_wnd} -> {new_wnd} (wnd-update)",
                 )
                 session._win.snd_wnd = new_wnd
                 if session._win.snd_wnd > 0 and session._persist.active:
-                    __debug__ and log(
+                    log.enabled and log(
                         "tcp-ss",
                         f"[{session}] - Persist: peer reopened window via wnd-update, deactivating timer",
                     )
@@ -277,7 +277,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         # - the existing fall-through handles that path.)
         if gt32(packet_rx_md.tcp__ack, session._snd_seq.max):
             session._emit_challenge_ack()
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Sent empty ACK reply for unacceptable "
                 f"ACK={packet_rx_md.tcp__ack} > SND.MAX={session._snd_seq.max}",
@@ -292,7 +292,7 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
         ack_lower_bound = sub32(session._snd_seq.una, session._win.max_window)
         if lt32(packet_rx_md.tcp__ack, ack_lower_bound):
             session._emit_challenge_ack()
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Sent challenge ACK for unacceptable "
                 f"ACK={packet_rx_md.tcp__ack} < SND.UNA - MAX.SND.WND="

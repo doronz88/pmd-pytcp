@@ -48,7 +48,7 @@ from typing_extensions import override
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.lib.name_enum import NameEnum
-from typing import Generic, TypeVar, Union
+from typing import Generic, Optional, TypeVar, Union
 
 # RFC 8899 §5.1.2 MAX_PROBES default — the number of
 # consecutive losses on the engine before black-hole
@@ -88,6 +88,19 @@ BASE_PLPMTU__IP6: int = 1280
 # worthwhile and the engine declares convergence.
 LADDER_GRANULARITY: int = 8
 
+# Consecutive probe ACKs required before a SEARCHING
+# candidate is committed (ack_size / current_mtu raised).
+# RFC 4821 §7.7 warns about paths that deliver a given
+# size only intermittently; a single lucky ACK of an
+# oversized probe would raise the working PLPMTU into a
+# near-black-hole (observed in the wild: a forwarder
+# whose per-packet buffer drops oversized packets only
+# *most* of the time). Requiring the same candidate to
+# survive several round trips makes the false-positive
+# probability negligible while costing successful rungs
+# only (VALIDATION_ACKS - 1) extra RTTs each.
+VALIDATION_ACKS: int = 3
+
 
 class PmtuState(NameEnum):
     """
@@ -123,8 +136,13 @@ class PmtuSearch(Generic[A]):
         "_base_mtu",
         "_search_high",
         "_probe_count",
+        "_probe_timer_sec",
         "_probe_timer_expiry",
         "_raise_timer_expiry",
+        "_probing",
+        "_validation_size",
+        "_validation_acks",
+        "_seed_mtu",
     )
 
     _address: A
@@ -137,15 +155,54 @@ class PmtuSearch(Generic[A]):
     _base_mtu: int
     _search_high: int
     _probe_count: int
+    _probe_timer_sec: float
     _probe_timer_expiry: float | None
     _raise_timer_expiry: float | None
+    _probing: bool
+    _validation_size: int
+    _validation_acks: int
+    _seed_mtu: int
 
-    def __init__(self, *, address: A, interface_mtu: int) -> None:
+    def __init__(
+        self,
+        *,
+        address: A,
+        interface_mtu: int,
+        probing: bool = False,
+        probe_timer_sec: float = PROBE_TIMER__SEC,
+        plpmtu_seed: Optional[int] = None,
+    ) -> None:
         """
         Initialize the PLPMTUD engine for one destination.
         Constructed in the BASE state with the initial
         probe equal to BASE_PLPMTU so the search begins by
         confirming base connectivity (RFC 8899 §5.2).
+
+        'probing' selects the working-PLPMTU seed. With active
+        probing OFF (classical shrink-only PMTUD), 'current_mtu'
+        starts at the interface MTU — the link MTU is the best
+        available estimate until ICMP says otherwise. With
+        active probing ON, 'current_mtu' MUST start at
+        BASE_PLPMTU and only ever grow through sizes the path
+        actually acknowledged (probe-ack or implicit
+        confirmation): seeding it at the interface MTU would
+        (a) let the transport send at a size the path never
+        validated, and (b) permanently disarm the grow-on-ack
+        hook, since no probe ack can exceed the interface MTU.
+
+        'probe_timer_sec' is the RFC 8899 §5.1.1 PROBE_TIMER —
+        loss-declaration deadline for an in-flight probe. The
+        30 s default suits WAN paths; low-RTT tunnels want it
+        much lower so a black-holed probe cannot park the
+        search (adapters read 'tcp.plpmtud.probe_timer_ms').
+
+        'plpmtu_seed' (probing mode only) is an operator-
+        declared-safe starting PLPMTU — the packet size the
+        transport already trusts (TCP feeds it 'tcp.base_mss'
+        plus header overhead). The working PLPMTU and the
+        search low both start there instead of at BASE_PLPMTU,
+        so the transport's proven cold-start size is neither
+        probed below nor synced away.
         """
 
         self._address = address
@@ -157,19 +214,21 @@ class PmtuSearch(Generic[A]):
             self._base_mtu = BASE_PLPMTU__IP4
         self._max_mtu = max(interface_mtu, self._min_mtu)
         self._state = PmtuState.BASE
-        # current_mtu starts at the interface MTU, not BASE_PLPMTU
-        # — until probing or ICMP signals tell us otherwise, the
-        # link MTU is the best available estimate (matches Linux's
-        # pragmatic classical-PMTUD-compatible behaviour). The
-        # BASE_PLPMTU value is the size of the initial *probe*, not
-        # the working PLPMTU.
-        self._current_mtu = self._max_mtu
+        self._probing = probing
+        if probing and plpmtu_seed is not None:
+            self._seed_mtu = min(max(plpmtu_seed, self._base_mtu), self._max_mtu)
+        else:
+            self._seed_mtu = self._base_mtu
+        self._current_mtu = self._seed_mtu if probing else self._max_mtu
         self._candidate_mtu = self._base_mtu
         self._ack_size = self._min_mtu
         self._search_high = self._max_mtu
         self._probe_count = 0
+        self._probe_timer_sec = probe_timer_sec
         self._probe_timer_expiry = None
         self._raise_timer_expiry = None
+        self._validation_size = 0
+        self._validation_acks = 0
 
     @property
     def state(self) -> PmtuState:
@@ -245,7 +304,7 @@ class PmtuSearch(Generic[A]):
             self._state = PmtuState.BASE
             self._candidate_mtu = self._base_mtu
             self._probe_count = 0
-            self._probe_timer_expiry = now + PROBE_TIMER__SEC
+            self._probe_timer_expiry = now + self._probe_timer_sec
             self._raise_timer_expiry = None
             return self._candidate_mtu
 
@@ -260,7 +319,7 @@ class PmtuSearch(Generic[A]):
             self._candidate_mtu = self._next_candidate()
             self._state = PmtuState.SEARCHING
             if self._candidate_mtu is not None:
-                self._probe_timer_expiry = now + PROBE_TIMER__SEC
+                self._probe_timer_expiry = now + self._probe_timer_sec
                 return self._candidate_mtu
             return None
 
@@ -269,7 +328,7 @@ class PmtuSearch(Generic[A]):
                 return None
             if self._probe_timer_expiry is None:
                 # First probe of this candidate.
-                self._probe_timer_expiry = now + PROBE_TIMER__SEC
+                self._probe_timer_expiry = now + self._probe_timer_sec
                 return self._candidate_mtu
             # Probe in flight; caller awaits ack or
             # will call on_probe_loss when its timer
@@ -281,12 +340,36 @@ class PmtuSearch(Generic[A]):
         Notify the engine that a probe of 'size' bytes was
         acknowledged. Resets the consecutive-loss counter
         and advances the search ladder.
+
+        In probing mode a SEARCHING candidate must be
+        acknowledged VALIDATION_ACKS times consecutively
+        before it commits (raises ack_size / current_mtu):
+        paths exist that deliver an oversized packet only
+        intermittently (RFC 4821 §7.7), and committing on a
+        single lucky ACK would raise the working PLPMTU
+        into a near-black-hole. Until validated, the same
+        candidate is simply re-probed; any loss in between
+        resets the count and narrows the ladder as usual.
         """
 
         if self._state is PmtuState.DISABLED:
             return
 
         self._probe_count = 0
+        if self._probing and self._state == PmtuState.SEARCHING:
+            if size == self._validation_size:
+                self._validation_acks += 1
+            else:
+                self._validation_size = size
+                self._validation_acks = 1
+            if self._validation_acks < VALIDATION_ACKS:
+                # Not yet validated: clear the probe timer so
+                # 'next_probe_size' re-arms and the emit path
+                # sends another probe of the SAME candidate.
+                self._probe_timer_expiry = None
+                return
+            self._validation_size = 0
+            self._validation_acks = 0
         if size > self._ack_size:
             self._ack_size = size
         if size > self._current_mtu:
@@ -335,6 +418,10 @@ class PmtuSearch(Generic[A]):
 
         self._probe_count += 1
         self._probe_timer_expiry = None
+        # A loss between validation ACKs voids the candidate's
+        # partial validation streak.
+        self._validation_size = 0
+        self._validation_acks = 0
 
         # Black-hole detection: MAX_PROBES consecutive
         # losses clamp to the floor and enter ERROR. The
@@ -342,7 +429,11 @@ class PmtuSearch(Generic[A]):
         # confirmation timer per RFC 8899 §5.1.1.
         if self._probe_count >= MAX_PROBES:
             self._state = PmtuState.ERROR
-            self._current_mtu = self._min_mtu
+            # In probing mode the operator-declared-safe seed is
+            # the trusted fallback (same contract as a static
+            # send-MSS cap); the family floor stays the clamp for
+            # classical mode, where nothing vouches for more.
+            self._current_mtu = self._seed_mtu if self._probing else self._min_mtu
             self._candidate_mtu = None
             self._probe_count = 0
             self._raise_timer_expiry = now + PMTU_RAISE_TIMER__SEC
@@ -414,21 +505,127 @@ class PmtuSearch(Generic[A]):
                 # second-guess in-flight probes from the
                 # ICMP signal.
 
-    def confirm_current(self, size: int) -> None:
+    def confirm_current(self, size: int, *, now: float = 0.0) -> None:
         """
         Notify the engine that a non-probe data segment of
         'size' bytes was acknowledged. The implicit-probe
         feedback from regular traffic counts toward the
         search-low advancement per RFC 4821 §7.1 final
-        paragraph.
+        paragraph. 'now' anchors the raise timer in the
+        (degenerate) case where the implicit confirmation
+        alone completes the search.
+
+        In BASE state, an implicit confirmation of >= BASE_PLPMTU
+        bytes IS the base-connectivity confirmation (RFC 4821 §7.1:
+        "the normal flow of data can implicitly confirm" a size) —
+        open the search without ever emitting a dedicated base
+        probe. This matters for transports that seed the working
+        MSS at or above BASE_PLPMTU: their base probe would be
+        *smaller* than regular data segments, so the probe-emit
+        gate (which only fires for candidates larger than the
+        working MSS) can never send it, and without this
+        transition the engine would sit in BASE forever.
         """
 
         if self._state is PmtuState.DISABLED:
             return
-        if size > self._ack_size:
+        # Implicit confirmations may advance the search floor only
+        # up to the CURRENT working PLPMTU — never past it, and
+        # never raise 'current_mtu' itself. Only the validated
+        # probe path may raise the working size: after a
+        # black-hole revert, old in-flight segments of the revoked
+        # (larger) size are still being cum-ACKed as their ranges
+        # are repaired, and letting those confirmations re-raise
+        # the floor or the working size would reinstate the exact
+        # size the revert just proved unsafe.
+        if size > self._ack_size and size <= self._current_mtu:
             self._ack_size = size
-        if size > self._current_mtu and size <= self._search_high:
-            self._current_mtu = size
+        if self._state == PmtuState.BASE and size >= self._base_mtu:
+            self._probe_count = 0
+            self._probe_timer_expiry = None
+            self._candidate_mtu = self._next_candidate()
+            if self._candidate_mtu is None:
+                self._enter_search_complete(now=now)
+            else:
+                self._state = PmtuState.SEARCHING
+
+    def on_black_hole_suspected(self, *, now: float) -> None:
+        """
+        Notify the engine that the transport suffered a hard
+        loss event (an RTO — not a fast-retransmit, which
+        ordinary congestion produces constantly) while running
+        at a probe-raised PLPMTU. Some paths deliver an
+        oversized packet reliably in isolation yet drop it
+        under sustained load (a forwarder with a bounded
+        per-packet buffer), so a size can pass VALIDATION_ACKS
+        probes and still black-hole the bulk stream — the only
+        trustworthy signal is the stream itself stalling.
+
+        Response (probing mode only, and only when the working
+        PLPMTU exceeds the operator-declared-safe seed): revoke
+        the raise — revert 'current_mtu' and the search floor
+        to the seed, cap 'search_high' below the revoked size,
+        and resume SEARCHING. The transport re-syncs its MSS
+        down and the connection continues at the proven size
+        immediately; subsequent probes re-climb the (now
+        narrower) ladder. An RTO at or below the seed is
+        ordinary loss: fall through to nothing — the classical
+        MAX_PROBES machinery already covers a path that cannot
+        even carry the seed.
+
+        Reference: RFC 8899 §5.2 black-hole confirmation;
+        Linux 'tcp_mtu_probing=1' RTO heuristic.
+        """
+
+        if not self._probing or self._state is PmtuState.DISABLED:
+            return
+        if self._current_mtu <= self._seed_mtu:
+            return
+        revoked = self._current_mtu
+        self._current_mtu = self._seed_mtu
+        self._ack_size = min(self._ack_size, self._seed_mtu)
+        self._search_high = min(self._search_high, revoked - 1)
+        self._probe_count = 0
+        self._probe_timer_expiry = None
+        self._validation_size = 0
+        self._validation_acks = 0
+        self._candidate_mtu = self._next_candidate()
+        if self._candidate_mtu is None:
+            self._enter_search_complete(now=now)
+        else:
+            self._state = PmtuState.SEARCHING
+
+    def probe_timer_expired(self, *, now: float) -> bool:
+        """
+        Check whether an in-flight probe has outlived the RFC 8899
+        §5.1.1 PROBE_TIMER. The engine only records the deadline;
+        the transport adapter polls this from its emit path and
+        dispatches 'on_probe_loss' — there is no independent timer
+        wheel driving the engine.
+        """
+
+        return (
+            self._state in (PmtuState.BASE, PmtuState.SEARCHING)
+            and self._probe_timer_expiry is not None
+            and now >= self._probe_timer_expiry
+        )
+
+    def limit_max(self, mtu: int) -> None:
+        """
+        Lower the engine's search ceiling to 'mtu' (floored at the
+        family minimum; never raises). The TCP adapter calls this
+        with the peer's advertised MSS plus header overhead at
+        handshake completion, so the probe ladder never proposes a
+        packet the peer's own segment-size limit forbids.
+        """
+
+        effective = max(mtu, self._min_mtu)
+        if effective < self._max_mtu:
+            self._max_mtu = effective
+        if self._search_high > self._max_mtu:
+            self._search_high = self._max_mtu
+        if self._current_mtu > self._max_mtu:
+            self._current_mtu = self._max_mtu
 
     def _next_candidate(self) -> int | None:
         """

@@ -144,14 +144,14 @@ class Icmp6RxHandler:
             Icmp6Parser(packet_rx)
 
         except PacketValidationError as error:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             self._if._packet_stats_rx.icmp6__failed_parse__drop += 1
             return
 
-        __debug__ and log("icmp6", f"{packet_rx.tracker} - {packet_rx.icmp6}")
+        log.enabled and log("icmp6", f"{packet_rx.tracker} - {packet_rx.icmp6}")
 
         # RFC 6980 §5: Neighbor Discovery and SEcure Neighbor
         # Discovery messages MUST be silently ignored if they
@@ -166,7 +166,7 @@ class Icmp6RxHandler:
             Icmp6Type.ND__REDIRECT,
         }:
             self._if._packet_stats_rx.icmp6__nd_message__fragmented__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <WARN>Dropping fragmented ND message "
                 f"(type={packet_rx.icmp6.message.type}); RFC 6980 §5 silent-discard.</>",
@@ -210,7 +210,7 @@ class Icmp6RxHandler:
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageDestinationUnreachable)
 
         self._if._packet_stats_rx.icmp6__destination_unreachable += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Unreachable packet "
             f"from {packet_rx.ip6.src}, will try to match UDP socket",
@@ -221,7 +221,7 @@ class Icmp6RxHandler:
         # 'no demux possible' log path.
         embedded = parse_embedded_l4(packet_rx.icmp6.message.data, IpVersion.IP6)
         if embedded is None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
             )
@@ -268,7 +268,7 @@ class Icmp6RxHandler:
                 UdpSocket,
                 stack.sockets.get(socket_id, None),
             ):
-                __debug__ and log(
+                log.enabled and log(
                     "icmp6",
                     f"{packet_rx.tracker} - <INFO>Found matching "
                     f"listening UDP socket {socket} for Unreachable "
@@ -283,7 +283,7 @@ class Icmp6RxHandler:
                 )
                 return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
@@ -319,7 +319,7 @@ class Icmp6RxHandler:
             self._if._packet_stats_rx.icmp6__destination_unreachable__tcp__seq_out_of_window__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Unreachable packet from {packet_rx.ip6.src}</>",
@@ -353,7 +353,7 @@ class Icmp6RxHandler:
 
         message = packet_rx.icmp6.message
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Time Exceeded packet "
             f"from {packet_rx.ip6.src}, code={message.code}",
@@ -362,7 +362,7 @@ class Icmp6RxHandler:
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP6)
         if embedded is None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - Time Exceeded data doesn't pass basic IPv6/L4 integrity check",
             )
@@ -404,7 +404,7 @@ class Icmp6RxHandler:
 
         for socket_id in packet.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                __debug__ and log(
+                log.enabled and log(
                     "icmp6",
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Time Exceeded from {packet_rx.ip6.src}</>",
@@ -419,7 +419,7 @@ class Icmp6RxHandler:
                 self._if._packet_stats_rx.icmp6__time_exceeded__udp__notify += 1
                 return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Time Exceeded data doesn't match any UDP socket",
         )
@@ -455,7 +455,7 @@ class Icmp6RxHandler:
             self._if._packet_stats_rx.icmp6__time_exceeded__tcp__seq_out_of_window__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session " f"for Time Exceeded from {packet_rx.ip6.src}</>",
         )
@@ -487,7 +487,7 @@ class Icmp6RxHandler:
 
         message = packet_rx.icmp6.message
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Parameter Problem packet "
             f"from {packet_rx.ip6.src}, code={message.code}, pointer={message.pointer}",
@@ -496,7 +496,7 @@ class Icmp6RxHandler:
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP6)
         if embedded is None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - Parameter Problem data doesn't pass basic IPv6/L4 integrity check",
             )
@@ -538,7 +538,7 @@ class Icmp6RxHandler:
 
         for socket_id in packet.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                __debug__ and log(
+                log.enabled and log(
                     "icmp6",
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Parameter Problem from {packet_rx.ip6.src}</>",
@@ -553,7 +553,7 @@ class Icmp6RxHandler:
                 self._if._packet_stats_rx.icmp6__parameter_problem__udp__notify += 1
                 return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Parameter Problem data doesn't match any UDP socket",
         )
@@ -589,7 +589,7 @@ class Icmp6RxHandler:
             self._if._packet_stats_rx.icmp6__parameter_problem__tcp__seq_out_of_window__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Parameter Problem from {packet_rx.ip6.src}</>",
@@ -626,7 +626,7 @@ class Icmp6RxHandler:
 
         message = packet_rx.icmp6.message
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Packet Too Big " f"from {packet_rx.ip6.src}, mtu={message.mtu}",
         )
@@ -697,7 +697,7 @@ class Icmp6RxHandler:
             self._if._packet_stats_rx.icmp6__packet_too_big__tcp__seq_out_of_window__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Packet Too Big from {packet_rx.ip6.src}, mtu={message.mtu}</>",
@@ -735,7 +735,7 @@ class Icmp6RxHandler:
             return
 
         self._if._packet_stats_rx.icmp6__echo_request__respond_echo_reply += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Received ICMPv6 Echo Request "
             f"packet from {packet_rx.ip6.src}, sending reply</>",
@@ -767,7 +767,7 @@ class Icmp6RxHandler:
         assert isinstance(packet_rx.icmp6.message, Icmp6MessageEchoReply)
 
         self._if._packet_stats_rx.icmp6__echo_reply += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Echo Reply packet " f"from {packet_rx.ip6.src}",
         )
@@ -786,7 +786,7 @@ class Icmp6RxHandler:
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
                 self._if._packet_stats_rx.raw__socket_match += 1
-                __debug__ and log(
+                log.enabled and log(
                     "raw",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
@@ -801,7 +801,7 @@ class Icmp6RxHandler:
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterSolicitation)
 
         self._if._packet_stats_rx.icmp6__nd_router_solicitation += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Router Solicitation " f"packet from {packet_rx.ip6.src}",
         )
@@ -836,7 +836,7 @@ class Icmp6RxHandler:
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRouterAdvertisement)
 
         self._if._packet_stats_rx.icmp6__nd_router_advertisement += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Router Advertisement " f"packet from {packet_rx.ip6.src}",
         )
@@ -853,7 +853,7 @@ class Icmp6RxHandler:
                 reason = "RFC 4862 §5.5.3 (e)(3): preferred_lifetime > valid_lifetime"
             if reason is not None:
                 self._if._packet_stats_rx.icmp6__nd_router_advertisement__prefix_info__drop += 1
-                __debug__ and log(
+                log.enabled and log(
                     "icmp6",
                     f"{packet_rx.tracker} - <WARN>Dropping RA Prefix "
                     f"Information option for {option.prefix} from "
@@ -924,7 +924,7 @@ class Icmp6RxHandler:
         # not acted on.
         dhcp6_client = self._if._dhcp6_client
         if dhcp6_client is not None and (packet_rx.icmp6.message.flag_m or packet_rx.icmp6.message.flag_o):
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - RA Managed/Other flags "
                 f"{'M' if packet_rx.icmp6.message.flag_m else '-'}"
@@ -972,7 +972,7 @@ class Icmp6RxHandler:
             # a loop-hairpin echo of our own probe (a switch
             # reflecting traffic back). Drop silently.
             self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__loop_hairpin__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <INFO>Loop-hairpin DAD echo "
                 f"detected (Nonce match) for "
@@ -981,7 +981,7 @@ class Icmp6RxHandler:
             return
         if dad_signal is DadSignalResult.SIGNALED:
             self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__dad_conflict += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <CRIT>Simultaneous-probe DAD conflict: "
                 f"peer {packet_rx.ip6.src} probing our tentative address "
@@ -991,7 +991,7 @@ class Icmp6RxHandler:
 
         # Check if request is for one of stack's IPv6 unicast addresses.
         if packet_rx.icmp6.message.target_address not in self._if.ip6_unicast:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - Received ICMPv6 Neighbor "
                 f"Solicitation packet from {packet_rx.ip6.src}, "
@@ -1001,7 +1001,7 @@ class Icmp6RxHandler:
             self._if._packet_stats_rx.icmp6__nd_neighbor_solicitation__target_unknown__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - <INFO>Received ICMPv6 Neighbor "
             f"Solicitation packet from {packet_rx.ip6.src}, "
@@ -1049,7 +1049,7 @@ class Icmp6RxHandler:
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageNeighborAdvertisement)
 
         self._if._packet_stats_rx.icmp6__nd_neighbor_advertisement += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Neighbor Advertisement "
             f"packet for {packet_rx.icmp6.message.target_address} "
@@ -1110,7 +1110,7 @@ class Icmp6RxHandler:
         assert isinstance(packet_rx.icmp6.message, Icmp6NdMessageRedirect)
 
         self._if._packet_stats_rx.icmp6__nd_redirect += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 Redirect "
             f"target {packet_rx.icmp6.message.target_address} "
@@ -1121,7 +1121,7 @@ class Icmp6RxHandler:
         # 1. 'icmp6.accept_redirects' kill switch.
         if sysctl_iface.get_for_iface("icmp6.accept_redirects", self._if._interface_name) == 0:
             self._if._packet_stats_rx.icmp6__nd_redirect__accept_redirects_zero__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <INFO>icmp6.accept_redirects=0 " f"dropped Redirect</>",
             )
@@ -1132,7 +1132,7 @@ class Icmp6RxHandler:
         destination = packet_rx.icmp6.message.destination_address
         if not target.is_link_local and target != destination:
             self._if._packet_stats_rx.icmp6__nd_redirect__bad_target__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{packet_rx.tracker} - <WARN>Redirect Target {target} is "
                 f"neither link-local nor equal to Destination {destination} "
@@ -1170,7 +1170,7 @@ class Icmp6RxHandler:
         """
 
         self._if._packet_stats_rx.icmp6__mld2_report += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 MLDv2 Report packet " f"from {packet_rx.ip6.src}",
         )
@@ -1203,7 +1203,7 @@ class Icmp6RxHandler:
         """
 
         self._if._packet_stats_rx.icmp6__mld2_query += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received ICMPv6 MLD Query packet from {packet_rx.ip6.src}",
         )
@@ -1312,7 +1312,7 @@ class Icmp6RxHandler:
         """
 
         self._if._packet_stats_rx.icmp6__unknown += 1
-        __debug__ and log(
+        log.enabled and log(
             "icmp6",
             f"{packet_rx.tracker} - Received unknown ICMPv6 packet " f"from {packet_rx.ip6.src}",
         )

@@ -111,7 +111,7 @@ class Icmp6TxHandler:
             echo_tracker=echo_tracker,
         )
 
-        __debug__ and log("icmp6", f"{icmp6_packet_tx.tracker} - {icmp6_packet_tx}")
+        log.enabled and log("icmp6", f"{icmp6_packet_tx.tracker} - {icmp6_packet_tx}")
 
         if icmp6__message.type == Icmp6Type.ECHO_REPLY:
             self._if._packet_stats_tx.icmp6__echo_reply__send += 1
@@ -137,7 +137,7 @@ class Icmp6TxHandler:
             # message types), but if one does, count + drop is
             # robust where 'raise' would crash the calling thread.
             self._if._packet_stats_tx.icmp6__unknown__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp6",
                 f"{icmp6_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv6 "
                 f"type {icmp6__message.type}, code {icmp6__message.code}</>",
@@ -185,12 +185,12 @@ class Icmp6TxHandler:
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP6__TO_TX_RING,
         }:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Sent out ICMPv6 ND DAD message for {ip6_unicast_candidate}",
             )
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "Failed to send out ICMPv6 ND DAD message for " f"{ip6_unicast_candidate}, tx_status: {tx_status}",
             )
@@ -317,9 +317,9 @@ class Icmp6TxHandler:
         )
 
         if tx_status in {TxStatus.PASSED__ETHERNET__TO_TX_RING, TxStatus.PASSED__IP6__TO_TX_RING}:
-            __debug__ and log("stack", f"Sent out ICMPv6 Multicast Listener Report (HBH+RA) to {ip6__dst}")
+            log.enabled and log("stack", f"Sent out ICMPv6 Multicast Listener Report (HBH+RA) to {ip6__dst}")
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out ICMPv6 Multicast Listener Report (HBH+RA) to {ip6__dst}, tx_status: {tx_status}",
             )
@@ -346,9 +346,9 @@ class Icmp6TxHandler:
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP6__TO_TX_RING,
         }:
-            __debug__ and log("stack", "Sent out ICMPv6 ND Router Solicitation")
+            log.enabled and log("stack", "Sent out ICMPv6 ND Router Solicitation")
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out ICMPv6 ND Router Solicitation, {tx_status}",
             )
@@ -384,9 +384,9 @@ class Icmp6TxHandler:
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP6__TO_TX_RING,
         }:
-            __debug__ and log("stack", "Sent out ICMPv6 ND Neighbor Solicitation")
+            log.enabled and log("stack", "Sent out ICMPv6 ND Neighbor Solicitation")
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out ICMPv6 ND Neighbor Solicitation, {tx_status}",
             )
@@ -433,12 +433,12 @@ class Icmp6TxHandler:
             TxStatus.PASSED__ETHERNET__TO_TX_RING,
             TxStatus.PASSED__IP6__TO_TX_RING,
         }:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Sent out unicast ICMPv6 ND Neighbor Solicitation for {icmp6_ns_target_address}",
             )
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out unicast ICMPv6 ND Neighbor Solicitation for "
                 f"{icmp6_ns_target_address}, {tx_status}",

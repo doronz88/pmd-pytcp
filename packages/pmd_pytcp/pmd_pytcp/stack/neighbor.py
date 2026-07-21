@@ -168,10 +168,10 @@ class NeighborApi:
 
         if isinstance(ip, Ip6Address):
             self._nd_cache()._add_permanent_entry(ip, mac)
-            __debug__ and log("stack", f"<lg>Neighbor API</>: added static ND {ip} -> {mac}")
+            log.enabled and log("stack", f"<lg>Neighbor API</>: added static ND {ip} -> {mac}")
             return
         self._arp_cache()._add_permanent_entry(ip, mac)
-        __debug__ and log("stack", f"<lg>Neighbor API</>: added static ARP {ip} -> {mac}")
+        log.enabled and log("stack", f"<lg>Neighbor API</>: added static ARP {ip} -> {mac}")
 
     def remove(self, *, ip: Ip4Address | Ip6Address) -> None:
         """
@@ -183,7 +183,7 @@ class NeighborApi:
         removed = (
             self._arp_cache()._remove_entry(ip) if isinstance(ip, Ip4Address) else self._nd_cache()._remove_entry(ip)
         )
-        __debug__ and log("stack", f"<lg>Neighbor API</>: removed neighbour {ip} (matched={removed})")
+        log.enabled and log("stack", f"<lg>Neighbor API</>: removed neighbour {ip} (matched={removed})")
 
     def flush(self, *, family: AddressFamily) -> None:
         """
@@ -193,7 +193,7 @@ class NeighborApi:
 
         cache = self._arp_cache() if family is AddressFamily.INET4 else self._nd_cache()
         count = cache._flush()
-        __debug__ and log("stack", f"<lg>Neighbor API</>: flushed {count} {family.name} neighbour(s)")
+        log.enabled and log("stack", f"<lg>Neighbor API</>: flushed {count} {family.name} neighbour(s)")
 
     def list_neighbors(
         self,

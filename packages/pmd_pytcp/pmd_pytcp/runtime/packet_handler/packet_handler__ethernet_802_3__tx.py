@@ -80,13 +80,13 @@ class Ethernet8023TxHandler:
         if ethernet_802_3_packet_tx.src.is_unspecified:
             self._if._packet_stats_tx.ethernet_802_3__src_unspec__fill += 1
             ethernet_802_3_packet_tx.src = self._if._mac_unicast
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_802_3_packet_tx.tracker} - Set source to stack MAC " f"{ethernet_802_3_packet_tx.src}",
             )
         else:
             self._if._packet_stats_tx.ethernet_802_3__src_spec += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_802_3_packet_tx.tracker} - Source MAC specified to " f"{ethernet_802_3_packet_tx.src}",
             )
@@ -94,7 +94,7 @@ class Ethernet8023TxHandler:
         # Send out packet if it contains valid destination MAC address.
         if not ethernet_802_3_packet_tx.dst.is_unspecified:
             self._if._packet_stats_tx.ethernet_802_3__dst_spec__send += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_802_3_packet_tx.tracker} - Contains valid destination " "MAC address",
             )
@@ -103,7 +103,7 @@ class Ethernet8023TxHandler:
 
         # Drop packet in case we are not able to obtain valid destination MAC address.
         self._if._packet_stats_tx.ethernet_802_3__dst_unspec__drop += 1
-        __debug__ and log(
+        log.enabled and log(
             "ether",
             f"{ethernet_802_3_packet_tx.tracker} - <WARN>No valid destination MAC could " "be obtained, dropping</>",
         )
@@ -113,7 +113,7 @@ class Ethernet8023TxHandler:
         self,
         ethernet_802_3_packet_tx: Ethernet8023Assembler,
     ) -> None:
-        __debug__ and log(
+        log.enabled and log(
             "ether",
             f"{ethernet_802_3_packet_tx.tracker} - {ethernet_802_3_packet_tx}",
         )

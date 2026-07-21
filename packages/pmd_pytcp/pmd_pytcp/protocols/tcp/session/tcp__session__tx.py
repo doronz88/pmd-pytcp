@@ -314,7 +314,7 @@ class TcpTxEngine:
         )
         self._phase5_post_send_timers(flag_syn=flag_syn, flag_fin=flag_fin, data=data)
 
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent packet_rx_md: {'S' if flag_syn else ''}"
             f"{'F' if flag_fin else ''}{'R' if flag_rst else ''}"
@@ -347,7 +347,7 @@ class TcpTxEngine:
         # SND.UNA but is still in-window.
         right_edge = add32(session._snd_seq.una, session._cc.snd_ewn)
         if not in_range32(session._snd_seq.nxt, session._snd_seq.una, right_edge):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Peer-shrunk usable window: SND.NXT={session._snd_seq.nxt} "
                 f"is outside [{session._snd_seq.una}, {right_edge}]; "
@@ -375,7 +375,7 @@ class TcpTxEngine:
             if cached and session._advertise.fastopen and session._tx.buffer:
                 slice_len = min(session._win.snd_mss, len(session._tx.buffer))
                 tfo_data = bytes(session._tx.buffer[:slice_len])
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Transmitting initial SYN packet_rx_md: seq {session._snd_seq.nxt}"
                 + (f", carrying {len(tfo_data)} bytes of TFO SYN-data" if tfo_data else ""),
@@ -385,7 +385,7 @@ class TcpTxEngine:
 
         # Check if we need to (re)transmit initial SYN + ACK packet.
         if session._state is FsmState.SYN_RCVD and session._snd_seq.nxt == session._snd_seq.ini:
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Transmitting initial SYN + ACK packet_rx_md: seq {session._snd_seq.nxt}",
             )
@@ -478,12 +478,12 @@ class TcpTxEngine:
                         transmit_data_len = probe_payload
 
             if remaining_data_len:
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Sliding window <y>[{session._snd_seq.una}|"
                     f"{session._snd_seq.nxt}|{add32(session._snd_seq.una, session._cc.snd_ewn)}]</>",
                 )
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - {usable_window} left in window, "
                     f"{remaining_data_len} left in buffer, "
@@ -542,7 +542,7 @@ class TcpTxEngine:
                     # when set, partial segments fire even with
                     # a previous partial still unacked.
                     if is_partial and prev_partial_in_flight and not is_retransmit and not session._tcp_nodelay:
-                        __debug__ and log(
+                        log.enabled and log(
                             "tcp-ss",
                             f"[{session}] - Nagle: deferring {transmit_data_len}-byte "
                             f"partial segment - previous partial at seq {session._snd_seq.sml} "
@@ -559,7 +559,7 @@ class TcpTxEngine:
                     # is the last segment of the buffered write".
                     is_last_segment_of_write = transmit_data_len == remaining_data_len
                     probe_emit_seq = session._snd_seq.nxt
-                    __debug__ and log(
+                    log.enabled and log(
                         "tcp-ss",
                         f"[{session}] - Transmitting data segment: seq {session._snd_seq.nxt} len {len(transmit_data)}",
                     )
@@ -575,12 +575,53 @@ class TcpTxEngine:
                         # the probe is the post-emit snd.nxt
                         # (probe_emit_seq + transmit_data_len);
                         # 'on_snd_una_advance' acks when snd.una
-                        # passes the probe's recorded seq.
+                        # passes the probe's recorded seq. The
+                        # start seq rides along so loss-repair
+                        # paths can overlap-check the range.
                         probe_terminal_seq = (probe_emit_seq + transmit_data_len) & 0xFFFFFFFF
                         session._plpmtud_adapter.record_emitted_probe(
                             seq=probe_terminal_seq,
                             size=probe_size_to_record,
+                            seq_start=probe_emit_seq,
                         )
+                    elif session._plpmtud_probing_enabled:
+                        if is_retransmit:
+                            # A retransmission covering an
+                            # in-flight probe's range means the
+                            # probe's bytes are being repaired
+                            # at regular size: once the repair
+                            # advances snd.una past the probe
+                            # seq, its cum-ACK could no longer
+                            # be told apart from a genuine
+                            # probe ACK. Declare exactly the
+                            # overlapped probes lost NOW —
+                            # repairs elsewhere in the stream
+                            # (ordinary congestion loss) leave
+                            # the probe alone, so routine
+                            # recoveries cannot spuriously
+                            # narrow the search or trip
+                            # MAX_PROBES black-hole detection.
+                            session._plpmtud_adapter.on_range_retransmitted(
+                                seq_start=probe_emit_seq,
+                                seq_end=(probe_emit_seq + transmit_data_len) & 0xFFFFFFFF,
+                                now=time.monotonic(),
+                            )
+                        else:
+                            # RFC 4821 §7.1 implicit-probe feedback:
+                            # remember the largest regular data
+                            # segment in flight; its ACK confirms
+                            # that packet size to the engine — the
+                            # path that confirms BASE without a
+                            # dedicated (smaller-than-MSS, hence
+                            # never emittable) base probe. Fresh
+                            # transmits only: a retransmitted
+                            # range's ACK does not prove which
+                            # copy (or size) the path carried.
+                            session._plpmtud_adapter.note_data_segment(
+                                seq_start=probe_emit_seq,
+                                end_seq=(probe_emit_seq + transmit_data_len) & 0xFFFFFFFF,
+                                packet_size=transmit_data_len + session._ip_tcp_overhead + options_overhead,
+                            )
                     # If we just sent a partial, record its post-end
                     # seq so the Minshall check can defer subsequent
                     # partials until this one is ACK'd.
@@ -616,14 +657,14 @@ class TcpTxEngine:
                         session._persist.active = True
                         session._persist.timeout = tcp__constants.TCP__RTO__INITIAL_MS
                         session._arm_timer("persist", session._persist.timeout)
-                        __debug__ and log(
+                        log.enabled and log(
                             "tcp-ss",
                             f"[{session}] - Persist: zero-window, armed timer "
                             f"with timeout {session._persist.timeout} ms",
                         )
                     elif session._timer_expired("persist"):
                         probe_data = bytes(session._tx.buffer[session._tx_buffer_nxt : session._tx_buffer_nxt + 1])
-                        __debug__ and log(
+                        log.enabled and log(
                             "tcp-ss",
                             f"[{session}] - Persist: emitting 1-byte probe at seq {session._snd_seq.nxt}",
                         )
@@ -640,7 +681,7 @@ class TcpTxEngine:
 
         # Check if we need to (re)transmit final FIN packet.
         if session._state in {FsmState.FIN_WAIT_1, FsmState.LAST_ACK} and session._snd_seq.nxt != session._snd_seq.fin:
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Transmitting final FIN packet_rx_md: seq {session._snd_seq.nxt}",
             )
@@ -661,7 +702,7 @@ class TcpTxEngine:
         if not session._timer_armed("delayed_ack"):
             if gt32(session._rcv_seq.nxt, session._rcv_seq.una):
                 self.transmit_packet(flag_ack=True)
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Sent out delayed ACK ({session._rcv_seq.nxt})",
                 )
@@ -728,7 +769,7 @@ class TcpTxEngine:
 
         session = self._session
         if session._timer_armed("challenge_ack"):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Challenge ACK suppressed by RFC 5961 §3 rate limit",
             )
@@ -783,7 +824,7 @@ class TcpTxEngine:
             and session._rtt.last_send_time_ms is not None
             and stack.timer.now_ms - session._rtt.last_send_time_ms > session._rto_state.rto_ms
         ):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - RFC 6298 §5.7 idle-reset: now="
                 f"{stack.timer.now_ms} last_send="
@@ -802,7 +843,7 @@ class TcpTxEngine:
             if data:
                 rw = min(initial_window(session._win.snd_mss), session._cc.cwnd)
                 if rw < session._cc.cwnd:
-                    __debug__ and log(
+                    log.enabled and log(
                         "tcp-ss",
                         f"[{session}] - RFC 5681 §4.1 Restart Window: "
                         f"cwnd {session._cc.cwnd} -> {rw} (IW="

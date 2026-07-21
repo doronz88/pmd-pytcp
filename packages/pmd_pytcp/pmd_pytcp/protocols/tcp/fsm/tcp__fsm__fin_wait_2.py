@@ -55,7 +55,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
     # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
     if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-fin_wait_2 (RFC 9293 §3.10.7.4)",
         )
@@ -102,7 +102,7 @@ def fsm__fin_wait_2__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             session._process_ack_packet(packet_rx_md)
             # Send out final ACK packet.
             session._transmit_packet(flag_ack=True)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Sent final ACK ({session._rcv_seq.nxt}) packet",
             )

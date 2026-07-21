@@ -93,7 +93,7 @@ class Timer:
         Class constructor.
         """
 
-        __debug__ and log("stack", f"Initializing {self._subsystem_name}")
+        log.enabled and log("stack", f"Initializing {self._subsystem_name}")
 
         self._handles = set()
         self._loop = None
@@ -121,7 +121,7 @@ class Timer:
         mostly a lifecycle symmetry point.
         """
 
-        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        log.enabled and log("stack", f"Starting {self._subsystem_name}")
         self._loop = asyncio.get_running_loop()
 
     def stop(self) -> None:
@@ -130,7 +130,7 @@ class Timer:
         fire stale callbacks.
         """
 
-        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopping {self._subsystem_name}")
 
         for handle in list(self._handles):
             handle.cancelled = True
@@ -169,7 +169,7 @@ class Timer:
             handle.method(*handle.args, **handle.kwargs)
         except Exception:  # pylint: disable=broad-exception-caught
             name = getattr(handle.method, "__name__", repr(handle.method))
-            __debug__ and log("timer", f"<r>Handler raised: {name}</>")
+            log.enabled and log("timer", f"<r>Handler raised: {name}</>")
 
     def _schedule(self, handle: TimerHandle, delay_ms: int) -> TimerHandle:
         """

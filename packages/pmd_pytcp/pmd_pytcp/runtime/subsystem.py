@@ -74,7 +74,7 @@ class Subsystem(ABC):
         Initialize the subsystem.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             (f"Initializing {self._subsystem_name}" + (f" [{info}]" if info else "")),
         )
@@ -88,7 +88,7 @@ class Subsystem(ABC):
         worker is an 'asyncio.Task' on the caller's loop.
         """
 
-        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        log.enabled and log("stack", f"Starting {self._subsystem_name}")
 
         # Double-start guard. If a worker task is already running
         # and 'start()' is called again, the previous task would be
@@ -110,7 +110,7 @@ class Subsystem(ABC):
         to await the worker's actual exit.
         """
 
-        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopping {self._subsystem_name}")
 
         self._event__stop_subsystem.set()
         if self._task is not None and not self._task.done():
@@ -148,7 +148,7 @@ class Subsystem(ABC):
         task is cancelled.
         """
 
-        __debug__ and log("stack", f"Started {self._subsystem_name}")
+        log.enabled and log("stack", f"Started {self._subsystem_name}")
 
         try:
             while not self._event__stop_subsystem.is_set():
@@ -156,7 +156,7 @@ class Subsystem(ABC):
         except asyncio.CancelledError:
             pass
 
-        __debug__ and log("stack", f"Stopped {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopped {self._subsystem_name}")
 
     @abstractmethod
     async def _subsystem_loop(self) -> None:

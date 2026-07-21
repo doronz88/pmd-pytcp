@@ -102,7 +102,7 @@ class PacketSocket(socket):
         # returns, before any 'bind' (Phase 3 narrows the ifindex).
         stack.packet_sockets.register(self)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Created packet socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Created packet socket")
 
     @override
     def __str__(self) -> str:
@@ -173,7 +173,7 @@ class PacketSocket(socket):
 
         packet_rx_md = await self._recv_md(timeout)
         data = packet_rx_md.frame if bufsize is None else packet_rx_md.frame[:bufsize]
-        __debug__ and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
+        log.enabled and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
         return data
 
     @override
@@ -185,7 +185,7 @@ class PacketSocket(socket):
 
         packet_rx_md = await self._recv_md(timeout)
         data = packet_rx_md.frame if bufsize is None else packet_rx_md.frame[:bufsize]
-        __debug__ and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
+        log.enabled and log("socket", f"<B><g>[{self}]</> - Received {len(data)} bytes")
         return data, packet_rx_md.sockaddr_ll
 
     @override
@@ -197,7 +197,7 @@ class PacketSocket(socket):
 
         stack.packet_sockets.unregister(self)
         self._mark_closed()
-        __debug__ and log("socket", f"<g>[{self}]</> - Closed packet socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Closed packet socket")
 
     @override
     def bind(self, address: SockAddrLl) -> None:
@@ -218,7 +218,7 @@ class PacketSocket(socket):
 
         self._ifindex = address.ifindex
         self._ethertype = address.ethertype
-        __debug__ and log("socket", f"<g>[{self}]</> - Bound")
+        log.enabled and log("socket", f"<g>[{self}]</> - Bound")
 
     def _egress_handler(self, ifindex: int, /) -> "PacketHandlerL2":
         """
@@ -257,7 +257,7 @@ class PacketSocket(socket):
         """
 
         self._egress_handler(self._ifindex).send_link_frame(data)
-        __debug__ and log("socket", f"<B><lr>[{self}]</> - Sent {len(data)} bytes")
+        log.enabled and log("socket", f"<B><lr>[{self}]</> - Sent {len(data)} bytes")
         return len(data)
 
     @override
@@ -269,5 +269,5 @@ class PacketSocket(socket):
         """
 
         self._egress_handler(address.ifindex).send_link_frame(data)
-        __debug__ and log("socket", f"<B><lr>[{self}]</> - Sent {len(data)} bytes")
+        log.enabled and log("socket", f"<B><lr>[{self}]</> - Sent {len(data)} bytes")
         return len(data)

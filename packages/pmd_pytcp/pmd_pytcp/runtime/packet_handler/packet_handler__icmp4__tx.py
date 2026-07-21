@@ -84,7 +84,7 @@ class Icmp4TxHandler:
             echo_tracker=echo_tracker,
         )
 
-        __debug__ and log("icmp4", f"{icmp4_packet_tx.tracker} - {icmp4_packet_tx}")
+        log.enabled and log("icmp4", f"{icmp4_packet_tx.tracker} - {icmp4_packet_tx}")
 
         if icmp4__message.type == Icmp4Type.ECHO_REPLY:
             self._if._packet_stats_tx.icmp4__echo_reply__send += 1
@@ -102,7 +102,7 @@ class Icmp4TxHandler:
             # message types), but if one does, count + drop is
             # robust where 'raise' would crash the calling thread.
             self._if._packet_stats_tx.icmp4__unknown__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{icmp4_packet_tx.tracker} - <CRIT>Dropping unsupported ICMPv4 "
                 f"type {icmp4__message.type}, code {icmp4__message.code}</>",

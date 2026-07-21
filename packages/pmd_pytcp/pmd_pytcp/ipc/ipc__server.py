@@ -118,7 +118,7 @@ class IpcServer:
 
         self._socket_path = socket_path
 
-        __debug__ and log("stack", f"Initializing {self._subsystem_name} [{socket_path}]")
+        log.enabled and log("stack", f"Initializing {self._subsystem_name} [{socket_path}]")
 
         self._handlers = dict(DEFAULT_HANDLERS) if handlers is None else dict(handlers)
         self._server = None
@@ -138,14 +138,14 @@ class IpcServer:
         get served immediately).
         """
 
-        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        log.enabled and log("stack", f"Starting {self._subsystem_name}")
 
         assert self._server is None, f"{self._subsystem_name}.start() called while the server is already running."
 
         self._event__stop_subsystem.clear()
         self._server = await asyncio.start_unix_server(self._serve_client, sock=self._listen_socket)
 
-        __debug__ and log("stack", f"Started {self._subsystem_name}")
+        log.enabled and log("stack", f"Started {self._subsystem_name}")
 
     def stop(self) -> None:
         """
@@ -157,7 +157,7 @@ class IpcServer:
         its session sockets and closes its connection).
         """
 
-        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopping {self._subsystem_name}")
 
         self._event__stop_subsystem.set()
 
@@ -177,7 +177,7 @@ class IpcServer:
 
         self._unlink_socket_path()
 
-        __debug__ and log("stack", f"Stopped {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopped {self._subsystem_name}")
 
     async def wait_stopped(self) -> None:
         """

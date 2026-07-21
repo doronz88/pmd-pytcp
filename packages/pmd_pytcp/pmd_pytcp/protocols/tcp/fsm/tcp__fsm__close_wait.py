@@ -88,7 +88,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
     # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
     if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-close_wait (RFC 9293 §3.10.7.4)",
         )
@@ -132,13 +132,13 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         ):
             new_wnd = packet_rx_md.tcp__win << session._win.snd_wsc
             if new_wnd != session._win.snd_wnd:
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Updated sending window size " f"{session._win.snd_wnd} -> {new_wnd} (wnd-update)",
                 )
                 session._win.snd_wnd = new_wnd
                 if session._win.snd_wnd > 0 and session._persist.active:
-                    __debug__ and log(
+                    log.enabled and log(
                         "tcp-ss",
                         f"[{session}] - Persist: peer reopened window via wnd-update, deactivating timer",
                     )
@@ -167,7 +167,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._transmit_packet(flag_ack=True)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - OOO post-FIN data in CLOSE_WAIT (RFC violation by peer); "
                 f"acked at RCV.NXT={session._rcv_seq.nxt} without queueing",
@@ -197,7 +197,7 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
             packet_rx_md.tcp__ack, session._snd_seq.una, session._snd_seq.max
         ):
             session._transmit_packet(flag_ack=True)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Post-FIN data in CLOSE_WAIT (RFC violation by peer); "
                 f"acked at RCV.NXT={session._rcv_seq.nxt} without enqueue",

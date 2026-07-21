@@ -181,6 +181,24 @@ class TcpSession:
         # preserves the historical 65535-byte cap.
         self._win.rcv_wnd_max = tcp__constants.TCP__RCV_WND_MAX
 
+        # Linux 'net.ipv4.tcp_mtu_probing' tristate sysctl —
+        # the operator-facing enable for active PLPMTUD probing
+        # ('tcp.mtu_probing' = 0 off / 2 always-on; mode 1
+        # deferred per the close-out plan §2). The flag is
+        # consulted by the probe-emit hook in
+        # 'session/tcp__session__tx.py' AND by '_mss_ceiling'
+        # below so the handshake clamp keeps 'snd_mss' under
+        # 'base_mss - overhead' instead of rising to
+        # 'interface_mtu - overhead' — the gap that the
+        # cold-start path closes. Read BEFORE the adapter is
+        # created: the engine's working-PLPMTU seed depends
+        # on it (BASE_PLPMTU when probing, interface MTU for
+        # classical shrink-only).
+        _probing_mode = sysctl_iface.get_for_iface(
+            "tcp.mtu_probing",
+            self._egress_interface_name(),
+        )
+        self._plpmtud_probing_enabled: bool = _probing_mode != 0
         # RFC 4821 / RFC 8899 per-session PLPMTUD adapter.
         # Wraps a PmtuSearch engine bound to the remote
         # address's family floor and tracks in-flight probe
@@ -191,22 +209,23 @@ class TcpSession:
         self._plpmtud_adapter: TcpPlpmtudAdapter = TcpPlpmtudAdapter(
             remote_ip_address=remote_ip_address,
             interface_mtu=self._egress_interface_mtu(),
+            probing=self._plpmtud_probing_enabled,
+            probe_timer_sec=sysctl_iface.get_for_iface(
+                "tcp.plpmtud.probe_timer_ms",
+                self._egress_interface_name(),
+            )
+            / 1000.0,
+            # The operator-declared-safe cold-start packet size
+            # (the '_mss_ceiling()' snd_mss seed — 'tcp.base_mss'
+            # with every operator cap applied — plus header
+            # overhead): the engine's working PLPMTU starts here,
+            # so the first ACK's snd_mss sync neither lowers the
+            # proven seed nor raises past it before a probe
+            # validates more.
+            plpmtu_seed=(
+                self._mss_ceiling() + self._ip_tcp_overhead if self._plpmtud_probing_enabled else None
+            ),
         )
-        # Linux 'net.ipv4.tcp_mtu_probing' tristate sysctl —
-        # the operator-facing enable for active PLPMTUD probing
-        # ('tcp.mtu_probing' = 0 off / 2 always-on; mode 1
-        # deferred per the close-out plan §2). The flag is
-        # consulted by the probe-emit hook in
-        # 'session/tcp__session__tx.py' AND by '_mss_ceiling'
-        # below so the handshake clamp keeps 'snd_mss' under
-        # 'base_mss - overhead' instead of rising to
-        # 'interface_mtu - overhead' — the gap that the
-        # cold-start path closes.
-        _probing_mode = sysctl_iface.get_for_iface(
-            "tcp.mtu_probing",
-            self._egress_interface_name(),
-        )
-        self._plpmtud_probing_enabled: bool = _probing_mode != 0
         # Linux 'net.ipv4.tcp_base_mss' cold-start seed. With
         # probing enabled, prime 'snd_mss' below
         # 'interface_mtu - overhead' so the engine's
@@ -870,7 +889,7 @@ class TcpSession:
         The 'LISTEN' syscall.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{self}] - <ly>[{self._state}]</> - got <r>LISTEN</> syscall",
         )
@@ -882,7 +901,7 @@ class TcpSession:
         The 'CONNECT' syscall.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{self}] - <ly>[{self._state}]</> - got <r>CONNECT</> syscall",
         )
@@ -974,7 +993,7 @@ class TcpSession:
         The 'CLOSE' syscall.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{self}] - <ly>[{self._state}]</> - got <r>CLOSE</> syscall, {len(self._tx.buffer)} bytes in TX buffer",
         )
@@ -1012,7 +1031,7 @@ class TcpSession:
                 # shutdown and returns 0 (the FSM check + empty
                 # buffer makes recv() yield empty bytes).
                 self._event__rx_buffer.set()
-                __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_RD): receive side closed")
+                log.enabled and log("tcp-ss", f"[{self}] - shutdown(SHUT_RD): receive side closed")
 
         # SHUT_WR or SHUT_RDWR: trigger FIN emission via the
         # existing close() machinery if not already closing.
@@ -1020,7 +1039,7 @@ class TcpSession:
             if not self._shut.wr and not self._closing:
                 self._shut.wr = True
                 self.tcp_fsm(syscall=SysCall.CLOSE)
-                __debug__ and log("tcp-ss", f"[{self}] - shutdown(SHUT_WR): send side closed")
+                log.enabled and log("tcp-ss", f"[{self}] - shutdown(SHUT_WR): send side closed")
 
     def abort(self) -> None:
         """
@@ -1040,7 +1059,7 @@ class TcpSession:
         error.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{self}] - <ly>[{self._state}]</> - got <r>ABORT</> syscall",
         )
@@ -1137,7 +1156,7 @@ class TcpSession:
                 for seq, seg in self._rack_tlp.rack_segments.items()
             }
             self._snd_seq.nxt = self._snd_seq.una
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{self}] - <ly>RFC 1191 §6.5 walkback: snd_mss -> "
                 f"{new_mss}, snd_nxt rewound to snd_una "
@@ -1151,7 +1170,7 @@ class TcpSession:
 
         old_state = self._state
         self._state = state
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{self}] - <ly>[{old_state} -> {self._state}]</>",
         )
@@ -1206,7 +1225,7 @@ class TcpSession:
             # against a dead session and it is GC-eligible (the
             # event-driven model has no periodic to unregister).
             self._cancel_all_timers()
-            __debug__ and log("tcp-ss", f"[{self}] - Unregister associated socket")
+            log.enabled and log("tcp-ss", f"[{self}] - Unregister associated socket")
 
         # RFC 1122 §4.2.3.6: arm the keep-alive idle timer on the
         # transition into ESTABLISHED (no-op when keep-alive is
@@ -1311,7 +1330,7 @@ class TcpSession:
 
         if should_exit_slow_start_to_css(self._cc.hystart_state):
             enter_css(self._cc.hystart_state)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{self}] - RFC 9406 §4.2 HyStart++ SS->CSS: "
                 f"currentRoundMinRTT="
@@ -1321,7 +1340,7 @@ class TcpSession:
                 f"baseline={self._cc.hystart_state.css_baseline_min_rtt_ms}",
             )
         elif should_resume_slow_start_from_css(self._cc.hystart_state):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{self}] - RFC 9406 §4.2 HyStart++ CSS->SS: "
                 f"currentRoundMinRTT="
@@ -1396,7 +1415,7 @@ class TcpSession:
             return
         max_count = self._keepalive.max_probes(default=tcp__constants.TCP__KEEPALIVE__PROBE_MAX_COUNT)
         if self._keepalive.probes_unacked >= max_count:
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{self}] - Keep-alive: {self._keepalive.probes_unacked} probes "
                 "unacked, tearing down connection (RFC 1122 §4.2.3.6)",
@@ -1422,7 +1441,7 @@ class TcpSession:
             "keepalive",
             self._keepalive.interval_timeout(default=tcp__constants.TCP__KEEPALIVE__PROBE_INTERVAL_MS),
         )
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{self}] - Keep-alive: emitted probe "
             f"{self._keepalive.probes_unacked}/{max_count} "
@@ -1482,7 +1501,7 @@ class TcpSession:
             # artificially anchored at the reduced W_max.
             if self._cc.cc_mode is CcMode.CUBIC and self._cc.fr_cubic_snapshot_valid and self._cc.recovery_point != 0:
                 self._cc.restore_fr_cubic_snapshot()
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{self}] - RFC 9438 §4.9.2 spurious-FR "
                     "restore: rolled back CUBIC state on DSACK "

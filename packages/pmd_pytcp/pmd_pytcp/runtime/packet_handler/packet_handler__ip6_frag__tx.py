@@ -131,7 +131,7 @@ class Ip6FragTxHandler:
         # frame that would be discarded.
         if is_ndp_message(ip6_packet_tx.payload):
             self._if._packet_stats_tx.ip6_frag__nd_message__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{ip6_packet_tx.tracker} - <WARN>NDP message exceeds MTU; "
                 "RFC 6980 §5 forbids fragmentation; dropping</>",
@@ -158,7 +158,7 @@ class Ip6FragTxHandler:
                 ip6_frag__id=ip6_frag_id,
                 ip6_frag__payload=chunk,
             )
-            __debug__ and log("ip6", f"{ip6_frag_tx.tracker} - {ip6_frag_tx}")
+            log.enabled and log("ip6", f"{ip6_frag_tx.tracker} - {ip6_frag_tx}")
             self._if._packet_stats_tx.ip6_frag__send += 1
             ip6_tx_status.add(
                 self._if._phtx_ip6(

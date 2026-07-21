@@ -173,7 +173,7 @@ class TcpSegmentValidator:
         if acceptable:
             return True
 
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Packet seq {packet_rx_md.tcp__seq} + "
             f"{seg_len} doesn't fit into receive window, dropping",
@@ -236,7 +236,7 @@ class TcpSegmentValidator:
         if packet_rx_md.tcp__tsval is None:
             if packet_rx_md.tcp__flag_syn:
                 return True
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - PAWS: silently dropping segment "
                 "missing TSopt on TS-negotiated session "
@@ -277,7 +277,7 @@ class TcpSegmentValidator:
                 and stack.timer.now_ms - session._ts.ts_recent_updated_at_ms
                 > tcp__constants.TCP__TS_RECENT__OUTDATED_THRESHOLD_MS
             ):
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - PAWS: TS.Recent outdated past "
                     f"{tcp__constants.TCP__TS_RECENT__OUTDATED_THRESHOLD_MS} ms idle threshold, "
@@ -287,7 +287,7 @@ class TcpSegmentValidator:
                 )
                 session._ts.update(tsval=packet_rx_md.tcp__tsval, now_ms=stack.timer.now_ms)
                 return True
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - PAWS: dropping stale-TSval segment "
                 f"(tsval={packet_rx_md.tcp__tsval} < _ts_recent="
@@ -342,7 +342,7 @@ class TcpSegmentValidator:
         if seq == session._rcv_seq.nxt and ack_acceptable:
             return True
         if lt32(session._rcv_seq.nxt, seq) and lt32(seq, add32(session._rcv_seq.nxt, session._rcv_wnd)):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - In-window mismatched RST (seq={seq}, RCV.NXT={session._rcv_seq.nxt}); challenge-ACK",
             )
@@ -410,6 +410,10 @@ class TcpSegmentValidator:
             TCP__MIN_MSS,
             min(packet_rx_md.tcp__mss, session._mss_ceiling()),
         )
+        # Peer's advertised MSS also bounds the PLPMTUD probe
+        # ladder: probing must never propose a packet larger
+        # than the segment size the peer invited.
+        session._plpmtud_adapter.limit_max(packet_rx_md.tcp__mss + session._ip_tcp_overhead)
         session._win.snd_wnd = packet_rx_md.tcp__win
         session._win.max_window = session._win.snd_wnd
 

@@ -293,7 +293,7 @@ class Dhcp6Client(Subsystem):
         if lease is None or lease.address != address:
             return
 
-        __debug__ and log("dhcp6", f"DAD conflict on leased {address}; declining and re-soliciting")
+        log.enabled and log("dhcp6", f"DAD conflict on leased {address}; declining and re-soliciting")
         await self.decline(lease)
         if self._address_api is not None:
             self._address_api.remove(address=address)
@@ -343,7 +343,7 @@ class Dhcp6Client(Subsystem):
         try:
             await self.release(lease)
         except OSError as error:
-            __debug__ and log("dhcp6", f"<WARN>RELEASE on shutdown raised {type(error).__name__}: {error}</>")
+            log.enabled and log("dhcp6", f"<WARN>RELEASE on shutdown raised {type(error).__name__}: {error}</>")
 
     @override
     async def wait_stopped(self) -> None:
@@ -594,7 +594,7 @@ class Dhcp6Client(Subsystem):
                 elapsed = self._elapsed_centisecs(started)
                 await client_socket.sendto(bytes(self._build_information_request(xid=xid, elapsed=elapsed)), target)
 
-            __debug__ and log("dhcp6", f"Sending INFORMATION-REQUEST (xid={xid:#08x}) to {target[0]}")
+            log.enabled and log("dhcp6", f"Sending INFORMATION-REQUEST (xid={xid:#08x}) to {target[0]}")
             await _send()
 
             reply = await self._run_exchange(
@@ -607,11 +607,11 @@ class Dhcp6Client(Subsystem):
                 max_attempts=dhcp6__constants.DHCP6__RETRANS_MAX_ATTEMPTS,
             )
             if reply is None:
-                __debug__ and log("dhcp6", "INFORMATION-REQUEST unanswered; no other configuration obtained")
+                log.enabled and log("dhcp6", "INFORMATION-REQUEST unanswered; no other configuration obtained")
                 return None
 
             dns_servers = reply.dns_servers or []
-            __debug__ and log("dhcp6", f"Stateless config acquired: dns_servers={[str(s) for s in dns_servers]}")
+            log.enabled and log("dhcp6", f"Stateless config acquired: dns_servers={[str(s) for s in dns_servers]}")
             return Dhcp6StatelessConfig(dns_servers=dns_servers)
         finally:
             client_socket.close()
@@ -661,7 +661,7 @@ class Dhcp6Client(Subsystem):
                     bytes(self._build_solicit(xid=sol_xid, elapsed=elapsed, rapid_commit=rapid_commit)), target
                 )
 
-            __debug__ and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
+            log.enabled and log("dhcp6", f"Sending SOLICIT (xid={sol_xid:#08x}) to {target[0]}")
 
             rapid_reply, advertises = await self._solicit_for_advertise(
                 client_socket, xid=sol_xid, send=_send_solicit, rapid_commit=rapid_commit
@@ -670,14 +670,14 @@ class Dhcp6Client(Subsystem):
             # RFC 8415 §18.2.1 — a Rapid Commit REPLY answers the SOLICIT
             # directly; lease from it without the REQUEST/REPLY round-trip.
             if rapid_reply is not None and rapid_reply.server_id is not None:
-                __debug__ and log("dhcp6", "Rapid Commit REPLY received; leasing from the two-message exchange")
+                log.enabled and log("dhcp6", "Rapid Commit REPLY received; leasing from the two-message exchange")
                 lease = self._extract_lease(rapid_reply, server_duid=rapid_reply.server_id)
                 if lease is not None:
                     self._assign_lease(lease)
                 return lease
 
             if not advertises:
-                __debug__ and log("dhcp6", "SOLICIT unanswered; no lease obtained")
+                log.enabled and log("dhcp6", "SOLICIT unanswered; no lease obtained")
                 return None
 
             # RFC 8415 §18.2.9 — try servers highest-preference first; on a
@@ -688,13 +688,13 @@ class Dhcp6Client(Subsystem):
                 assert server_duid is not None  # collection filters Server-Identifier-less ADVERTISEs
                 reply = await self._request_from_server(client_socket, target=target, server_duid=server_duid)
                 if reply is None:
-                    __debug__ and log("dhcp6", "REQUEST unanswered; trying the next advertised server")
+                    log.enabled and log("dhcp6", "REQUEST unanswered; trying the next advertised server")
                     continue
                 lease = self._extract_lease(reply, server_duid=server_duid)
                 if lease is not None:
                     self._assign_lease(lease)
                     return lease
-                __debug__ and log("dhcp6", "REQUEST REPLY unusable; trying the next advertised server")
+                log.enabled and log("dhcp6", "REQUEST REPLY unusable; trying the next advertised server")
 
             return None
         finally:
@@ -723,7 +723,7 @@ class Dhcp6Client(Subsystem):
                 bytes(self._build_request(xid=req_xid, server_duid=server_duid, elapsed=elapsed)), target
             )
 
-        __debug__ and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
+        log.enabled and log("dhcp6", f"Sending REQUEST (xid={req_xid:#08x}) to server {server_duid.hex()}")
         await _send_request()
 
         return await self._run_exchange(
@@ -893,7 +893,7 @@ class Dhcp6Client(Subsystem):
                 elapsed = self._elapsed_centisecs(started)
                 await client_socket.sendto(bytes(self._build_renew(xid=xid, lease=lease, elapsed=elapsed)), target)
 
-            __debug__ and log("dhcp6", f"Sending RENEW (xid={xid:#08x}) for {lease.address}")
+            log.enabled and log("dhcp6", f"Sending RENEW (xid={xid:#08x}) for {lease.address}")
             await _send()
 
             reply = await self._run_exchange(
@@ -906,7 +906,7 @@ class Dhcp6Client(Subsystem):
                 mrd_deadline=deadline,
             )
             if reply is None:
-                __debug__ and log("dhcp6", "RENEW unanswered before T2; escalating to REBIND")
+                log.enabled and log("dhcp6", "RENEW unanswered before T2; escalating to REBIND")
                 return None
 
             return self._extract_lease(reply, server_duid=lease.server_duid)
@@ -934,7 +934,7 @@ class Dhcp6Client(Subsystem):
                 elapsed = self._elapsed_centisecs(started)
                 await client_socket.sendto(bytes(self._build_rebind(xid=xid, lease=lease, elapsed=elapsed)), target)
 
-            __debug__ and log("dhcp6", f"Sending REBIND (xid={xid:#08x}) for {lease.address}")
+            log.enabled and log("dhcp6", f"Sending REBIND (xid={xid:#08x}) for {lease.address}")
             await _send()
 
             reply = await self._run_exchange(
@@ -947,12 +947,12 @@ class Dhcp6Client(Subsystem):
                 mrd_deadline=deadline,
             )
             if reply is None:
-                __debug__ and log("dhcp6", "REBIND unanswered before valid-lifetime expiry; lease lost")
+                log.enabled and log("dhcp6", "REBIND unanswered before valid-lifetime expiry; lease lost")
                 return None
 
             server_duid = reply.server_id
             if server_duid is None:
-                __debug__ and log("dhcp6", "<WARN>REBIND REPLY missing Server Identifier; lease not refreshed")
+                log.enabled and log("dhcp6", "<WARN>REBIND REPLY missing Server Identifier; lease not refreshed")
                 return None
 
             return self._extract_lease(reply, server_duid=server_duid)
@@ -1017,7 +1017,7 @@ class Dhcp6Client(Subsystem):
                     bytes(self._build_teardown(msg_type=msg_type, xid=xid, lease=lease, elapsed=elapsed)), target
                 )
 
-            __debug__ and log("dhcp6", f"Sending {msg_type!s} (xid={xid:#08x}) for {lease.address}")
+            log.enabled and log("dhcp6", f"Sending {msg_type!s} (xid={xid:#08x}) for {lease.address}")
             await _send()
 
             await self._run_exchange(
@@ -1111,7 +1111,7 @@ class Dhcp6Client(Subsystem):
         """
 
         if self._address_api is not None and previous.address != refreshed.address:
-            __debug__ and log("dhcp6", f"Lease address changed {previous.address} -> {refreshed.address}; swapping")
+            log.enabled and log("dhcp6", f"Lease address changed {previous.address} -> {refreshed.address}; swapping")
             self._address_api.replace(
                 old_address=previous.address,
                 new_ifaddr=self._lease_ifaddr(refreshed),
@@ -1127,7 +1127,7 @@ class Dhcp6Client(Subsystem):
         lease that results.
         """
 
-        __debug__ and log("dhcp6", f"Lease {lease.address} valid lifetime expired; releasing and re-soliciting")
+        log.enabled and log("dhcp6", f"Lease {lease.address} valid lifetime expired; releasing and re-soliciting")
         if self._address_api is not None:
             self._address_api.remove(address=lease.address)
         self._lease = None
@@ -1154,7 +1154,7 @@ class Dhcp6Client(Subsystem):
         if self._address_api is None:
             return
         ifaddr = self._lease_ifaddr(lease)
-        __debug__ and log("dhcp6", f"Assigning leased address {ifaddr} via the Address API (DAD-checked)")
+        log.enabled and log("dhcp6", f"Assigning leased address {ifaddr} via the Address API (DAD-checked)")
         # DAD-checked install (RFC 8415 §18.2.8): the address is claimed
         # through the ND DAD engine and only used once it passes; a
         # duplicate calls back into 'notify_dad_conflict' so the worker
@@ -1188,29 +1188,29 @@ class Dhcp6Client(Subsystem):
 
         top_status = reply.status_code
         if top_status is not None and top_status.status_code in self._TOP_LEVEL_REJECT_STATUS:
-            __debug__ and log("dhcp6", f"<WARN>REPLY top-level Status Code {top_status.status_code}; no lease obtained")
+            log.enabled and log("dhcp6", f"<WARN>REPLY top-level Status Code {top_status.status_code}; no lease obtained")
             return None
 
         ia_na = reply.ia_na
         if ia_na is None:
-            __debug__ and log("dhcp6", "<WARN>REPLY carries no IA_NA option; no lease obtained")
+            log.enabled and log("dhcp6", "<WARN>REPLY carries no IA_NA option; no lease obtained")
             return None
 
         try:
             Dhcp6Options.validate_integrity(frame=ia_na.options, hlen=len(ia_na.options), offset=0)
             ia_options = Dhcp6Options.from_buffer(memoryview(as_buffer(ia_na.options)))
         except (Dhcp6IntegrityError, Dhcp6SanityError):
-            __debug__ and log("dhcp6", "<WARN>REPLY IA_NA sub-options malformed; no lease obtained")
+            log.enabled and log("dhcp6", "<WARN>REPLY IA_NA sub-options malformed; no lease obtained")
             return None
 
         status = ia_options.status_code
         if status is not None and status.status_code != Dhcp6StatusCode.SUCCESS:
-            __debug__ and log("dhcp6", f"<WARN>REPLY IA_NA Status Code {status.status_code}; no lease obtained")
+            log.enabled and log("dhcp6", f"<WARN>REPLY IA_NA Status Code {status.status_code}; no lease obtained")
             return None
 
         ia_addr = ia_options.ia_addr
         if ia_addr is None:
-            __debug__ and log("dhcp6", "<WARN>REPLY IA_NA carries no IA Address; no lease obtained")
+            log.enabled and log("dhcp6", "<WARN>REPLY IA_NA carries no IA Address; no lease obtained")
             return None
 
         lease = Dhcp6Lease(
@@ -1222,7 +1222,7 @@ class Dhcp6Client(Subsystem):
             iaid=ia_na.iaid,
             server_duid=server_duid,
         )
-        __debug__ and log(
+        log.enabled and log(
             "dhcp6",
             f"Lease acquired: {lease.address} (preferred {lease.preferred_lifetime}s, valid {lease.valid_lifetime}s)",
         )
@@ -1296,7 +1296,7 @@ class Dhcp6Client(Subsystem):
             if max_attempts is not None and attempt >= max_attempts:
                 return None
 
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp6",
                 f"recv window expired ({timeout_s:.2f}s); retransmitting (attempt {attempt + 1})",
             )
@@ -1333,20 +1333,20 @@ class Dhcp6Client(Subsystem):
             except TimeoutError:
                 return None
             except (Dhcp6IntegrityError, Dhcp6SanityError):
-                __debug__ and log("dhcp6", "<WARN>Dropping malformed inbound DHCPv6 frame; continuing wait window</>")
+                log.enabled and log("dhcp6", "<WARN>Dropping malformed inbound DHCPv6 frame; continuing wait window</>")
                 continue
 
-            __debug__ and log("dhcp6", f"<lg>RX</> - {packet}")
+            log.enabled and log("dhcp6", f"<lg>RX</> - {packet}")
 
             if packet.msg_type not in expected_types:
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp6",
                     f"<WARN>Dropping DHCPv6 frame with unexpected msg-type {packet.msg_type!r}; "
                     f"expected one of {expected_types!r}</>",
                 )
                 continue
             if packet.xid != xid:
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp6",
                     f"<WARN>Dropping DHCPv6 frame with mismatched xid (sent={xid:#08x}, got={packet.xid:#08x})</>",
                 )

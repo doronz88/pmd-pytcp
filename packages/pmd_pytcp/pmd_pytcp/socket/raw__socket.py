@@ -105,7 +105,7 @@ class RawSocket(socket):
         self._local_port = int(self._ip_proto)
         self._remote_port = 0
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Created socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Created socket")
 
     def _get_ip_addresses(
         self,
@@ -219,7 +219,7 @@ class RawSocket(socket):
         self._local_ip_address = local_ip_address
         stack.sockets.register(self)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Bound")
+        log.enabled and log("socket", f"<g>[{self}]</> - Bound")
 
     @override
     async def connect(self, address: tuple[str, int]) -> None:
@@ -247,7 +247,7 @@ class RawSocket(socket):
         self._remote_port = remote_port
         stack.sockets.register(self)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Connected socket")
 
     @override
     async def send(self, data: bytes) -> int:
@@ -293,7 +293,7 @@ class RawSocket(socket):
         # full byte count without waiting for the wire-level result.
         sent_data_len = len(data)
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<B><lr>[{self}]</> - Sent {sent_data_len} bytes of data",
         )
@@ -340,7 +340,7 @@ class RawSocket(socket):
         # Phase 4b fire-and-forget — see 'send' above.
         sent_data_len = len(data)
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<B><lr>[{self}]</> - Sent {sent_data_len} bytes of data",
         )
@@ -392,7 +392,7 @@ class RawSocket(socket):
             # 'bufsize' bytes and silently discards the remainder.
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            __debug__ and log(
+            log.enabled and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
             )
@@ -420,7 +420,7 @@ class RawSocket(socket):
             data_rx = packet_rx_md.raw__data
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            __debug__ and log(
+            log.enabled and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
             )
@@ -464,7 +464,7 @@ class RawSocket(socket):
         stack.sockets.unregister(self)
         self._mark_closed()
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Closed socket")
 
     def process_raw_packet(self, packet_rx_md: RawMetadata) -> None:
         """

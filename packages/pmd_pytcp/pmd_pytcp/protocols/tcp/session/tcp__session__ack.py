@@ -53,6 +53,8 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from pmd_net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
+
 from pmd_pytcp import stack
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.protocols.tcp import tcp__constants
@@ -202,7 +204,31 @@ class TcpAckProcessor:
             new_snd_una=session._snd_seq.una,
             now=time.monotonic(),
         )
-        if session._plpmtud_adapter.current_mtu > plpmtud_current_before:
+        # RFC 4821 §7.1 implicit-probe feedback: a fully-acked
+        # regular data segment confirms its packet size to the
+        # engine — this is what confirms BASE (and opens the
+        # search) without a dedicated base probe. Guarded so
+        # probing-off sessions pay nothing.
+        if session._plpmtud_probing_enabled:
+            session._plpmtud_adapter.check_implicit_confirm(
+                new_snd_una=session._snd_seq.una,
+                now=time.monotonic(),
+            )
+        if session._plpmtud_probing_enabled:
+            # RFC 8899 §4: with active probing the engine's PLPMTU
+            # is authoritative for the segments we emit — sync
+            # 'snd_mss' BOTH ways. Upward when a probe validates a
+            # larger size; downward when black-hole detection (or
+            # a classical PTB) shrank the PLPMTU — without the
+            # downward sync a connection whose MSS was raised and
+            # later invalidated would keep emitting segments the
+            # path drops, permanently wedged. The engine's
+            # current_mtu is bounded below by the family floor and
+            # above by min(interface MTU, peer MSS + overhead).
+            engine_mss = session._plpmtud_adapter.current_mtu - session._ip_tcp_overhead
+            if engine_mss != session._win.snd_mss and engine_mss >= TCP__MIN_MSS:
+                session._win.snd_mss = engine_mss
+        elif session._plpmtud_adapter.current_mtu > plpmtud_current_before:
             engine_mss = session._plpmtud_adapter.current_mtu - session._ip_tcp_overhead
             if engine_mss > session._win.snd_mss:
                 session._win.snd_mss = engine_mss
@@ -228,7 +254,7 @@ class TcpAckProcessor:
                     # cwnd, enter CA. Clear CSS state.
                     session._cc.ssthresh = session._cc.cwnd
                     resume_slow_start(session._cc.hystart_state)
-                    __debug__ and log(
+                    log.enabled and log(
                         "tcp-ss",
                         f"[{session}] - RFC 9406 HyStart++ "
                         "CSS_ROUNDS exhausted; ssthresh = "
@@ -384,7 +410,7 @@ class TcpAckProcessor:
             session._cc.ssthresh = compute_loss_event_ssthresh(flight_size, session._win.snd_mss)
             session._cc.cwnd = session._cc.ssthresh
             session._cc.snd_ewn = min(session._cc.cwnd, session._win.snd_wnd)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - RFC 8985 §7.4.2 TLP probe-repair "
                 f"CC: ssthresh={session._cc.ssthresh} cwnd={session._cc.cwnd}",
@@ -444,7 +470,7 @@ class TcpAckProcessor:
                 session._cc.frto_step = 0
                 session._cc.frto_active = False
                 session._cc.restore_frto_snapshot(snd_wnd=session._win.snd_wnd)
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - RFC 5682 F-RTO: spurious RTO "
                     f"detected, restored cwnd={session._cc.cwnd} "
@@ -456,7 +482,7 @@ class TcpAckProcessor:
             else:
                 # Step 2b: partial advance, defer to step 3.
                 session._cc.frto_step = 2
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - RFC 5682 §2.1 step 2b: "
                     f"partial first post-RTO ACK "
@@ -473,7 +499,7 @@ class TcpAckProcessor:
             session._cc.frto_step = 0
             session._cc.frto_active = False
             session._cc.restore_frto_snapshot(snd_wnd=session._win.snd_wnd)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - RFC 5682 F-RTO: spurious RTO "
                 f"detected, restored cwnd={session._cc.cwnd} "
@@ -527,7 +553,7 @@ class TcpAckProcessor:
             if session._cc.cwnd < session._cc.ssthresh or session._cc.hystart_state.in_css:
                 fold_rtt_sample(session._cc.hystart_state, ts_rtt_ms)
                 session._hystart_check_phase_transition()
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - RFC 7323 §4 TSecr-driven RTTM: "
                 f"rtt={ts_rtt_ms} ms via TSecr="
@@ -554,12 +580,12 @@ class TcpAckProcessor:
                 if session._cc.cwnd < session._cc.ssthresh or session._cc.hystart_state.in_css:
                     fold_rtt_sample(session._cc.hystart_state, observed_rtt_ms)
                     session._hystart_check_phase_transition()
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - RTT sample harvested: rtt={observed_rtt_ms} ms, " f"rto_state={session._rto_state}",
                 )
             else:
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - RTT sample tainted by retransmit (Karn); "
                     f"skipping update of {session._rto_state}",
@@ -611,7 +637,7 @@ class TcpAckProcessor:
         # subsequent §3.1 growth resumes from the previously-
         # observed loss boundary.
         if session._cc.recovery_point != 0 and le32(session._cc.recovery_point, session._snd_seq.una):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Exiting recovery: SND.UNA={session._snd_seq.una} "
                 f"reached RecoveryPoint={session._cc.recovery_point}",
@@ -718,7 +744,7 @@ class TcpAckProcessor:
         if packet_rx_md.tcp__data and overlap_prefix < len(packet_rx_md.tcp__data):
             new_data = packet_rx_md.tcp__data[overlap_prefix:]
             session._enqueue_rx_buffer(new_data)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Enqueued {len(new_data)} bytes starting at "
                 f"{add32(packet_rx_md.tcp__seq, overlap_prefix)} "
@@ -730,7 +756,7 @@ class TcpAckProcessor:
                 # of full-sized segments. '_transmit_packet' will reset
                 # the counter via the 'flag_ack' branch below.
                 session._transmit_packet(flag_ack=True)
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Sent inline ACK (every-other-segment, {session._rcv_seq.nxt})",
                 )
@@ -741,13 +767,13 @@ class TcpAckProcessor:
                 session._arm_timer("delayed_ack", tcp__constants.TCP__DELAYED_ACK__DELAY_MS)
         # Purge acked data from TX buffer.
         session._tx.drain(bytes_count=session._tx_buffer_una)
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Purged TX buffer up to SEQ {session._snd_seq.una}",
         )
         # Update remote window size.
         if session._win.snd_wnd != packet_rx_md.tcp__win << session._win.snd_wsc:
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Updated sending window size {session._win.snd_wnd} -> "
                 f"{packet_rx_md.tcp__win << session._win.snd_wsc}",
@@ -769,9 +795,9 @@ class TcpAckProcessor:
         # zero-window event starts fresh at the initial RTO
         # (RFC 9293 §3.8.6.1).
         if session._win.snd_wnd > 0 and session._persist.active:
-            __debug__ and log("tcp-ss", f"[{session}] - Persist: peer reopened window, deactivating timer")
+            log.enabled and log("tcp-ss", f"[{session}] - Persist: peer reopened window, deactivating timer")
             session._persist.deactivate(initial_timeout=tcp__constants.TCP__RTO__INITIAL_MS)
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - cwnd={session._cc.cwnd} ssthresh={session._cc.ssthresh} snd_ewn={session._cc.snd_ewn}",
         )
@@ -781,13 +807,13 @@ class TcpAckProcessor:
         for seq in list(session._tx.retransmit_request_counter):
             if lt32(seq, packet_rx_md.tcp__ack):
                 session._tx.retransmit_request_counter.pop(seq)
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Purged expired TX packet retransmit request counter for {seq}",
                 )
         # Bring next packet from ooo_packet_queue if available.
         if ooo_packet := session._ooo_packet_queue.pop(session._rcv_seq.nxt, None):
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - <lg>Retrieving packet {session._rcv_seq.nxt} from Out of Order queue</>",
             )

@@ -130,7 +130,7 @@ class Ip6RxHandler:
             return True
 
         self._if._packet_stats_rx.ip6__dst_unknown__drop += 1
-        __debug__ and log(
+        log.enabled and log(
             "ip6",
             f"{packet_rx.tracker} - IP packet not destined for this stack; " "host does not forward, dropping",
         )
@@ -148,17 +148,17 @@ class Ip6RxHandler:
 
         except Ip6SanityError as error:
             self._if._packet_stats_rx.ip6__failed_parse__drop += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             if error.pointer is not None:
                 self.__phrx_ip6__emit_parameter_problem(packet_rx, error.pointer)
             return
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.ip6__failed_parse__drop += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return
 
-        __debug__ and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6}")
+        log.enabled and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6}")
 
         # RFC 1812 §5.2 forward-or-deliver decision (the IPv6 host
         # equivalent). Phase 1 delivers locally-addressed datagrams
@@ -187,7 +187,7 @@ class Ip6RxHandler:
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
                 self._if._packet_stats_rx.raw__socket_match += 1
-                __debug__ and log(
+                log.enabled and log(
                     "ip6",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
@@ -272,13 +272,13 @@ class Ip6RxHandler:
             # RFC 8200 §4.7: chain terminator. Drop silently;
             # nothing to dispatch.
             self._if._packet_stats_rx.ip6__no_next_header += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{packet_rx.tracker} - IP6_NO_NEXT_HEADER terminator, dropping silently.",
             )
         else:
             self._if._packet_stats_rx.ip6__no_proto_support__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{packet_rx.tracker} - Unsupported protocol {current_next}, dropping.",
             )
@@ -296,7 +296,7 @@ class Ip6RxHandler:
             Ip6HbhParser(packet_rx, ip6_dst_is_multicast=packet_rx.ip6.dst.is_multicast)
         except Ip6HbhIntegrityError as error:
             self._if._packet_stats_rx.ip6_hbh__failed_parse += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         except Ip6HbhSanityError as error:
             return self.__phrx_ip6__handle_options_sanity_error(
@@ -308,7 +308,7 @@ class Ip6RxHandler:
             check_ext_hdr_option_caps(packet_rx.ip6_hbh.options)
         except Ip6ExtHdrCapViolation as error:
             self._if._packet_stats_rx.ip6_hbh__option_cap_exceeded__drop += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         return True
 
@@ -324,7 +324,7 @@ class Ip6RxHandler:
             Ip6RoutingParser(packet_rx)
         except Ip6RoutingIntegrityError as error:
             self._if._packet_stats_rx.ip6_routing__failed_parse += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             if error.pointer is not None:
                 # RFC 5095 §3: RH0 hard-drop emits Param Problem
                 # code 0 (erroneous header field) with pointer at
@@ -344,7 +344,7 @@ class Ip6RxHandler:
             Ip6DestOptsParser(packet_rx, ip6_dst_is_multicast=packet_rx.ip6.dst.is_multicast)
         except Ip6DestOptsIntegrityError as error:
             self._if._packet_stats_rx.ip6_dest_opts__failed_parse += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         except Ip6DestOptsSanityError as error:
             return self.__phrx_ip6__handle_options_sanity_error(
@@ -356,7 +356,7 @@ class Ip6RxHandler:
             check_ext_hdr_option_caps(packet_rx.ip6_dest_opts.options)
         except Ip6ExtHdrCapViolation as error:
             self._if._packet_stats_rx.ip6_dest_opts__option_cap_exceeded__drop += 1
-            __debug__ and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("ip6", f"{packet_rx.tracker} - <CRIT>{error}</>")
             return False
         return True
 
@@ -431,7 +431,7 @@ class Ip6RxHandler:
         )
         if verdict is not None:
             self._if._packet_stats_rx.ip6__no_proto_support__icmp6_param_problem_suppressed += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv6 Unrecognized Next Header "
                 f"to {packet_rx.ip6.src}: {verdict}</>",
@@ -524,7 +524,7 @@ class Ip6RxHandler:
         )
         if verdict is not None:
             self._if._packet_stats_rx.ip6__sanity_error__icmp6_param_problem_suppressed += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv6 Parameter Problem "
                 f"to {packet_rx.ip6.src}: {verdict}</>",

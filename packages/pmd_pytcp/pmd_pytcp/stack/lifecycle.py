@@ -54,7 +54,7 @@ from pmd_net_addr import (
     MacAddress,
 )
 from pmd_pytcp.lib.interface_layer import InterfaceLayer
-from pmd_pytcp.lib.logger import log
+from pmd_pytcp.lib.logger import log, refresh_log_enabled
 from pmd_pytcp.lib.packet_stats import LinkStatsCounters, PacketStatsRx, PacketStatsTx
 from pmd_pytcp.protocols.arp.arp__cache import ArpCache
 from pmd_pytcp.protocols.dhcp4.dhcp4__client import Dhcp4Client
@@ -582,6 +582,12 @@ def init(
             sysctl_module.set(key, value)
     sysctl_module.finalize_validators()
 
+    # Arm the hot-path logging gate ('log.enabled') against the live
+    # logging configuration. With the 'pmd_pytcp' logger below DEBUG
+    # (the embedded-library default) every 'log.enabled and log(...)'
+    # site now short-circuits before building its message string.
+    refresh_log_enabled()
+
     _stack.timer = Timer()
     _stack.interfaces = InterfaceTable(first_ifindex=_stack.STACK__DEFAULT_IFINDEX)
 
@@ -739,9 +745,9 @@ async def start() -> None:
         for dhcp4_client in dhcp4_clients:
             bound = await dhcp4_client.start_and_wait_for_bind(timeout_s=boot_wait_s)
             if bound:
-                __debug__ and log("stack", "DHCPv4 lifecycle reached BOUND during boot")
+                log.enabled and log("stack", "DHCPv4 lifecycle reached BOUND during boot")
             else:
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"<WARN>DHCPv4 lifecycle did not reach BOUND within "
                     f"{boot_wait_s:.1f}s; proceeding without IPv4 (lifecycle "
@@ -782,7 +788,7 @@ def _abort_open_sockets() -> None:
         try:
             abort()
         except Exception as error:  # pylint: disable=broad-exception-caught
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<WARN>Aborting {sock} during stop() raised {type(error).__name__}: {error}</>",
             )

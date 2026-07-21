@@ -222,7 +222,7 @@ class TcpTxHandler:
         if tcp__flag_fin:
             self._if._packet_stats_tx.tcp__flag_fin += 1
 
-        __debug__ and log("tcp", f"{tcp_packet_tx.tracker} - {tcp_packet_tx}")
+        log.enabled and log("tcp", f"{tcp_packet_tx.tracker} - {tcp_packet_tx}")
 
         if ip__src.is_ip6 is True and ip__dst.is_ip6 is True and ip__src.is_ip4 is False and ip__dst.is_ip4 is False:
             self._if._packet_stats_tx.tcp__send += 1

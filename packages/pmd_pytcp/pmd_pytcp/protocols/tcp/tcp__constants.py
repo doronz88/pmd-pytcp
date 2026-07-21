@@ -50,6 +50,14 @@ from __future__ import annotations
 
 TCP__RTO__INITIAL_MS = 1000
 
+# RFC 6298 §2.4 lower bound on the computed RTO — the RFC SHOULD of
+# "rounded up to 1 second". Kept at 1000 by default; operators on
+# known-low-RTT paths (tunnels, LAN) lower it the way Linux runs a
+# 200 ms floor, so genuine stalls (RTO recovery, PLPMTUD black-hole
+# detection) cost proportionally to the path RTT instead of a fixed
+# second. Consumed by 'tcp__rto.clamp_rto'.
+TCP__RTO__MIN_MS = 1000
+
 # RFC 1122 §4.2.3.5 R2 (incorporated by RFC 9293 §3.8.3) mandates that
 # the connection-abort timeout be at least 100 s. With the exponential-
 # backoff cadence of 1, 2, 4, 8, 16, 32, 64 s per retransmit, six
@@ -162,6 +170,18 @@ TCP__BASE_MSS: dict[str, int] = {"default": 1024}
 # block.
 TCP__MTU_PROBING: dict[str, int] = {"default": 0}
 
+# RFC 8899 §5.1.1 PROBE_TIMER for TCP PLPMTUD probes, in milliseconds —
+# how long an emitted probe may stay unacknowledged before the search
+# declares it lost. The RFC recommends 30 s (suits multi-hop WAN paths
+# where a probe's fate is genuinely ambiguous); on a low-RTT path (the
+# motivating case: userspace tunnels with ~5 ms RTT) a black-holed probe
+# is known-dead within a few RTTs, and 30 s would park the search for
+# the whole transfer. The in-band loss signals (loss-recovery entry /
+# RTO) usually fire long before this timer; the timer is the backstop
+# for probes whose loss produces no recovery event (e.g. nothing else
+# in flight). Per-interface like 'tcp.base_mss'.
+TCP__PLPMTUD__PROBE_TIMER_MS: dict[str, int] = {"default": 30_000}
+
 # Ceiling on the send-side MSS — the largest segment this stack will EMIT —
 # applied independently of the receive MSS advertised to the peer. 0 (default)
 # means uncapped: 'snd_mss' rises to 'interface_mtu - overhead' as today. A
@@ -258,6 +278,18 @@ register(
     default=TCP__RTO__INITIAL_MS,
     validator=is_positive_int("tcp.rto.initial_ms"),
     description="RFC 6298 §2.1 initial RTO in milliseconds.",
+)
+register(
+    key="tcp.rto.min_ms",
+    module_name=__name__,
+    attr="TCP__RTO__MIN_MS",
+    default=TCP__RTO__MIN_MS,
+    validator=is_positive_int("tcp.rto.min_ms"),
+    description=(
+        "RFC 6298 §2.4 lower bound on the computed RTO in milliseconds "
+        "(default 1000 per the RFC SHOULD). Lower on known-low-RTT paths "
+        "(tunnels, LAN) the way Linux runs a 200 ms floor."
+    ),
 )
 register(
     key="tcp.retransmit.max_count",
@@ -390,6 +422,20 @@ register(
     description=(
         "Linux 'net.ipv4.tcp_mtu_probing' tristate — 0=off (default), "
         "2=always-on. Mode 1 is deferred (needs RTO-black-hole heuristic)."
+    ),
+    interface_scope=True,
+)
+register(
+    key="tcp.plpmtud.probe_timer_ms",
+    module_name=__name__,
+    attr="TCP__PLPMTUD__PROBE_TIMER_MS",
+    default=TCP__PLPMTUD__PROBE_TIMER_MS["default"],
+    validator=is_positive_int("tcp.plpmtud.probe_timer_ms"),
+    description=(
+        "RFC 8899 §5.1.1 PROBE_TIMER for TCP PLPMTUD probes in "
+        "milliseconds (default 30000 per the RFC). Lower it on "
+        "low-RTT paths so a black-holed probe cannot park the "
+        "search; in-band loss signals usually beat it."
     ),
     interface_scope=True,
 )

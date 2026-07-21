@@ -119,7 +119,7 @@ class ArpTxHandler:
             echo_tracker=echo_tracker,
         )
 
-        __debug__ and log("arp", f"{arp_packet_tx.tracker} - {arp_packet_tx}")
+        log.enabled and log("arp", f"{arp_packet_tx.tracker} - {arp_packet_tx}")
 
         return self._if._phtx_ethernet(
             ethernet__src=ethernet__src,
@@ -153,12 +153,12 @@ class ArpTxHandler:
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Sent out ARP Reply for {arp__spa} to {arp__tpa}",
             )
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out ARP Reply for {arp__spa} to {arp__tpa}, " f"tx_status: {tx_status}",
             )
@@ -181,12 +181,12 @@ class ArpTxHandler:
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Sent out ARP Request for {arp__tpa}",
             )
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out ARP Request for {arp__tpa}, " f"tx_status: {tx_status}",
             )
@@ -229,12 +229,12 @@ class ArpTxHandler:
         )
 
         if tx_status == TxStatus.PASSED__ETHERNET__TO_TX_RING:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Sent out unicast ARP Request for {arp__tpa} to {ethernet__dst}",
             )
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"Failed to send out unicast ARP Request for {arp__tpa} to " f"{ethernet__dst}, tx_status: {tx_status}",
             )
