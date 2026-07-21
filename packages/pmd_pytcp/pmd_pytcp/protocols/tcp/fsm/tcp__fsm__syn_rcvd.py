@@ -99,7 +99,7 @@ def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
     # SYN-on-established branch in '_tcp_fsm_established'.
     if packet_rx_md.tcp__flag_syn and not packet_rx_md.tcp__flag_rst:
         session._emit_challenge_ack()
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-syn_rcvd (RFC 9293 §3.10.7.4)",
         )

@@ -364,7 +364,7 @@ class IgmpTxHandler:
 
         igmp_packet_tx = IgmpAssembler(igmp__message=message)
 
-        __debug__ and log("igmp", f"{igmp_packet_tx.tracker} - {igmp_packet_tx}")
+        log.enabled and log("igmp", f"{igmp_packet_tx.tracker} - {igmp_packet_tx}")
 
         self._if._packet_stats_tx.igmp__pre_assemble += 1
 

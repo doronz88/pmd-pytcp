@@ -80,13 +80,13 @@ class EthernetRxHandler:
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.ethernet__failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet}")
+        log.enabled and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet}")
 
         # AF_PACKET tap — fan a copy of the parsed frame to every bound
         # packet socket whose filter matches, BEFORE the EtherType -> IP
@@ -102,7 +102,7 @@ class EthernetRxHandler:
             self._if._mac_broadcast,
         }:
             self._if._packet_stats_rx.ethernet__dst_unknown__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - Ethernet packet not destined for this " "stack, dropping",
             )
@@ -125,7 +125,7 @@ class EthernetRxHandler:
         handler = self._if._ethertype_registry.get(packet_rx.ethernet.type)
         if handler is None:
             self._if._packet_stats_rx.ethernet__no_proto_support__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ethernet.type}, dropping.",
             )

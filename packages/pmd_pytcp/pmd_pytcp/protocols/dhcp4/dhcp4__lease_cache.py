@@ -203,7 +203,7 @@ def write_cached_lease(path: str, lease: "Dhcp4Lease", /) -> None:
                 pass
             raise
     except OSError as error:
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<WARN>Failed to write DHCPv4 lease cache to {path!r}: {error}</>",
         )
@@ -236,7 +236,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
     except FileNotFoundError:
         return None
     except (OSError, json.JSONDecodeError) as error:
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<WARN>Cannot read DHCPv4 lease cache at {path!r}: {error}</>",
         )
@@ -282,7 +282,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
         Ip4NetworkFormatError,
         MacAddressFormatError,
     ) as error:
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<WARN>Malformed DHCPv4 lease cache at {path!r}: {error}</>",
         )
@@ -293,7 +293,7 @@ def read_cached_lease(path: str, /) -> "Dhcp4Lease | None":
     # still within its lease duration.
     age_s = time.time() - acquired_at_wall
     if age_s < 0 or age_s >= lease_time__sec:
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"DHCPv4 lease cache at {path!r} is expired "
             f"(age={age_s:.0f}s, lease_time={lease_time__sec}s); dropping",
@@ -339,7 +339,7 @@ def delete_cached_lease(path: str, /) -> None:
     except FileNotFoundError:
         return
     except OSError as error:
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<WARN>Failed to delete DHCPv4 lease cache at {path!r}: {error}</>",
         )

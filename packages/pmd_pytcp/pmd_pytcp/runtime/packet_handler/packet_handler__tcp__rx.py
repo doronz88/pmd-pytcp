@@ -72,13 +72,13 @@ class TcpRxHandler:
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.tcp__failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "tcp",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("tcp", f"{packet_rx.tracker} - {packet_rx.tcp}")
+        log.enabled and log("tcp", f"{packet_rx.tracker} - {packet_rx.tcp}")
 
         # Ensure that TCP payload type is memoryview.
         assert isinstance(
@@ -126,7 +126,7 @@ class TcpRxHandler:
         # Check if incoming packet matches active TCP socket.
         if tcp_socket := cast(TcpSocket, stack.sockets.get(packet_rx_md.socket_id, None)):
             self._if._packet_stats_rx.tcp__socket_match_active__forward_to_socket += 1
-            __debug__ and log(
+            log.enabled and log(
                 "tcp",
                 f"{packet_rx_md.tracker} - <INFO>TCP packet is part of active " f"socket [{tcp_socket}]</>",
             )
@@ -164,7 +164,7 @@ class TcpRxHandler:
                     ):
                         continue
                     self._if._packet_stats_rx.tcp__socket_match_listening__forward_to_socket += 1
-                    __debug__ and log(
+                    log.enabled and log(
                         "tcp",
                         f"{packet_rx_md.tracker} - <INFO>TCP packet matches " f"listening socket [{tcp_socket}]</>",
                     )
@@ -175,7 +175,7 @@ class TcpRxHandler:
         # and it carries RST flag then drop it silently.
         if packet_rx_md.tcp__flag_rst:
             self._if._packet_stats_rx.tcp__no_socket_match__rst__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "tcp",
                 f"{packet_rx.tracker} - TCP RST packet from {packet_rx.ip.src} to "
                 f"closed port {packet_rx.tcp.dport}, dropping.",
@@ -202,7 +202,7 @@ class TcpRxHandler:
         # ACK-bearing ones (such as SYN+ACK or rogue bare ACK arriving
         # at a listening port) the spec requires the bare-RST form.
         self._if._packet_stats_rx.tcp__no_socket_match__respond_rst += 1
-        __debug__ and log(
+        log.enabled and log(
             "tcp",
             f"{packet_rx.tracker} - TCP packet from {packet_rx.ip.src} to "
             f"closed port {packet_rx.tcp.dport}, responding with TCP RST "

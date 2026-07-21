@@ -105,7 +105,7 @@ def fsm__syn_sent__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
     if metadata.category is IcmpCategory.DEST_UNREACHABLE:
         type_code = (metadata.icmp_type, metadata.icmp_code)
         if type_code in _SYN_SENT__HARD_DEST_UNREACHABLE_CODES:
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - <ly>[{session._state}]</> - got ICMP "
                 f"hard error type={metadata.icmp_type} "
@@ -137,7 +137,7 @@ def fsm__syn_sent__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
         return
 
     # TIME_EXCEEDED / PARAM_PROBLEM are soft per RFC 5927 §6 — log only.
-    __debug__ and log(
+    log.enabled and log(
         "tcp-ss",
         f"[{session}] - <ly>[{session._state}]</> - got ICMP "
         f"category={metadata.category.name} type={metadata.icmp_type} "
@@ -215,7 +215,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 tcp__ack=0,
                 tcp__win=session._rcv_wnd,
             )
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - SYN_SENT: rejected segment with unacceptable "
                 f"ACK={packet_rx_md.tcp__ack}, sent RST (RFC 9293 §3.10.7.3)",
@@ -256,6 +256,10 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 TCP__MIN_MSS,
                 min(packet_rx_md.tcp__mss, session._mss_ceiling()),
             )
+            # Peer's advertised MSS also bounds the PLPMTUD probe
+            # ladder: probing must never propose a packet larger
+            # than the segment size the peer invited.
+            session._plpmtud_adapter.limit_max(packet_rx_md.tcp__mss + session._ip_tcp_overhead)
             # Initial '_snd_wnd' = peer's literal SYN+ACK win
             # (unshifted per RFC 7323 §2.2 - "WSopt is not used
             # to scale the value in the window field of the SYN
@@ -436,7 +440,7 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 )
             # Send initial ACK packet.
             session._transmit_packet(flag_ack=True)
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Sent initial ACK ({session._rcv_seq.una}) packet",
             )
@@ -475,6 +479,10 @@ def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> Non
                 TCP__MIN_MSS,
                 min(packet_rx_md.tcp__mss, session._mss_ceiling()),
             )
+            # Peer's advertised MSS also bounds the PLPMTUD probe
+            # ladder: probing must never propose a packet larger
+            # than the segment size the peer invited.
+            session._plpmtud_adapter.limit_max(packet_rx_md.tcp__mss + session._ip_tcp_overhead)
             session._win.snd_wnd = packet_rx_md.tcp__win
             # WSCALE bilateral negotiation per RFC 7323 §2.2.
             if session._advertise.wscale and packet_rx_md.tcp__wscale:

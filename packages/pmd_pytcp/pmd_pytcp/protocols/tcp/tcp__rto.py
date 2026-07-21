@@ -60,6 +60,7 @@ ver 3.0.7
 from __future__ import annotations
 
 from pmd_pytcp._compat import dataclass
+from pmd_pytcp.protocols.tcp import tcp__constants
 
 # RFC 6298 §2.1 / RFC 8961: initial RTO before any RTT sample.
 # Both RFCs converge on 1 second.
@@ -176,10 +177,18 @@ def back_off(state: RtoState) -> RtoState:
 
 def clamp_rto(rto_ms: int) -> int:
     """
-    Clamp an RTO value to the [MIN_RTO_MS, MAX_RTO_MS] bounds per
+    Clamp an RTO value to the [min, MAX_RTO_MS] bounds per
     RFC 6298 §2.4 / §2.5. Exposed for tests and direct callers
     that want to clamp a hand-computed RTO without going through
     'update' / 'back_off'.
+
+    The lower bound is the 'tcp.rto.min_ms' sysctl (default =
+    MIN_RTO_MS, the RFC 6298 §2.4 SHOULD of 1 s). Operators on
+    known-low-RTT paths (tunnels, LAN, loopback) lower it the
+    way Linux runs a 200 ms floor: with SRTT in the single-digit
+    milliseconds, a 1 s floor makes every genuine stall — RTO
+    recovery, PLPMTUD black-hole detection — cost two to three
+    orders of magnitude more than the path's actual RTT.
     """
 
-    return max(MIN_RTO_MS, min(rto_ms, MAX_RTO_MS))
+    return max(tcp__constants.TCP__RTO__MIN_MS, min(rto_ms, MAX_RTO_MS))

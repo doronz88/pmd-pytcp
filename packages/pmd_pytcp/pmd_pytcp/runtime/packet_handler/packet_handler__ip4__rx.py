@@ -105,7 +105,7 @@ class Ip4RxHandler:
             return True
 
         self._if._packet_stats_rx.ip4__dst_unknown__drop += 1
-        __debug__ and log(
+        log.enabled and log(
             "ip4",
             f"{packet_rx.tracker} - IP packet not destined for this stack; " "host does not forward, dropping",
         )
@@ -123,7 +123,7 @@ class Ip4RxHandler:
 
         except Ip4SanityError as error:
             self._if._packet_stats_rx.ip4__failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
@@ -133,13 +133,13 @@ class Ip4RxHandler:
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.ip4__failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("ip4", f"{packet_rx.tracker} - {packet_rx.ip4}")
+        log.enabled and log("ip4", f"{packet_rx.tracker} - {packet_rx.ip4}")
 
         # Source-route gate: drop inbound packets carrying LSRR or
         # SSRR options unless the per-interface
@@ -155,7 +155,7 @@ class Ip4RxHandler:
         )
         if not accept_source_route and (packet_rx.ip4.lsrr is not None or packet_rx.ip4.ssrr is not None):
             self._if._packet_stats_rx.ip4__source_route__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping source-routed IPv4 packet "
                 f"from {packet_rx.ip4.src} (ip4.accept_source_route=False)</>",
@@ -171,7 +171,7 @@ class Ip4RxHandler:
         # requires '_ip4_ifaddr' state to recognise.
         if packet_rx.ip4.src in self._if._ip4_broadcast:
             self._if._packet_stats_rx.ip4__src_directed_broadcast__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping IPv4 packet with "
                 f"directed-broadcast source {packet_rx.ip4.src} (martian source)</>",
@@ -228,7 +228,7 @@ class Ip4RxHandler:
                     self._if._packet_stats_rx.raw__multicast_source_filtered__drop += 1
                     return
                 self._if._packet_stats_rx.raw__socket_match += 1
-                __debug__ and log(
+                log.enabled and log(
                     "ip4",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
@@ -242,7 +242,7 @@ class Ip4RxHandler:
         handler = self._if._ip4_proto_registry.get(packet_rx.ip4.proto)
         if handler is None:
             self._if._packet_stats_rx.ip4__no_proto_support__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - Unsupported protocol " f"{packet_rx.ip4.proto}, dropping.",
             )
@@ -277,7 +277,7 @@ class Ip4RxHandler:
         )
         if verdict is not None:
             self._if._packet_stats_rx.ip4__no_proto_support__icmp4_unreachable_suppressed += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv4 Protocol Unreachable "
                 f"to {packet_rx.ip4.src}: {verdict}</>",
@@ -322,7 +322,7 @@ class Ip4RxHandler:
         )
         if verdict is not None:
             self._if._packet_stats_rx.ip4__sanity_error__icmp4_param_problem_suppressed += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Suppressing ICMPv4 Parameter Problem "
                 f"to {packet_rx.ip4.src}: {verdict}</>",
@@ -348,7 +348,7 @@ class Ip4RxHandler:
         Defragment IPv4 packet.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "ip4",
             f"{packet_rx.tracker} - IPv4 packet fragment, offset "
             f"{packet_rx.ip4.offset}, dlen {packet_rx.ip4.payload_len}"
@@ -377,7 +377,7 @@ class Ip4RxHandler:
             return None
         if result.outcome is IpFragAddOutcome.ECN_MIXED__DROP:
             self._if._packet_stats_rx.ip4__frag__ecn_mixed__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip4",
                 f"{packet_rx.tracker} - <WARN>Dropping reassembled IPv4 datagram: "
                 f"fragments carry inconsistent ECN bits (RFC 3168 §5.3)</>",
@@ -404,7 +404,7 @@ class Ip4RxHandler:
         struct.pack_into("!H", header, 10, inet_cksum(memoryview(as_buffer(header))))
         packet_rx = PacketRx(bytes(header) + payload)
         Ip4Parser(packet_rx)
-        __debug__ and log(
+        log.enabled and log(
             "ip4",
             f"{packet_rx.tracker} - Reasembled fragmented IPv4 packet, " f"dlen {len(payload)} bytes",
         )

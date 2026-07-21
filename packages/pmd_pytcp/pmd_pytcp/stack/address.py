@@ -165,14 +165,14 @@ class AddressApi:
                 # the callback. Reuses the canonical ND DAD engine rather
                 # than duplicating DAD in the address plane.
                 handler._claim_ip6_address_async(ip6_host=ifaddr, on_conflict=dad_conflict_callback)
-                __debug__ and log("stack", f"<lg>Address API</>: claiming IPv6 host {ifaddr} via DAD")
+                log.enabled and log("stack", f"<lg>Address API</>: claiming IPv6 host {ifaddr} via DAD")
                 return
             handler._ip6_ifaddr = [*handler._ip6_ifaddr, ifaddr]
             handler._assign_ip6_multicast(ifaddr.address.solicited_node_multicast)
-            __debug__ and log("stack", f"<lg>Address API</>: added IPv6 host {ifaddr}")
+            log.enabled and log("stack", f"<lg>Address API</>: added IPv6 host {ifaddr}")
             return
         handler._ip4_ifaddr = [*handler._ip4_ifaddr, ifaddr]
-        __debug__ and log("stack", f"<lg>Address API</>: added IPv4 host {ifaddr}")
+        log.enabled and log("stack", f"<lg>Address API</>: added IPv4 host {ifaddr}")
 
     def remove(
         self,
@@ -204,7 +204,7 @@ class AddressApi:
             handler._ip6_ifaddr = [host for host in handler._ip6_ifaddr if host.address != address]
             for host in removed_hosts:
                 handler._remove_ip6_multicast(host.address.solicited_node_multicast)
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<lg>Address API</>: removed IPv6 address {address} "
                 f"({len(removed_hosts)} host(s); abort_bound_sessions={abort_bound_sessions})",
@@ -213,7 +213,7 @@ class AddressApi:
         before = len(handler._ip4_ifaddr)
         handler._ip4_ifaddr = [host for host in handler._ip4_ifaddr if host.address != address]
         removed = before - len(handler._ip4_ifaddr)
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"<lg>Address API</>: removed IPv4 address {address} "
             f"({removed} host(s); abort_bound_sessions={abort_bound_sessions})",

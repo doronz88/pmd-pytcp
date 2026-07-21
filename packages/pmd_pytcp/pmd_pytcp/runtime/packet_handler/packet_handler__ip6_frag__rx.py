@@ -70,13 +70,13 @@ class Ip6FragRxHandler:
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.ip6_frag__failed_parse += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6_frag}")
+        log.enabled and log("ip6", f"{packet_rx.tracker} - {packet_rx.ip6_frag}")
 
         if defragmented_packet_rx := self.__defragment_ip6_packet(packet_rx):
             self._if._packet_stats_rx.ip6_frag__defrag += 1
@@ -91,7 +91,7 @@ class Ip6FragRxHandler:
         Defragment IPv6 packet.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "ip6",
             f"{packet_rx.tracker} - IPv6 packet fragment, "
             f"offset {packet_rx.ip6_frag.offset}, "
@@ -116,7 +116,7 @@ class Ip6FragRxHandler:
             return None
         if result.outcome is IpFragAddOutcome.ECN_MIXED__DROP:
             self._if._packet_stats_rx.ip6_frag__ecn_mixed__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{packet_rx.tracker} - <WARN>Dropping reassembled IPv6 datagram: "
                 f"fragments carry inconsistent ECN bits (RFC 3168 §5.3)</>",
@@ -142,7 +142,7 @@ class Ip6FragRxHandler:
         # ICMPv6 RX dispatch can refuse fragmented ND / SEND
         # messages per RFC 6980 §5.
         packet_rx.was_fragmented = True
-        __debug__ and log(
+        log.enabled and log(
             "ip6",
             f"{packet_rx.tracker} - Defragmented IPv6 packet, " f"payload len {len(payload)} bytes",
         )

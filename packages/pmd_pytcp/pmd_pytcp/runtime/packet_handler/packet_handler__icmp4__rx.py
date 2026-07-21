@@ -94,14 +94,14 @@ class Icmp4RxHandler:
             Icmp4Parser(packet_rx)
 
         except PacketValidationError as error:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             self._if._packet_stats_rx.icmp4__failed_parse__drop += 1
             return
 
-        __debug__ and log("icmp4", f"{packet_rx.tracker} - {packet_rx.icmp4}")
+        log.enabled and log("icmp4", f"{packet_rx.tracker} - {packet_rx.icmp4}")
 
         if packet_rx.icmp4.message.type == Icmp4Type.ECHO_REPLY:
             self.__phrx_icmp4__echo_reply(packet_rx)
@@ -123,7 +123,7 @@ class Icmp4RxHandler:
 
         assert isinstance(packet_rx.icmp4.message, Icmp4MessageEchoReply)
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Echo Reply packet " f"from {packet_rx.ip4.src}",
         )
@@ -143,7 +143,7 @@ class Icmp4RxHandler:
         for socket_id in packet_rx_md.socket_ids:
             if socket := cast(RawSocket, stack.sockets.get(socket_id, None)):
                 self._if._packet_stats_rx.raw__socket_match += 1
-                __debug__ and log(
+                log.enabled and log(
                     "raw",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
@@ -165,7 +165,7 @@ class Icmp4RxHandler:
 
         message = packet_rx.icmp4.message
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Destination Unreachable packet "
             f"from {packet_rx.ip4.src}, code={message.code}",
@@ -178,7 +178,7 @@ class Icmp4RxHandler:
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{packet_rx.tracker} - Unreachable data doesn't pass basic " "IPv4/UDP integrity check",
             )
@@ -222,7 +222,7 @@ class Icmp4RxHandler:
 
         for socket_id in packet.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                __debug__ and log(
+                log.enabled and log(
                     "icmp4",
                     f"{packet_rx.tracker} - <INFO>Found matching "
                     f"listening UDP socket {socket}, for Unreachable "
@@ -251,7 +251,7 @@ class Icmp4RxHandler:
                     )
                 return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Unreachable data doesn't match " "any UDP socket",
         )
@@ -297,7 +297,7 @@ class Icmp4RxHandler:
         offender_ip = packet_rx.ip4.src
 
         if is_frag_needed and message.mtu is not None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{packet_rx.tracker} - <INFO>Found matching TCP session "
                 f"for Frag-Needed from {packet_rx.ip4.src}, mtu={message.mtu}</>",
@@ -322,7 +322,7 @@ class Icmp4RxHandler:
             self._if._packet_stats_rx.icmp4__destination_unreachable__fragmentation_needed__notify_pmtu += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Unreachable packet from {packet_rx.ip4.src}</>",
@@ -357,7 +357,7 @@ class Icmp4RxHandler:
 
         message = packet_rx.icmp4.message
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Time Exceeded packet "
             f"from {packet_rx.ip4.src}, code={message.code}",
@@ -366,7 +366,7 @@ class Icmp4RxHandler:
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{packet_rx.tracker} - Time Exceeded data doesn't pass basic IPv4/L4 integrity check",
             )
@@ -408,7 +408,7 @@ class Icmp4RxHandler:
 
         for socket_id in packet.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                __debug__ and log(
+                log.enabled and log(
                     "icmp4",
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Time Exceeded from {packet_rx.ip4.src}</>",
@@ -423,7 +423,7 @@ class Icmp4RxHandler:
                 self._if._packet_stats_rx.icmp4__time_exceeded__udp__notify += 1
                 return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Time Exceeded data doesn't match any UDP socket",
         )
@@ -459,7 +459,7 @@ class Icmp4RxHandler:
             self._if._packet_stats_rx.icmp4__time_exceeded__tcp__seq_out_of_window__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session " f"for Time Exceeded from {packet_rx.ip4.src}</>",
         )
@@ -493,7 +493,7 @@ class Icmp4RxHandler:
 
         message = packet_rx.icmp4.message
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Received ICMPv4 Parameter Problem packet "
             f"from {packet_rx.ip4.src}, code={message.code}, pointer={message.pointer}",
@@ -502,7 +502,7 @@ class Icmp4RxHandler:
 
         embedded = parse_embedded_l4(message.data, IpVersion.IP4)
         if embedded is None:
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{packet_rx.tracker} - Parameter Problem data doesn't pass basic IPv4/L4 integrity check",
             )
@@ -544,7 +544,7 @@ class Icmp4RxHandler:
 
         for socket_id in packet.socket_ids:
             if socket := cast(UdpSocket, stack.sockets.get(socket_id, None)):
-                __debug__ and log(
+                log.enabled and log(
                     "icmp4",
                     f"{packet_rx.tracker} - <INFO>Found matching UDP socket "
                     f"{socket} for Parameter Problem from {packet_rx.ip4.src}</>",
@@ -559,7 +559,7 @@ class Icmp4RxHandler:
                 self._if._packet_stats_rx.icmp4__parameter_problem__udp__notify += 1
                 return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Parameter Problem data doesn't match any UDP socket",
         )
@@ -595,7 +595,7 @@ class Icmp4RxHandler:
             self._if._packet_stats_rx.icmp4__parameter_problem__tcp__seq_out_of_window__drop += 1
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - <INFO>Found matching TCP session "
             f"for Parameter Problem from {packet_rx.ip4.src}</>",
@@ -632,7 +632,7 @@ class Icmp4RxHandler:
             dst_is_multicast=packet_rx.ip4.dst.is_multicast,
         ):
             self._if._packet_stats_rx.icmp4__echo_request__bcast_or_mcast__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "icmp4",
                 f"{packet_rx.tracker} - <WARN>Dropping ICMPv4 Echo Request "
                 f"from {packet_rx.ip4.src} to {packet_rx.ip4.dst} "
@@ -640,7 +640,7 @@ class Icmp4RxHandler:
             )
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - <INFO>Received ICMPv4 Echo Request "
             f"packet from {packet_rx.ip4.src}, sending reply</>",
@@ -679,7 +679,7 @@ class Icmp4RxHandler:
         Handle inbound ICMPv4 packets with unknown type.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "icmp4",
             f"{packet_rx.tracker} - Received unknown ICMPv4 packet " f"from {packet_rx.ip4.src}",
         )

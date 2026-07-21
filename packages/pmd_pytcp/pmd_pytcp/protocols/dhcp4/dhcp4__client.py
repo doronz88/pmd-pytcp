@@ -291,7 +291,7 @@ class Dhcp4Client(Subsystem):
         # sysctl is non-empty.
         cached = read_cached_lease(dhcp4__constants.DHCP4__LEASE_CACHE_PATH)
         if cached is not None:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<lg>Found cached lease</>: {cached.ip4_host} "
                 f"(server={cached.server_id}, "
@@ -388,7 +388,7 @@ class Dhcp4Client(Subsystem):
                 # Idle on stop event so 'stop()' is responsive.
                 await wait_event(self._event__stop_subsystem, 1.0)
         except Exception as error:  # noqa: BLE001 — daemon-loop guard must not let the worker task die
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>DHCPv4 client loop raised {type(error).__name__}: {error}; "
                 f"halting the client (state was {self._state})</>",
@@ -560,21 +560,21 @@ class Dhcp4Client(Subsystem):
         # ceiling; the t1 < t2 bound enforces the FSM's RENEW →
         # REBIND ordering.
         if t1 is not None and t1 >= lease_time__sec:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>Server-supplied T1={t1} ≥ lease_time={lease_time__sec}; "
                 f"ignoring (falling back to factor-based default)</>",
             )
             t1 = None
         if t2 is not None and t2 >= lease_time__sec:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>Server-supplied T2={t2} ≥ lease_time={lease_time__sec}; "
                 f"ignoring (falling back to factor-based default)</>",
             )
             t2 = None
         if t1 is not None and t2 is not None and t1 >= t2:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>Server-supplied T1={t1} ≥ T2={t2}; "
                 f"ignoring both (falling back to factor-based defaults)</>",
@@ -615,7 +615,7 @@ class Dhcp4Client(Subsystem):
         now = time.monotonic()
         t1 = self._t1_deadline()
         if now >= t1:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"Initiating lease renewal (T1 elapsed; lease " f"{now - self._lease.acquired_at_monotonic:.0f} s old)",
             )
@@ -640,7 +640,7 @@ class Dhcp4Client(Subsystem):
         now = time.monotonic()
         t2 = self._t2_deadline()
         if now >= t2:
-            __debug__ and log("dhcp4", "Lease renewal unanswered; broadcasting REBINDING REQUEST")
+            log.enabled and log("dhcp4", "Lease renewal unanswered; broadcasting REBINDING REQUEST")
             self._state = Dhcp4State.REBINDING
             return
 
@@ -664,7 +664,7 @@ class Dhcp4Client(Subsystem):
         now = time.monotonic()
         expiry = self._lease_expiry_deadline()
         if now >= expiry:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>Lease expired; halting IPv4 (lease was " f"{self._lease.lease_time__sec} s long)</>",
             )
@@ -730,7 +730,7 @@ class Dhcp4Client(Subsystem):
 
         # Validate the ACK and build a refreshed lease.
         if result.subnet_mask is None or result.lease_time is None:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>RENEW/REBIND ACK missing mandatory option; ignoring</>",
             )
@@ -761,7 +761,7 @@ class Dhcp4Client(Subsystem):
         """
 
         if isinstance(outcome, _NakRestart):
-            __debug__ and log("dhcp4", "<WARN>DHCPNAK on RENEW/REBIND; restarting from DISCOVER</>")
+            log.enabled and log("dhcp4", "<WARN>DHCPNAK on RENEW/REBIND; restarting from DISCOVER</>")
             self._reset_to_init(remove_lease_host=True)
             return
         if outcome is None:
@@ -775,7 +775,7 @@ class Dhcp4Client(Subsystem):
         prior = self._lease
         assert prior is not None
         if prior.ip4_host.address == outcome.ip4_host.address:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<lg>Lease renewed</>: same IP retained "
                 f"(lease_time={outcome.lease_time__sec}s, "
@@ -797,7 +797,7 @@ class Dhcp4Client(Subsystem):
             # flag is sysctl-gated so operators can opt into
             # Linux-parity silent-rot behaviour
             # ('dhcp.abort_sessions_on_lease_change=0').
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<lg>Lease swapped</>: {prior.ip4_host.address} → "
                 f"{outcome.ip4_host.address} "
@@ -887,7 +887,7 @@ class Dhcp4Client(Subsystem):
         """
 
         assert self._lease is not None
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<WARN>ACD reported ongoing conflict on leased "
             f"{self._lease.ip4_host.address} from {peer_mac}; "
@@ -920,7 +920,7 @@ class Dhcp4Client(Subsystem):
                 yiaddr=address,
             )
         except OSError as error:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>DHCPDECLINE on BOUND conflict raised {type(error).__name__}: {error}</>",
             )
@@ -959,7 +959,7 @@ class Dhcp4Client(Subsystem):
         # entirely. On miss / disabled, fall through to the
         # standard RFC 2131 §4.4.2 INIT-REBOOT REQUEST.
         if await self._dnav4_probe(cached):
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<lg>DNAv4 succeeded</>: cached gateway "
                 f"{cached.gateway} answered; adopting "
@@ -970,7 +970,7 @@ class Dhcp4Client(Subsystem):
 
         xid = random.randint(0, 0xFFFFFFFF)
         self._fetch_started_at_monotonic = time.monotonic()
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"INIT-REBOOT: requesting cached {cached.ip4_host.address}",
         )
@@ -1011,7 +1011,7 @@ class Dhcp4Client(Subsystem):
             client_socket.close()
 
         if isinstance(result, _NakRestart):
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>INIT-REBOOT NAK; falling back to DISCOVER</>",
             )
@@ -1025,7 +1025,7 @@ class Dhcp4Client(Subsystem):
             # cache's wall-clock age, so the T1/T2/expiry
             # deadlines still line up with the original
             # acquisition time.
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<lg>INIT-REBOOT silent server; adopting cached lease "
                 f"{cached.ip4_host} as-is (RFC 2131 §4.4.2 MAY)</>",
@@ -1035,7 +1035,7 @@ class Dhcp4Client(Subsystem):
 
         assert isinstance(result, Dhcp4Parser)
         if result.subnet_mask is None or result.lease_time is None:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>INIT-REBOOT ACK missing mandatory option; " "falling back to DISCOVER</>",
             )
@@ -1054,7 +1054,7 @@ class Dhcp4Client(Subsystem):
             t1_override=t1_override,
             t2_override=t2_override,
         )
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<lg>INIT-REBOOT confirmed</>: {refreshed.ip4_host} "
             f"(lease_time={refreshed.lease_time__sec}s, "
@@ -1099,7 +1099,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        log.enabled and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         await client_socket.send(bytes(dhcp4_packet_tx))
 
     async def _dnav4_probe(self, lease: Dhcp4Lease, /) -> bool:
@@ -1155,14 +1155,14 @@ class Dhcp4Client(Subsystem):
                 timeout=timeout_s,
             )
         except OSError as error:  # defensive against a raw-socket failure
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>DNAv4 unicast ARP probe failed: {error}; falling through to INIT-REBOOT</>",
             )
             return False
 
         if not reachable:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>DNAv4: cached gateway {lease.gateway} "
                 f"did not answer within {dhcp4__constants.DHCP4__DNAV4_TIMEOUT_MS} ms; "
@@ -1208,7 +1208,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        log.enabled and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         await client_socket.send(bytes(dhcp4_packet_tx))
 
     async def _send_release(
@@ -1238,7 +1238,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        log.enabled and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         await client_socket.send(bytes(dhcp4_packet_tx))
 
     # ------------------------------------------------------------
@@ -1344,7 +1344,7 @@ class Dhcp4Client(Subsystem):
             # Don't let a socket error in the
             # release-on-shutdown path block the rest of
             # the stack-stop sequence. Log and continue.
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>DHCPRELEASE on shutdown raised {type(error).__name__}: {error}</>",
             )
@@ -1388,7 +1388,7 @@ class Dhcp4Client(Subsystem):
 
         await self._initial_delay()
         self._fetch_started_at_monotonic = time.monotonic()
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"Starting DHCPv4 acquisition (mac={self._mac_address})",
         )
@@ -1402,19 +1402,19 @@ class Dhcp4Client(Subsystem):
                 outcome = await self._discover_request_once(client_socket)
                 if not isinstance(outcome, _NakRestart):
                     if isinstance(outcome, Dhcp4Lease):
-                        __debug__ and log(
+                        log.enabled and log(
                             "dhcp4",
                             f"<lg>Lease acquired</>: {outcome.ip4_host} "
                             f"(lease_time={outcome.lease_time__sec}s, "
                             f"server={outcome.server_id})",
                         )
                     else:
-                        __debug__ and log(
+                        log.enabled and log(
                             "dhcp4",
                             "<WARN>DHCPv4 acquisition failed (see earlier " "warnings for cause)</>",
                         )
                     return outcome
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>DHCPv4 acquisition failed: NAK restart budget " "exhausted</>",
             )
@@ -1463,7 +1463,7 @@ class Dhcp4Client(Subsystem):
 
         srv_id = offer.server_id
         if srv_id is None:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>Didn't receive DHCP Offer message - missing server identifier</>",
             )
@@ -1491,14 +1491,14 @@ class Dhcp4Client(Subsystem):
         assert isinstance(ack, Dhcp4Parser)
 
         if ack.subnet_mask is None:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>Didn't receive DHCP Ack message - missing subnet mask</>",
             )
             return None
 
         if ack.lease_time is None:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 "<WARN>Didn't receive DHCP Ack message - missing IP address lease time</>",
             )
@@ -1514,7 +1514,7 @@ class Dhcp4Client(Subsystem):
         # daemon-mode BOUND transition later begins ongoing defense
         # of the committed address via 'acd.start_defense'.
         if self._acd is not None and not (await self._acd.probe(address=ip4_host.address)).success:
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<WARN>ARP DAD reported conflict on {ip4_host.address}; sending DHCPDECLINE</>",
             )
@@ -1583,7 +1583,7 @@ class Dhcp4Client(Subsystem):
             if result is not None:
                 return result
             if attempt < max_attempts - 1:
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp4",
                     f"recv window expired ({timeout_s:.2f}s); retransmitting "
                     f"(attempt {attempt + 2} of {max_attempts})",
@@ -1630,38 +1630,38 @@ class Dhcp4Client(Subsystem):
             except TimeoutError:
                 return None
             except (Dhcp4IntegrityError, Dhcp4SanityError):
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp4",
                     "<WARN>Dropping malformed inbound DHCP frame; continuing wait window</>",
                 )
                 continue
-            __debug__ and log("dhcp4", f"<lg>RX</> - {packet}")
+            log.enabled and log("dhcp4", f"<lg>RX</> - {packet}")
 
             if allow_nak and packet.message_type == Dhcp4MessageType.NAK:
                 if packet.xid != xid or not self._cid_echo_ok(packet):
-                    __debug__ and log(
+                    log.enabled and log(
                         "dhcp4",
                         "<WARN>Dropping NAK with mismatched xid or CID echo</>",
                     )
                     continue
-                __debug__ and log("dhcp4", "DHCP NAK received - restarting from DISCOVER")
+                log.enabled and log("dhcp4", "DHCP NAK received - restarting from DISCOVER")
                 return _NAK_RESTART
 
             if packet.message_type != expected_type:
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp4",
                     f"<WARN>Dropping DHCP frame with unexpected message type "
                     f"{packet.message_type!r}; expected {expected_type!r}</>",
                 )
                 continue
             if packet.xid != xid:
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp4",
                     f"<WARN>Dropping DHCP frame with mismatched xid " f"(sent={xid:#010x}, got={packet.xid:#010x})</>",
                 )
                 continue
             if not self._cid_echo_ok(packet):
-                __debug__ and log(
+                log.enabled and log(
                     "dhcp4",
                     "<WARN>Dropping DHCP frame with mismatched Client Identifier echo</>",
                 )
@@ -1697,7 +1697,7 @@ class Dhcp4Client(Subsystem):
         if window_ms <= 0:
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "dhcp4",
             f"<lg>OFFER from {first_offer.server_id}</> selected; " f"collecting additional OFFERs for {window_ms} ms",
         )
@@ -1718,7 +1718,7 @@ class Dhcp4Client(Subsystem):
                 # Window expired before another OFFER arrived.
                 return
             assert isinstance(result, Dhcp4Parser)
-            __debug__ and log(
+            log.enabled and log(
                 "dhcp4",
                 f"<lg>OFFER from {result.server_id}</> received "
                 f"during collection window; ignored (first OFFER retained)",
@@ -1780,7 +1780,7 @@ class Dhcp4Client(Subsystem):
             dhcp4__chaddr=self._mac_address,
             dhcp4__options=Dhcp4Options(*opts),
         )
-        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        log.enabled and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         await client_socket.send(bytes(dhcp4_packet_tx))
 
     async def _send_request(
@@ -1818,7 +1818,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        log.enabled and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         await client_socket.send(bytes(dhcp4_packet_tx))
 
     async def _send_decline(
@@ -1852,7 +1852,7 @@ class Dhcp4Client(Subsystem):
                 Dhcp4OptionEnd(),
             ),
         )
-        __debug__ and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
+        log.enabled and log("dhcp4", f"<lr>TX</> - {dhcp4_packet_tx}")
         await client_socket.send(bytes(dhcp4_packet_tx))
 
     async def _initial_delay(self) -> None:
@@ -1869,7 +1869,7 @@ class Dhcp4Client(Subsystem):
             return
         min_ms = dhcp4__constants.DHCP4__INIT_DELAY_MIN_MS
         delay_s = random.uniform(min_ms / 1000.0, max_ms / 1000.0)
-        __debug__ and log("dhcp4", f"Initial desync delay: {delay_s:.2f}s")
+        log.enabled and log("dhcp4", f"Initial desync delay: {delay_s:.2f}s")
         await asyncio.sleep(delay_s)
 
     def _elapsed_secs(self) -> int:

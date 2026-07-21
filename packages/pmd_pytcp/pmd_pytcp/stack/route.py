@@ -82,7 +82,7 @@ def install_boot_default_routes(
                 protocol=RouteProtocol.BOOT,
             )
         )
-        __debug__ and log("stack", f"<lg>Route API</>: boot IPv4 default via {ip4_gateway}")
+        log.enabled and log("stack", f"<lg>Route API</>: boot IPv4 default via {ip4_gateway}")
 
     if ip6_gateway is not None:
         ip6_fib.add(
@@ -92,7 +92,7 @@ def install_boot_default_routes(
                 protocol=RouteProtocol.BOOT,
             )
         )
-        __debug__ and log("stack", f"<lg>Route API</>: boot IPv6 default via {ip6_gateway}")
+        log.enabled and log("stack", f"<lg>Route API</>: boot IPv6 default via {ip6_gateway}")
 
 
 class RouteApi:
@@ -212,7 +212,7 @@ class RouteApi:
                     protocol=protocol,
                 )
             )
-            __debug__ and log("stack", f"<lg>Route API</>: IPv6 default via {gateway} ({protocol!r})")
+            log.enabled and log("stack", f"<lg>Route API</>: IPv6 default via {gateway} ({protocol!r})")
             return
         self._ip4_fib.remove(destination=DEFAULT_IP4_NETWORK)
         self._ip4_fib.add(
@@ -222,7 +222,7 @@ class RouteApi:
                 protocol=protocol,
             )
         )
-        __debug__ and log("stack", f"<lg>Route API</>: IPv4 default via {gateway} ({protocol!r})")
+        log.enabled and log("stack", f"<lg>Route API</>: IPv4 default via {gateway} ({protocol!r})")
 
     def remove_default(self, *, family: AddressFamily) -> int:
         """

@@ -339,20 +339,47 @@ class TestTcpPlpmtudAdapter__ClassicalPmtuPassthrough(TestCase):
         """
         Ensure 'confirm_current' is dispatched to the engine
         so a non-probe data segment of large size can advance
-        ack_size as an implicit probe.
+        ack_size as an implicit probe — and, when the
+        confirmed size covers BASE_PLPMTU, that it also
+        confirms the BASE state and opens the search. Without
+        the BASE transition a transport whose working MSS
+        already exceeds BASE_PLPMTU could never leave BASE:
+        its base probe would be smaller than regular data
+        segments, so the candidate-larger-than-MSS emit gate
+        would never send it (the pre-fix deadlock).
 
-        Reference: RFC 4821 §7.1 (implicit-probe feedback).
+        Reference: RFC 4821 §7.1 (implicit-probe feedback:
+        "the normal flow of data can implicitly confirm").
         """
 
         adapter = TcpPlpmtudAdapter(remote_ip_address=_IP6_DST, interface_mtu=1500)
 
         adapter.confirm_current(1400)
 
-        # No exception; confirm_current is a pass-through and
-        # the engine accepts any positive size. State stays in
-        # BASE because confirm_current does not transition.
+        # 1400 >= BASE_PLPMTU (1280 for IPv6): base
+        # connectivity is implicitly confirmed and the
+        # engine opens the binary search.
+        self.assertIs(
+            adapter.state,
+            PmtuState.SEARCHING,
+            msg="confirm_current covering BASE_PLPMTU MUST confirm BASE and open the search.",
+        )
+
+    def test__tcp__plpmtud_adapter__confirm_current_below_base_stays_in_base(self) -> None:
+        """
+        Ensure an implicit confirmation SMALLER than
+        BASE_PLPMTU does not count as base-connectivity
+        confirmation — the engine stays in BASE awaiting
+        either a real base probe ack or a large-enough
+        implicit confirm.
+        """
+
+        adapter = TcpPlpmtudAdapter(remote_ip_address=_IP6_DST, interface_mtu=1500)
+
+        adapter.confirm_current(1000)
+
         self.assertIs(
             adapter.state,
             PmtuState.BASE,
-            msg="confirm_current MUST NOT transition state on its own.",
+            msg="confirm_current below BASE_PLPMTU MUST NOT confirm BASE.",
         )

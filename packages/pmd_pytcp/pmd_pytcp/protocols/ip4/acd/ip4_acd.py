@@ -214,7 +214,7 @@ class Ip4Acd:
         sock = self._open_socket()
         try:
             await self._send(sock, oper=ArpOperation.REQUEST, spa=sender, tpa=target, dst_mac=target_mac)
-            __debug__ and log("stack", f"<lg>DNAv4</>: unicast ARP probe to {target} @ {target_mac}")
+            log.enabled and log("stack", f"<lg>DNAv4</>: unicast ARP probe to {target} @ {target_mac}")
             deadline = time.monotonic() + timeout
             while True:
                 try:
@@ -226,7 +226,7 @@ class Ip4Acd:
                     continue
                 arp = self._parse_arp(frame)
                 if arp is not None and self._is_gateway_reply(arp, target, target_mac):
-                    __debug__ and log("stack", f"<lg>DNAv4</>: gateway {target} answered; on-link")
+                    log.enabled and log("stack", f"<lg>DNAv4</>: gateway {target} answered; on-link")
                     return True
         finally:
             sock.close()
@@ -260,7 +260,7 @@ class Ip4Acd:
                 return None
             arp = self._parse_arp(frame)
             if arp is not None and self._is_ongoing_conflict(arp, self._claimed):
-                __debug__ and log("stack", f"<lg>ACD</>: ongoing conflict for {self._claimed} from {arp.sha}")
+                log.enabled and log("stack", f"<lg>ACD</>: ongoing conflict for {self._claimed} from {arp.sha}")
                 return arp.sha
 
     async def defend(self) -> None:
@@ -273,7 +273,7 @@ class Ip4Acd:
 
         assert self._sock is not None and self._claimed is not None, "defend requires an active claim"
         await self._send(self._sock, oper=ArpOperation.REPLY, spa=self._claimed, tpa=self._claimed)
-        __debug__ and log("stack", f"<lg>ACD</>: defended {self._claimed}")
+        log.enabled and log("stack", f"<lg>ACD</>: defended {self._claimed}")
 
     def release(self) -> None:
         """
@@ -315,7 +315,7 @@ class Ip4Acd:
         # RFC 5227 §2.1.1 — PROBE_NUM Probes spaced PROBE_MIN..PROBE_MAX.
         for _ in range(arp__constants.ARP__PROBE_NUM):
             await self._send(sock, oper=ArpOperation.REQUEST, spa=Ip4Address(), tpa=address)
-            __debug__ and log("stack", f"<lg>ACD</>: sent ARP Probe for {address}")
+            log.enabled and log("stack", f"<lg>ACD</>: sent ARP Probe for {address}")
             spacing = random.uniform(arp__constants.ARP__PROBE_MIN, arp__constants.ARP__PROBE_MAX)
             if (mac := await self._watch_for_conflict(sock, address, spacing)) is not None:
                 return AcdResult(success=False, address=address, conflict_mac=mac)
@@ -337,7 +337,7 @@ class Ip4Acd:
             if announce_idx > 0:
                 await asyncio.sleep(arp__constants.ARP__ANNOUNCE_INTERVAL)
             await self._send(sock, oper=ArpOperation.REQUEST, spa=address, tpa=address)
-            __debug__ and log("stack", f"<lg>ACD</>: sent ARP Announcement for {address}")
+            log.enabled and log("stack", f"<lg>ACD</>: sent ARP Announcement for {address}")
 
     async def _send(
         self,
@@ -393,7 +393,7 @@ class Ip4Acd:
                 continue
             arp = self._parse_arp(frame)
             if arp is not None and self._is_conflict(arp, address):
-                __debug__ and log("stack", f"<lg>ACD</>: conflict for {address} from {arp.sha}")
+                log.enabled and log("stack", f"<lg>ACD</>: conflict for {address} from {arp.sha}")
                 return arp.sha
 
     def _parse_arp(self, frame: Buffer, /) -> ArpParser | None:

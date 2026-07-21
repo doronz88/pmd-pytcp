@@ -225,7 +225,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
                 probe_count=1,
                 last_used_at=now,
             )
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"NUD: {address} INCOMPLETE — first solicit",
             )
@@ -258,7 +258,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
         entry = self._entries.get(address)
 
         if entry is not None and entry.state is NudState.PERMANENT:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"NUD: {address} add_entry skipped — entry is PERMANENT",
             )
@@ -273,7 +273,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
                 last_used_at=now,
             )
             self._entries[address] = entry
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"NUD: {address} → {mac_address} (REACHABLE, fresh)",
             )
@@ -286,7 +286,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
         self._transition(entry, NudState.REACHABLE, now)
 
         if queued_packets and self._flush_callback is not None:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"NUD: {address} resolved → flushing {len(queued_packets)} queued packet(s)",
             )
@@ -308,7 +308,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
             state_changed_at=now,
             last_used_at=now,
         )
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"NUD: {address} → {mac_address} (PERMANENT)",
         )
@@ -546,7 +546,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
         for entry in failed:
             del self._entries[entry.address]
             size -= 1
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"NUD: GC evicted FAILED entry {entry.address}",
             )
@@ -569,7 +569,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
                     break
                 del self._entries[entry.address]
                 size -= 1
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"NUD: GC evicted STALE entry {entry.address}",
                 )
@@ -588,7 +588,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
                     break
                 del self._entries[entry.address]
                 size -= 1
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"NUD: GC evicted (hard cap) {entry.address} state={entry.state}",
                 )
@@ -607,7 +607,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
         old_state = entry.state
         object.__setattr__(entry, "state", new_state)
         object.__setattr__(entry, "state_changed_at", now)
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"NUD: {entry.address} {old_state} → {new_state}",
         )

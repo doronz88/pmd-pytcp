@@ -128,7 +128,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
             or (packet_rx_md.tcp__tsval is not None and gt32(packet_rx_md.tcp__tsval, ts_recent_at_entry))
         )
     ):
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - RFC 6191 §2 reuse: peer SYN "
             f"seq={packet_rx_md.tcp__seq} (> RCV.NXT="
@@ -152,7 +152,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     if packet_rx_md.tcp__flag_fin and add32(packet_rx_md.tcp__seq, 1) == session._rcv_seq.nxt:
         session._transmit_packet(flag_ack=True)
         session._arm_timer("time_wait", tcp__constants.TCP__TIME_WAIT__DELAY_MS)
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Re-ACKed peer's FIN retransmit and restarted TIME_WAIT timer",
         )
@@ -165,7 +165,7 @@ def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> No
     # and the default challenge-ACK behaviour applies.
     if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-time_wait (RFC 9293 §3.10.7.4)",
         )

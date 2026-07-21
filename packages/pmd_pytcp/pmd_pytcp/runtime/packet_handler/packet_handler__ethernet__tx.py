@@ -89,13 +89,13 @@ class EthernetTxHandler:
         if ethernet_packet_tx.src.is_unspecified:
             self._if._packet_stats_tx.ethernet__src_unspec__fill += 1
             ethernet_packet_tx.src = self._if._mac_unicast
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_packet_tx.tracker} - Set source to stack MAC " f"{ethernet_packet_tx.src}",
             )
         else:
             self._if._packet_stats_tx.ethernet__src_spec += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_packet_tx.tracker} - Source MAC specified to " f"{ethernet_packet_tx.src}",
             )
@@ -103,7 +103,7 @@ class EthernetTxHandler:
         # Send out packet if it contains valid destination MAC address.
         if not ethernet_packet_tx.dst.is_unspecified:
             self._if._packet_stats_tx.ethernet__dst_spec__send += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_packet_tx.tracker} - Contains valid destination " "MAC address",
             )
@@ -120,7 +120,7 @@ class EthernetTxHandler:
             if ip6_dst.is_multicast:
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__multicast__send += 1
                 ethernet_packet_tx.dst = ip6_dst.multicast_mac
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - Resolved destination IPv6 "
                     f"{ip6_dst} to MAC {ethernet_packet_tx.dst}",
@@ -150,7 +150,7 @@ class EthernetTxHandler:
             )
             if ip6_route is None:
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__no_gw__drop += 1
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - <WARN>No route to " f"{ip6_dst}, dropping</>",
                 )
@@ -162,7 +162,7 @@ class EthernetTxHandler:
                 if mac_address := self._if._nd_cache.find_entry(ip6_address=ip6_route.gateway):
                     ethernet_packet_tx.dst = mac_address
                     self._if._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__extnet__gw_nd_cache_hit__send += 1
-                    __debug__ and log(
+                    log.enabled and log(
                         "ether",
                         f"{ethernet_packet_tx.tracker} - Resolved destination "
                         f"IPv6 {ip6_dst}"
@@ -187,7 +187,7 @@ class EthernetTxHandler:
             ):
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_hit__send += 1
                 ethernet_packet_tx.dst = mac_address
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - Resolved destination IPv6 "
                     f"{ip6_dst} to MAC {ethernet_packet_tx.dst}",
@@ -196,7 +196,7 @@ class EthernetTxHandler:
                 return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
             self._if._packet_stats_tx.ethernet__dst_unspec__ip6_lookup__locnet__nd_cache_miss__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 f"MAC could be obtained from ND cache, dropping</>",
@@ -221,7 +221,7 @@ class EthernetTxHandler:
             if ip4_dst.is_multicast:
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__multicast__send += 1
                 ethernet_packet_tx.dst = ip4_dst.multicast_mac
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - Resolved destination IPv4 "
                     f"{ip4_dst} to MAC {ethernet_packet_tx.dst}",
@@ -233,7 +233,7 @@ class EthernetTxHandler:
             if ip4_dst.is_limited_broadcast:
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__limited_broadcast__send += 1
                 ethernet_packet_tx.dst = MacAddress(0xFFFFFFFFFFFF)
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - Resolved destination IPv4 "
                     f"{ip4_dst} to MAC {ethernet_packet_tx.dst}",
@@ -251,7 +251,7 @@ class EthernetTxHandler:
                     }:
                         self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__network_broadcast__send += 1
                         ethernet_packet_tx.dst = MacAddress(0xFFFFFFFFFFFF)
-                        __debug__ and log(
+                        log.enabled and log(
                             "ether",
                             f"{ethernet_packet_tx.tracker} - Resolved destination "
                             f"IPv4 {ip4_dst} to MAC {ethernet_packet_tx.dst}",
@@ -275,7 +275,7 @@ class EthernetTxHandler:
             )
             if ip4_route is None:
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__no_gw__drop += 1
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - <WARN>No route to " f"{ip4_dst}, dropping</>",
                 )
@@ -289,7 +289,7 @@ class EthernetTxHandler:
                 ):
                     self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__extnet__gw_arp_cache_hit__send += 1
                     ethernet_packet_tx.dst = mac_address
-                    __debug__ and log(
+                    log.enabled and log(
                         "ether",
                         f"{ethernet_packet_tx.tracker} - Resolved destination "
                         f"IPv4 {ip4_dst} to Default Gateway MAC "
@@ -315,7 +315,7 @@ class EthernetTxHandler:
             ):
                 self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_hit__send += 1
                 ethernet_packet_tx.dst = mac_address
-                __debug__ and log(
+                log.enabled and log(
                     "ether",
                     f"{ethernet_packet_tx.tracker} - Resolved destination IPv4 "
                     f"{ip4_dst} to MAC {ethernet_packet_tx.dst}",
@@ -324,7 +324,7 @@ class EthernetTxHandler:
                 return TxStatus.PASSED__ETHERNET__TO_TX_RING
 
             self._if._packet_stats_tx.ethernet__dst_unspec__ip4_lookup__locnet__arp_cache_miss__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{ethernet_packet_tx.tracker} - <WARN>No valid destination "
                 "MAC could be obtained from ARP cache, dropping</>",
@@ -340,14 +340,14 @@ class EthernetTxHandler:
 
         # Drop packet in case we are not able to obtain valid destination MAC address.
         self._if._packet_stats_tx.ethernet__dst_unspec__drop += 1
-        __debug__ and log(
+        log.enabled and log(
             "ether",
             f"{ethernet_packet_tx.tracker} - <WARN>No valid destination MAC could " "be obtained, dropping</>",
         )
         return TxStatus.DROPPED__ETHERNET__DST_RESOLUTION_FAIL
 
     def __send_out_packet(self, ethernet_packet_tx: EthernetAssembler) -> None:
-        __debug__ and log("ether", f"{ethernet_packet_tx.tracker} - {ethernet_packet_tx}")
+        log.enabled and log("ether", f"{ethernet_packet_tx.tracker} - {ethernet_packet_tx}")
         assert self._if._tx_ring is not None, "PacketHandler must have an injected TX ring to send."
         self._if._tx_ring.enqueue(ethernet_packet_tx)
 

@@ -167,7 +167,7 @@ class MembershipApi:
         handler = self._resolve_handler()
         self._enforce_membership_cap(handler, group)
         handler._mc_ref_acquire(group)
-        __debug__ and log("stack", f"<lg>Membership API</>: joined IPv4 group {group} (operator)")
+        log.enabled and log("stack", f"<lg>Membership API</>: joined IPv4 group {group} (operator)")
 
     def leave(self, *, group: Ip4Address) -> None:
         """
@@ -189,7 +189,7 @@ class MembershipApi:
 
         handler = self._resolve_handler()
         handler._mc_ref_release(group)
-        __debug__ and log("stack", f"<lg>Membership API</>: left IPv4 group {group} (operator)")
+        log.enabled and log("stack", f"<lg>Membership API</>: left IPv4 group {group} (operator)")
 
     def set_socket_filter(self, *, group: Ip4Address, token: int, source_filter: Ip4MulticastFilter) -> None:
         """

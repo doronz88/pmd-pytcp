@@ -90,13 +90,13 @@ class Ethernet8023RxHandler:
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.ethernet_802_3__failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet_802_3}")
+        log.enabled and log("ether", f"{packet_rx.tracker} - {packet_rx.ethernet_802_3}")
 
         # Check if received packet matches any of stack MAC addresses.
         if packet_rx.ethernet_802_3.dst not in {
@@ -105,7 +105,7 @@ class Ethernet8023RxHandler:
             self._if._mac_broadcast,
         }:
             self._if._packet_stats_rx.ethernet_802_3__dst_unknown__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - Ethernet 802.3 packet not destined for this " "stack, dropping",
             )
@@ -129,19 +129,19 @@ class Ethernet8023RxHandler:
             LlcParser(packet_rx)
         except PacketValidationError as error:
             self._if._packet_stats_rx.ethernet_802_3__llc_failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.llc}")
+        log.enabled and log("ether", f"{packet_rx.tracker} - {packet_rx.llc}")
 
         dsap = packet_rx.llc.dsap
         if dsap is LlcSap.LAYER_MGMT:
             # IEEE 802.1D Spanning Tree Protocol BPDU.
             self._if._packet_stats_rx.ethernet_802_3__llc_stp_bpdu__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>STP BPDU</> from " f"{packet_rx.ethernet_802_3.src}, dropping",
             )
@@ -149,7 +149,7 @@ class Ethernet8023RxHandler:
 
         if dsap is LlcSap.NOVELL_IPX:
             self._if._packet_stats_rx.ethernet_802_3__llc_novell_ipx__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>Novell IPX over 802.2</>, dropping",
             )
@@ -157,7 +157,7 @@ class Ethernet8023RxHandler:
 
         if dsap is LlcSap.GLOBAL:
             self._if._packet_stats_rx.ethernet_802_3__llc_global_dsap__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>Global DSAP (Novell raw 802.3)</>, dropping",
             )
@@ -165,7 +165,7 @@ class Ethernet8023RxHandler:
 
         if dsap is not LlcSap.SNAP:
             self._if._packet_stats_rx.ethernet_802_3__llc_unknown_dsap__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <INFO>Unknown DSAP {dsap}</> from " f"{packet_rx.ethernet_802_3.src}, dropping",
             )
@@ -177,13 +177,13 @@ class Ethernet8023RxHandler:
             SnapParser(packet_rx)
         except PacketValidationError as error:
             self._if._packet_stats_rx.ethernet_802_3__snap_failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ether",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("ether", f"{packet_rx.tracker} - {packet_rx.snap}")
+        log.enabled and log("ether", f"{packet_rx.tracker} - {packet_rx.snap}")
 
         snap_oui = packet_rx.snap.oui
         snap_pid = packet_rx.snap.pid
@@ -202,7 +202,7 @@ class Ethernet8023RxHandler:
         # Unknown SNAP OUI (IEEE 802.1, Apple, etc., or a
         # vendor OUI we don't recognise).
         self._if._packet_stats_rx.ethernet_802_3__snap_unknown_oui__drop += 1
-        __debug__ and log(
+        log.enabled and log(
             "ether",
             f"{packet_rx.tracker} - <INFO>Unknown SNAP OUI 0x{snap_oui:06x} "
             f"PID 0x{snap_pid:04x}</> from {packet_rx.ethernet_802_3.src}, dropping",
@@ -232,7 +232,7 @@ class Ethernet8023RxHandler:
             return
 
         self._if._packet_stats_rx.ethernet_802_3__snap_rfc1042_unknown__drop += 1
-        __debug__ and log(
+        log.enabled and log(
             "ether",
             f"{packet_rx.tracker} - <INFO>RFC 1042 SNAP with unsupported " f"EtherType 0x{ether_type:04x}</>, dropping",
         )
@@ -273,7 +273,7 @@ class Ethernet8023RxHandler:
             self._if._packet_stats_rx.ethernet_802_3__snap_cisco_unknown__drop += 1
             proto = f"Cisco-unknown(0x{pid:04x})"
 
-        __debug__ and log(
+        log.enabled and log(
             "ether",
             f"{packet_rx.tracker} - <INFO>Cisco {proto}</> from " f"{packet_rx.ethernet_802_3.src}, dropping",
         )

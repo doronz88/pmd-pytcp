@@ -157,7 +157,7 @@ class UdpSocket(socket):
             self._local_ip_address = Ip4Address()
             self._remote_ip_address = Ip4Address()
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Created socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Created socket")
 
     @override
     def setsockopt(self, level: int | IpProto, optname: int, value: int | bytes, /) -> None:
@@ -375,7 +375,7 @@ class UdpSocket(socket):
         self._local_port = local_port
         stack.sockets.register(self)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Bound")
+        log.enabled and log("socket", f"<g>[{self}]</> - Bound")
 
     @override
     async def connect(self, address: tuple[str, int]) -> None:
@@ -409,7 +409,7 @@ class UdpSocket(socket):
         self._remote_port = remote_port
         stack.sockets.register(self)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Connected socket")
 
     def _egress_handler(self, remote_ip_address: "Ip4Address | Ip6Address", /) -> "PacketHandlerL2 | PacketHandlerL3":
         """
@@ -490,7 +490,7 @@ class UdpSocket(socket):
         # (ICMP -> error queue / IP_RECVERR), not via the return value.
         sent_data_len = len(data)
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<B><lr>[{self}]</> - Sent {sent_data_len} bytes of data",
         )
@@ -558,7 +558,7 @@ class UdpSocket(socket):
         # Phase 4b fire-and-forget — see 'send' above.
         sent_data_len = len(data)
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<B><lr>[{self}]</> - Sent {sent_data_len} bytes of data",
         )
@@ -631,7 +631,7 @@ class UdpSocket(socket):
             # the entire datagram is consumed regardless.
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            __debug__ and log(
+            log.enabled and log(
                 "socket",
                 f"<B><g>[{self}]</> - Received {len(data_rx)} bytes of data",
             )
@@ -673,7 +673,7 @@ class UdpSocket(socket):
             data_rx = packet_rx_md.udp__data
             if bufsize is not None:
                 data_rx = data_rx[:bufsize]
-            __debug__ and log(
+            log.enabled and log(
                 "socket",
                 f"<B><g>[{self}]</> - <lg>Received</> {len(data_rx)} bytes of data",
             )
@@ -789,7 +789,7 @@ class UdpSocket(socket):
                     packet_rx_md.udp__remote_port,
                 )
 
-            __debug__ and log(
+            log.enabled and log(
                 "socket",
                 f"<B><g>[{self}]</> - <lg>Received</> {len(data_rx)} bytes of data, " f"{len(ancdata)} cmsg(s)",
             )
@@ -864,7 +864,7 @@ class UdpSocket(socket):
         stack.sockets.unregister(self)
         self._mark_closed()
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Closed socket")
 
     def process_udp_packet(self, packet_rx_md: UdpMetadata) -> None:
         """

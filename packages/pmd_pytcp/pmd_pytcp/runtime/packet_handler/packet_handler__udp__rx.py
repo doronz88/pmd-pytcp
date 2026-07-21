@@ -147,7 +147,7 @@ class UdpRxHandler:
             # 'packet_rx.udp' was set.
             if not self.__phrx_udp__retry_zero_cksum_ip6(packet_rx):
                 self._if._packet_stats_rx.udp__ip6_zero_cksum__drop += 1
-                __debug__ and log(
+                log.enabled and log(
                     "udp",
                     f"{packet_rx.tracker} - <CRIT>{error}</>",
                 )
@@ -155,13 +155,13 @@ class UdpRxHandler:
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.udp__failed_parse__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "udp",
                 f"{packet_rx.tracker} - <CRIT>{error}</>",
             )
             return
 
-        __debug__ and log("udp", f"{packet_rx.tracker} - {packet_rx.udp}")
+        log.enabled and log("udp", f"{packet_rx.tracker} - {packet_rx.udp}")
 
         # Ensure that UDP payload type is memoryview.
         assert isinstance(
@@ -199,14 +199,14 @@ class UdpRxHandler:
                 # to the next candidate socket.
                 if not self.__phrx_udp__multicast_source_allowed(socket, packet_rx):
                     self._if._packet_stats_rx.udp__multicast_source_filtered__drop += 1
-                    __debug__ and log(
+                    log.enabled and log(
                         "udp",
                         f"{packet_rx_md.tracker} - <INFO>Source {packet_rx.ip.src} filtered "
                         f"for socket [{socket}] on group {packet_rx.ip.dst}</>",
                     )
                     continue
                 self._if._packet_stats_rx.udp__socket_match += 1
-                __debug__ and log(
+                log.enabled and log(
                     "udp",
                     f"{packet_rx_md.tracker} - <INFO>Found matching listening " f"socket [{socket}]</>",
                 )
@@ -216,7 +216,7 @@ class UdpRxHandler:
         # Silently drop packet if it's source address is unspecified.
         if packet_rx.ip.src.is_unspecified:
             self._if._packet_stats_rx.udp__ip_source_unspecified += 1
-            __debug__ and log(
+            log.enabled and log(
                 "udp",
                 f"{packet_rx_md.tracker} - Received UDP packet from "
                 f"{packet_rx.ip.src}, port {packet_rx.udp.sport} to "
@@ -228,7 +228,7 @@ class UdpRxHandler:
         # (used for packet flow unit testing only).
         if stack.UDP__ECHO_NATIVE and packet_rx.udp.dport == 7:
             self._if._packet_stats_rx.udp__echo_native__respond_udp += 1
-            __debug__ and log(
+            log.enabled and log(
                 "udp",
                 f"{packet_rx_md.tracker} - <INFO>Performing native " "UDP Echo operation</>",
             )
@@ -260,14 +260,14 @@ class UdpRxHandler:
                 self._if._packet_stats_rx.udp__no_socket_match__icmp4_unreachable_suppressed += 1
             else:
                 self._if._packet_stats_rx.udp__no_socket_match__icmp6_unreachable_suppressed += 1
-            __debug__ and log(
+            log.enabled and log(
                 "udp",
                 f"{packet_rx_md.tracker} - <WARN>Suppressing ICMP Port-Unreachable "
                 f"to {packet_rx.ip.src}: {verdict}</>",
             )
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "udp",
             f"{packet_rx_md.tracker} - Received UDP packet from "
             f"{packet_rx.ip.src} to closed port "

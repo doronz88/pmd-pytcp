@@ -119,7 +119,7 @@ def fsm__icmp__synchronized(session: TcpSession, metadata: IcmpMetadata) -> None
         )
         return
 
-    __debug__ and log(
+    log.enabled and log(
         "tcp-ss",
         f"[{session}] - <ly>[{session._state}]</> - got ICMP "
         f"category={metadata.category.name} type={metadata.icmp_type} "

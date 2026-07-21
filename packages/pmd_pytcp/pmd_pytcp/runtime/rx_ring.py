@@ -102,7 +102,7 @@ class RxRing:
         self._mtu = mtu
         self._burst_max = queue_max_size
 
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"Initializing {self._subsystem_name} [fd={fd}, mtu={mtu}, burst_max={queue_max_size}]",
         )
@@ -172,7 +172,7 @@ class RxRing:
         path.
         """
 
-        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        log.enabled and log("stack", f"Starting {self._subsystem_name}")
 
         self._loop = asyncio.get_running_loop()
 
@@ -192,7 +192,7 @@ class RxRing:
         host and is not closed here.
         """
 
-        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopping {self._subsystem_name}")
 
         if self._reader_armed and self._loop is not None:
             try:
@@ -212,7 +212,7 @@ class RxRing:
 
         packet_rx = PacketRx(frame)
 
-        __debug__ and log(
+        log.enabled and log(
             "rx-ring",
             f"<B><lg>[RX]</> {packet_rx.tracker} - received frame, " f"{len(packet_rx.frame)} bytes",
         )
@@ -229,7 +229,7 @@ class RxRing:
                 self._packet_stats.rx_ring__queue_full__drop += 1
             else:
                 self._no_deliver_drop_count += 1
-            __debug__ and log(
+            log.enabled and log(
                 "rx-ring",
                 f"{packet_rx.tracker} - no deliver callback installed, dropping packet",
             )
@@ -238,7 +238,7 @@ class RxRing:
         try:
             self._deliver(packet_rx)
         except Exception as error:  # pylint: disable=broad-exception-caught
-            __debug__ and log(
+            log.enabled and log(
                 "rx-ring",
                 f"<CRIT>Deliver callback raised: {error!r}</>",
             )
@@ -253,7 +253,7 @@ class RxRing:
             self._packet_stats.rx_ring__os_error__drop += 1
         else:
             self._os_error_drop_count += 1
-        __debug__ and log(
+        log.enabled and log(
             "rx-ring",
             f"<CRIT>RX read failed, OSError: {error}</>",
         )

@@ -91,7 +91,7 @@ class UdpTxHandler:
             echo_tracker=echo_tracker,
         )
 
-        __debug__ and log("udp", f"{udp_packet_tx.tracker} - {udp_packet_tx}")
+        log.enabled and log("udp", f"{udp_packet_tx.tracker} - {udp_packet_tx}")
 
         if ip__src.is_ip6 is True and ip__dst.is_ip6 is True and ip__src.is_ip4 is False and ip__dst.is_ip4 is False:
             self._if._packet_stats_tx.udp__send += 1

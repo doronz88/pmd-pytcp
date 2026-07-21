@@ -55,7 +55,7 @@ def fsm__closing__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None
     # challenge ACK per RFC 9293 §3.10.7.4 / RFC 5961 §4.
     if packet_rx_md.tcp__flag_syn:
         session._emit_challenge_ack()
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Sent challenge ACK for SYN-in-closing (RFC 9293 §3.10.7.4)",
         )

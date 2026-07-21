@@ -196,7 +196,7 @@ class Ip4LinkLocal(Subsystem):
         # The /16 mask is RFC-pinned: every 169.254 address is
         # on a single logical link.
         self._candidate = Ip4IfAddr(f"{candidate_address}/16")
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"<lg>Link-Local</>: candidate {self._candidate.address} " f"(attempt={self._conflict_count})",
         )
@@ -223,7 +223,7 @@ class Ip4LinkLocal(Subsystem):
             self._defend_history = []
             self._address_api.add(ifaddr=self._candidate)
             self._state = Ip4LinkLocalState.BOUND
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<lg>Link-Local</>: claimed {self._candidate.address}",
             )
@@ -241,14 +241,14 @@ class Ip4LinkLocal(Subsystem):
         """
 
         assert self._candidate is not None
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"<lg>Link-Local</>: conflict on {self._candidate.address}; " f"retry (count={self._conflict_count + 1})",
         )
         self._candidate = None
         self._conflict_count += 1
         if self._conflict_count >= ip4ll_const.IP4_LINK_LOCAL__MAX_CONFLICTS:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<lg>Link-Local</>: MAX_CONFLICTS reached; sleeping "
                 f"{ip4ll_const.IP4_LINK_LOCAL__RATE_LIMIT_INTERVAL}s",
@@ -289,7 +289,7 @@ class Ip4LinkLocal(Subsystem):
             # §2.5(b): defend.
             self._defend_history.append(now)
             await self._acd.defend()
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<lg>Link-Local</>: defended {address} " f"against {peer_mac} (RFC 3927 §2.5(b))",
             )
@@ -299,7 +299,7 @@ class Ip4LinkLocal(Subsystem):
         # on the abandoned address by default (the §2.5 paragraph-7
         # SHOULD); the ACD claim is released so the defense socket is
         # closed.
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"<lg>Link-Local</>: abandoning {address} " f"after second conflict in {defend_window}s (RFC 3927 §2.5(a))",
         )
@@ -356,7 +356,7 @@ class Ip4LinkLocal(Subsystem):
         if self._state is Ip4LinkLocalState.HALTED:
             elapsed_ms = (now - self._dhcp_unbound_since) * 1000.0
             if elapsed_ms >= fallback_ms:
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"<lg>Link-Local</>: DHCP unbound for " f"{elapsed_ms / 1000:.1f}s, kicking off autoconfig",
                 )
@@ -373,7 +373,7 @@ class Ip4LinkLocal(Subsystem):
 
         self._acd.release()
         if self._candidate is not None:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<lg>Link-Local</>: releasing {self._candidate.address} " f"(DHCP took over)",
             )

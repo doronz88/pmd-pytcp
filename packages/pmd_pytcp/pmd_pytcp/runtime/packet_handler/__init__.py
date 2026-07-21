@@ -391,7 +391,7 @@ class PacketHandler(ABC):
         Class constructor.
         """
 
-        __debug__ and log("stack", f"Initializing {self._subsystem_name}")
+        log.enabled and log("stack", f"Initializing {self._subsystem_name}")
 
         # Loop tasks this handler spawned — cancelled by 'stop()',
         # awaited by 'wait_stopped()'.
@@ -679,7 +679,7 @@ class PacketHandler(ABC):
         address-info log). Requires a running event loop.
         """
 
-        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        log.enabled and log("stack", f"Starting {self._subsystem_name}")
 
         assert self._rx_ring is not None, "Started PacketHandler must have an injected RX ring."
         self._rx_ring.set_deliver_callback(self._rx_frame_entry)
@@ -698,7 +698,7 @@ class PacketHandler(ABC):
         await the workers' actual exit.
         """
 
-        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopping {self._subsystem_name}")
 
         if self._rx_ring is not None:
             self._rx_ring.set_deliver_callback(None)
@@ -764,26 +764,26 @@ class PacketHandler(ABC):
         Task to acquire the IPv6 addresses.
         """
 
-        __debug__ and log("stack", "Started the IPv6 address acquire task")
+        log.enabled and log("stack", "Started the IPv6 address acquire task")
 
         await self._create_stack_ip6_addressing()
 
         self._ip_configuration_in_progress.release()
 
-        __debug__ and log("stack", "Finished the IPv6 address acquire task")
+        log.enabled and log("stack", "Finished the IPv6 address acquire task")
 
     async def _task__packet_handler__acquire_ip4_addresses(self) -> None:
         """
         Task to acquire the IPv4 addresses.
         """
 
-        __debug__ and log("stack", "Started the IPv4 address acquire task")
+        log.enabled and log("stack", "Started the IPv4 address acquire task")
 
         await self._create_stack_ip4_addressing()
 
         self._ip_configuration_in_progress.release()
 
-        __debug__ and log("stack", "Finished the IPv4 address acquire task")
+        log.enabled and log("stack", "Finished the IPv4 address acquire task")
 
     @abstractmethod
     async def _create_stack_ip6_addressing(self) -> None:
@@ -808,7 +808,7 @@ class PacketHandler(ABC):
         Spawn the task acquiring the IPv6 addresses.
         """
 
-        __debug__ and log("stack", "Starting the IPv6 address acquire task")
+        log.enabled and log("stack", "Starting the IPv6 address acquire task")
 
         self._spawn_task(
             self._task__packet_handler__acquire_ip6_addresses(),
@@ -820,7 +820,7 @@ class PacketHandler(ABC):
         Spawn the task acquiring the IPv4 addresses.
         """
 
-        __debug__ and log("stack", "Starting the IPv4 address acquire task")
+        log.enabled and log("stack", "Starting the IPv4 address acquire task")
 
         self._spawn_task(
             self._task__packet_handler__acquire_ip4_addresses(),
@@ -834,7 +834,7 @@ class PacketHandler(ABC):
 
         self._ip6_ifaddr = [*self._ip6_ifaddr, ip6_host]
 
-        __debug__ and log("stack", f"Assigned IPv6 unicast address {ip6_host}")
+        log.enabled and log("stack", f"Assigned IPv6 unicast address {ip6_host}")
 
         self._assign_ip6_multicast(ip6_host.address.solicited_node_multicast)
 
@@ -845,7 +845,7 @@ class PacketHandler(ABC):
 
         self._ip6_ifaddr = [host for host in self._ip6_ifaddr if host != ip6_host]
 
-        __debug__ and log("stack", f"Removed IPv6 unicast address {ip6_host}")
+        log.enabled and log("stack", f"Removed IPv6 unicast address {ip6_host}")
 
         self._remove_ip6_multicast(ip6_host.address.solicited_node_multicast)
 
@@ -1026,7 +1026,7 @@ class PacketHandler(ABC):
 
         self._ip4_ifaddr = [*self._ip4_ifaddr, ip4_host]
 
-        __debug__ and log("stack", f"Assigned IPv4 unicast address {ip4_host}")
+        log.enabled and log("stack", f"Assigned IPv4 unicast address {ip4_host}")
 
     def _remove_ip4_host(self, /, ip4_host: Ip4IfAddr) -> None:
         """
@@ -1035,7 +1035,7 @@ class PacketHandler(ABC):
 
         self._ip4_ifaddr = [host for host in self._ip4_ifaddr if host != ip4_host]
 
-        __debug__ and log("stack", f"Removed IPv4 unicast address {ip4_host}")
+        log.enabled and log("stack", f"Removed IPv4 unicast address {ip4_host}")
 
     async def _log_stack_address_info(self) -> None:
         """
@@ -1045,7 +1045,7 @@ class PacketHandler(ABC):
         for _ in (self._ip6_support, self._ip4_support):
             await acquire_semaphore(self._ip_configuration_in_progress, 15)
 
-        if __debug__:
+        if log.enabled:
             if self._ip6_support:
                 log(
                     "stack",
@@ -1471,7 +1471,7 @@ class PacketHandler(ABC):
         # write) as a consistent set — atomic by construction on
         # the single stack loop (no await point inside).
         for entry in expired:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<INFO>RFC 8981 sweep: temp address {entry.address} "
                 f"(prefix {entry.prefix}) past valid_until — removing</>",
@@ -1567,7 +1567,7 @@ class PacketHandler(ABC):
             def _regenerate(p: Ip6Network = prefix) -> Ip6IfAddr:
                 return Ip6IfAddr.from_rfc8981_temp(ip6_network=p)
 
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<INFO>RFC 8981 regen: minting new temp address {temp_host} "
                 f"for prefix {prefix} (existing {newest.address} approaching "
@@ -1603,7 +1603,7 @@ class PacketHandler(ABC):
         # write) as a consistent set — atomic by construction on
         # the single stack loop (no await point inside).
         for entry in expired:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<INFO>SLAAC sweep: stable address {entry.address} "
                 f"(prefix {entry.prefix}) past valid_until — removing</>",
@@ -2940,7 +2940,7 @@ class PacketHandlerL2(
         §3.3.
         """
 
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"ICMPv6 ND DAD - Starting process for {ip6_unicast_candidate}",
         )
@@ -3018,7 +3018,7 @@ class PacketHandlerL2(
             # slot under the registry's lock; we read it back
             # the same way.
             conflict_tlla = self._icmp6_nd_dad__registry.peer_info(ip6_unicast_candidate)
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "<WARN>ICMPv6 ND DAD - Duplicate IPv6 address detected, "
                 f"{ip6_unicast_candidate} advertised by "
@@ -3032,7 +3032,7 @@ class PacketHandlerL2(
                 addr: state for addr, state in self._icmp6_dad__states.items() if addr != ip6_unicast_candidate
             }
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "ICMPv6 ND DAD - No duplicate address detected for " f"{ip6_unicast_candidate}",
             )
@@ -3133,20 +3133,20 @@ class PacketHandlerL2(
             for attempt in range(max_retries + 1):
                 ok = await _attempt_claim(current)
                 if ok:
-                    __debug__ and log("stack", f"Successfully claimed IPv6 address {current}")
+                    log.enabled and log("stack", f"Successfully claimed IPv6 address {current}")
                     return
                 if attempt < max_retries:
                     # RFC 7217 §6 / RFC 8981 §3.3.3 — re-derive
                     # the IID and retry. The closure owns the
                     # 'dad_counter' / random-IID logic.
                     assert regenerate is not None
-                    __debug__ and log(
+                    log.enabled and log(
                         "stack",
                         f"<WARN>DAD failure on {current}; regenerating " f"(attempt {attempt + 1}/{max_retries})</>",
                     )
                     current = regenerate()
 
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<WARN>Unable to claim IPv6 address {current}; gave up " f"after {max_retries} retries</>",
             )
@@ -3162,7 +3162,7 @@ class PacketHandlerL2(
             # the interface entirely. Linux 'accept_dad=2'
             # parity.
             if sysctl_iface.get_for_iface("icmp6.accept_dad", self._interface_name) == 2:
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"<CRIT>icmp6.accept_dad=2 — DAD failure on {current} " "disables IPv6 on this interface</>",
                 )
@@ -3224,7 +3224,7 @@ class PacketHandlerL2(
         # If we don't have any link local address then disable
         # IPv6 protocol operations.
         if not self._ip6_ifaddr:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "<WARN>Unable to assign any IPv6 link local address, " "disabling IPv6 protocol</>",
             )
@@ -3247,7 +3247,7 @@ class PacketHandlerL2(
             # when the boot-window RA was received. Phase 4 may
             # simplify '_icmp6_ra__prefixes' to a prefix list.
             for prefix, _ in list(self._icmp6_ra__prefixes):
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"Attempting IPv6 address auto configuration for RA " f"prefix {prefix}",
                 )
@@ -3302,12 +3302,12 @@ class PacketHandlerL2(
             if (await acd.probe(address=ip4_host.address)).success:
                 await acd.announce(address=ip4_host.address)
                 self._assign_ip4_host(ip4_host=ip4_host)
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"Successfully claimed IPv4 address {ip4_host.address}",
                 )
             else:
-                __debug__ and log(
+                log.enabled and log(
                     "stack",
                     f"<WARN>Unable to claim IPv4 address {ip4_host.address}</>",
                 )
@@ -3319,7 +3319,7 @@ class PacketHandlerL2(
         # method returns, so '_ip4_ifaddr' may still populate via the
         # Address API before any IPv4 application traffic flows.
         if not self._ip4_ifaddr and not self._ip4_dhcp:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "<WARN>No statically configured IPv4 address and DHCP " "disabled; disabling IPv4 protocol</>",
             )
@@ -3333,7 +3333,7 @@ class PacketHandlerL2(
 
         self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
 
-        __debug__ and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
+        log.enabled and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
 
         self._assign_mac_multicast(ip6_multicast.multicast_mac)
 
@@ -3347,7 +3347,7 @@ class PacketHandlerL2(
 
         self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
 
-        __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
+        log.enabled and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
         self._remove_mac_multicast(ip6_multicast.multicast_mac)
 
@@ -3363,7 +3363,7 @@ class PacketHandlerL2(
         new = self._ip4_multicast_filter_for(ip4_multicast)
         self._ip4_multicast_filters[ip4_multicast] = new
 
-        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+        log.enabled and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
         # RFC 1112 §6.4 — the IPv4 multicast group maps to the Ethernet
         # multicast MAC 01:00:5e + low 23 bits of the group address.
@@ -3384,7 +3384,7 @@ class PacketHandlerL2(
         old = self._ip4_multicast_filters[ip4_multicast]
         del self._ip4_multicast_filters[ip4_multicast]
 
-        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+        log.enabled and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
         self._remove_mac_multicast(ip4_multicast.multicast_mac)
 
@@ -3400,7 +3400,7 @@ class PacketHandlerL2(
 
         self._mac_multicast.append(mac_multicast)
 
-        __debug__ and log("stack", f"Assigned MAC multicast {mac_multicast}")
+        log.enabled and log("stack", f"Assigned MAC multicast {mac_multicast}")
 
     def _remove_mac_multicast(self, /, mac_multicast: MacAddress) -> None:
         """
@@ -3409,7 +3409,7 @@ class PacketHandlerL2(
 
         self._mac_multicast.remove(mac_multicast)
 
-        __debug__ and log("stack", f"Removed MAC multicast {mac_multicast}")
+        log.enabled and log("stack", f"Removed MAC multicast {mac_multicast}")
 
     @override
     async def _log_stack_address_info(self) -> None:
@@ -3420,7 +3420,7 @@ class PacketHandlerL2(
         for _ in (self._ip6_support, self._ip4_support):
             await acquire_semaphore(self._ip_configuration_in_progress, 15)
 
-        if __debug__:
+        if log.enabled:
             log(
                 "stack",
                 f"<INFO>Interface {self._interface_name} listening on unicast MAC address: " f"{self._mac_unicast}</>",
@@ -3468,7 +3468,7 @@ class PacketHandlerL3(
         ethertype = EtherType.from_bytes(packet_rx.frame[2:4])
         handler = self._ethertype_registry.get(ethertype)
         if handler is None:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 f"<WARN>Unknown EtherType 0x{packet_rx.frame[2:4].hex()} " "received, dropping packet</>",
             )
@@ -3516,7 +3516,7 @@ class PacketHandlerL3(
             self._assign_ip6_host(ip6_host=ip6_host)
 
         if not self._ip6_ifaddr:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "<WARN>Unable to assign any IPv6 address, disabling IPv6 " "protocol</>",
             )
@@ -3539,7 +3539,7 @@ class PacketHandlerL3(
             self._assign_ip4_host(ip4_host=ip4_host)
 
         if not self._ip4_ifaddr:
-            __debug__ and log(
+            log.enabled and log(
                 "stack",
                 "<WARN>Unable to assign any IPv4 address, disabling IPv4 " "protocol</>",
             )
@@ -3553,7 +3553,7 @@ class PacketHandlerL3(
 
         self._ip6_multicast = [*self._ip6_multicast, ip6_multicast]
 
-        __debug__ and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
+        log.enabled and log("stack", f"Assigned IPv6 multicast {ip6_multicast}")
 
         self._send_icmp6_multicast_listener_report()
 
@@ -3565,7 +3565,7 @@ class PacketHandlerL3(
 
         self._ip6_multicast = [group for group in self._ip6_multicast if group != ip6_multicast]
 
-        __debug__ and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
+        log.enabled and log("stack", f"Removed IPv6 multicast {ip6_multicast}")
 
     @override
     def _assign_ip4_multicast(self, /, ip4_multicast: Ip4Address) -> None:
@@ -3580,7 +3580,7 @@ class PacketHandlerL3(
         new = self._ip4_multicast_filter_for(ip4_multicast)
         self._ip4_multicast_filters[ip4_multicast] = new
 
-        __debug__ and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
+        log.enabled and log("stack", f"Assigned IPv4 multicast {ip4_multicast}")
 
         # RFC 3376 §5.1 — announce the new membership with an unsolicited
         # state-change Report describing the INCLUDE{}→'new' transition
@@ -3597,7 +3597,7 @@ class PacketHandlerL3(
         old = self._ip4_multicast_filters[ip4_multicast]
         del self._ip4_multicast_filters[ip4_multicast]
 
-        __debug__ and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
+        log.enabled and log("stack", f"Removed IPv4 multicast {ip4_multicast}")
 
         # RFC 3376 §5.1 — announce the departure with a state-change
         # Report describing the 'old'→INCLUDE{} transition.

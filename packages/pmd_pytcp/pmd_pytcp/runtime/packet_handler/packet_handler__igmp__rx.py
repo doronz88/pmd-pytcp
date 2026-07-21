@@ -106,7 +106,7 @@ class IgmpRxHandler:
         # option is NOT required on receipt (IGMPv2 senders predate it),
         # matching Linux leniency.
         if packet_rx.ip4.ttl != 1:
-            __debug__ and log(
+            log.enabled and log(
                 "igmp",
                 f"{packet_rx.tracker} - <CRIT>Dropping IGMP with TTL {packet_rx.ip4.ttl} (expected 1)</>",
             )
@@ -117,11 +117,11 @@ class IgmpRxHandler:
             IgmpParser(packet_rx)
 
         except PacketValidationError as error:
-            __debug__ and log("igmp", f"{packet_rx.tracker} - <CRIT>{error}</>")
+            log.enabled and log("igmp", f"{packet_rx.tracker} - <CRIT>{error}</>")
             self._if._packet_stats_rx.igmp__failed_parse__drop += 1
             return
 
-        __debug__ and log("igmp", f"{packet_rx.tracker} - {packet_rx.igmp}")
+        log.enabled and log("igmp", f"{packet_rx.tracker} - {packet_rx.igmp}")
 
         if packet_rx.igmp.message.type == IgmpType.MEMBERSHIP_QUERY:
             self.__phrx_igmp__membership_query(packet_rx)
@@ -154,13 +154,13 @@ class IgmpRxHandler:
         ):
             self._if._igmp_query__suppressed_groups.add(message.group_address)
             self._if._packet_stats_rx.igmp__membership_query__suppressed += 1
-            __debug__ and log(
+            log.enabled and log(
                 "igmp",
                 f"{packet_rx.tracker} - Suppressing pending Report for {message.group_address}",
             )
             return
 
-        __debug__ and log(
+        log.enabled and log(
             "igmp",
             f"{packet_rx.tracker} - Received IGMP Report/Leave from {packet_rx.ip4.src} (ignored)",
         )
@@ -182,7 +182,7 @@ class IgmpRxHandler:
         """
 
         self._if._packet_stats_rx.igmp__membership_query += 1
-        __debug__ and log(
+        log.enabled and log(
             "igmp",
             f"{packet_rx.tracker} - Received IGMP Membership Query from {packet_rx.ip4.src}",
         )

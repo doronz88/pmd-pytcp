@@ -256,7 +256,7 @@ class TcpSocket(socket):
             self._local_port = 0
             self._remote_port = 0
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Create socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Create socket")
 
     @property
     def state(self) -> FsmState:
@@ -612,7 +612,7 @@ class TcpSocket(socket):
         self._local_port = local_port
         stack.sockets.register(self)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Bound socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Bound socket")
 
     @override
     async def connect(self, address: tuple[str, int], *, data: bytes = b"") -> None:
@@ -719,7 +719,7 @@ class TcpSocket(socket):
         if data:
             self._tcp_session._tx.buffer.extend(data)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Socket attempting connection")
+        log.enabled and log("socket", f"<g>[{self}]</> - Socket attempting connection")
 
         try:
             await self._tcp_session.connect()
@@ -735,7 +735,7 @@ class TcpSocket(socket):
                     "Connection timed out - [No valid response received from remote host]",
                 ) from error
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Connected socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Connected socket")
 
     @override
     def listen(self, *, backlog: int = TCP__DEFAULT_BACKLOG) -> None:
@@ -793,7 +793,7 @@ class TcpSocket(socket):
         self._tcp_session._user_timeout_ms = self._tcp_user_timeout
         self._tcp_session._maxseg_override = self._tcp_maxseg
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<g>[{self}]</> - Socket starting to listen for inbound connections " f"(backlog={backlog})",
         )
@@ -808,7 +808,7 @@ class TcpSocket(socket):
         it's socket.
         """
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Waiting for inbound connection")
+        log.enabled and log("socket", f"<g>[{self}]</> - Waiting for inbound connection")
 
         # Per-call 'timeout' takes precedence over 'setblocking()';
         # otherwise non-blocking mode equates to a non-blocking
@@ -829,7 +829,7 @@ class TcpSocket(socket):
         # to non-blocking get non-blocking children.
         socket._blocking = self._blocking
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<g>[{self}]</> - Socket accepted connection from "
             f"{(str(socket.remote_ip_address), socket.remote_port)}",
@@ -858,7 +858,7 @@ class TcpSocket(socket):
         except TcpSessionError as error:
             raise BrokenPipeError(errno.EPIPE, f"Broken pipe - [{error}]") from error
 
-        __debug__ and log(
+        log.enabled and log(
             "socket",
             f"<g>[{self}]</> - Sent data segment, len {bytes_sent}",
         )
@@ -918,12 +918,12 @@ class TcpSocket(socket):
 
         try:
             if data_rx := await self._tcp_session.receive(byte_count=bufsize, timeout=effective_timeout):
-                __debug__ and log(
+                log.enabled and log(
                     "socket",
                     f"<g>[{self}]</> - Received {len(data_rx)} bytes of data",
                 )
             else:
-                __debug__ and log(
+                log.enabled and log(
                     "socket",
                     f"<g>[{self}]</> - Received empty data byte string, remote end closed connection",
                 )
@@ -951,7 +951,7 @@ class TcpSocket(socket):
         if linger is not None and linger[0] != 0 and linger[1] == 0:
             self._tcp_session.abort()
             self._mark_closed()
-            __debug__ and log("socket", f"<g>[{self}]</> - Closed socket (SO_LINGER 0 -> abort)")
+            log.enabled and log("socket", f"<g>[{self}]</> - Closed socket (SO_LINGER 0 -> abort)")
             return
 
         # Graceful close: initiate the FIN exchange.
@@ -972,7 +972,7 @@ class TcpSocket(socket):
         # no drain is needed.
         self._mark_closed()
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Closed socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Closed socket")
 
     def shutdown(self, how: int, /) -> None:
         """
@@ -988,7 +988,7 @@ class TcpSocket(socket):
         if self._tcp_session is not None:
             self._tcp_session.shutdown(how=how)
 
-        __debug__ and log("socket", f"<g>[{self}]</> - shutdown(how={how})")
+        log.enabled and log("socket", f"<g>[{self}]</> - shutdown(how={how})")
 
     def abort(self) -> None:
         """
@@ -1004,7 +1004,7 @@ class TcpSocket(socket):
         if self._tcp_session is not None:
             self._tcp_session.abort()
 
-        __debug__ and log("socket", f"<g>[{self}]</> - Aborted socket")
+        log.enabled and log("socket", f"<g>[{self}]</> - Aborted socket")
 
     def process_tcp_packet(self, packet_rx_md: TcpMetadata) -> None:
         """

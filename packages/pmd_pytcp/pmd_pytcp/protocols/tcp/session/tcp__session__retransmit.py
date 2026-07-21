@@ -152,12 +152,12 @@ class TcpRetransmitter:
             # that case.
             if session._peer_contacted:
                 session._transmit_packet(flag_rst=True, flag_ack=True, seq=session._snd_seq.una)
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Packet retransmit counter expired, resetting session",
                 )
             else:
-                __debug__ and log(
+                log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Packet retransmit counter expired",
                 )
@@ -215,10 +215,21 @@ class TcpRetransmitter:
         session._retransmit_count += 1
         # PLPMTUD adapter: declare any in-flight probe lost so
         # the engine sees the RTO event as a probe-loss
-        # signal. No-op when no probes were in flight (RFC
-        # 4821 §7.5 — data-RTO alone does not feed
-        # probe-loss).
+        # signal, and treat the RTO as the black-hole
+        # suspicion signal for a probe-raised working PLPMTU
+        # (a size can ACK isolated probes yet drop under
+        # sustained load — the stall IS the evidence).
         session._plpmtud_adapter.on_rto_timeout(now=time.monotonic())
+        if session._plpmtud_probing_enabled:
+            # Sync 'snd_mss' down NOW, before the rewound
+            # retransmission below fires: the whole point of
+            # the black-hole revert is that the next segments
+            # go out at the reverted (safe) size — waiting for
+            # the ACK-path sync would retransmit at the very
+            # size the path is dropping.
+            engine_mss = session._plpmtud_adapter.current_mtu - session._ip_tcp_overhead
+            if engine_mss < session._win.snd_mss:
+                session._win.snd_mss = engine_mss
         # RFC 6298 §5.7 second-clause SYN-retransmit counter.
         # Increment when the retransmit fires while the
         # handshake is still in progress: SYN_SENT (active
@@ -244,7 +255,7 @@ class TcpRetransmitter:
                 # opens to the same peer skip TFO entirely.
                 stack.tcp_stack.mark_fastopen_negative(session._remote_ip_address)
         session._arm_timer("retransmit", session._rto_state.rto_ms)
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - RFC 6298 §5.5 back-off: rto_ms -> "
             f"{session._rto_state.rto_ms} (retry "
@@ -271,7 +282,7 @@ class TcpRetransmitter:
         if already_in_frto:
             # Update recover only; preserve original snapshots.
             session._cc.frto_pre_snd_max = session._snd_seq.max
-            __debug__ and log(
+            log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - RFC 5682 §2.1 already-in-RTO gate: "
                 f"recover updated to {session._cc.frto_pre_snd_max}; "
@@ -382,7 +393,7 @@ class TcpRetransmitter:
             session._snd_seq.fin_sent and session._snd_seq.nxt == sub32(session._snd_seq.fin, 1)
         ):
             session._tx.seq_mod = sub32(session._tx.seq_mod, 1)
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Got retransmit timeout, sending segment "
             f"{session._snd_seq.nxt}, resetting snd_ewn to {session._cc.snd_ewn}",
@@ -484,6 +495,12 @@ class TcpRetransmitter:
         if not (count_trigger or sack_trigger):
             return
 
+        # (PLPMTUD note: probe-loss on repair is detected at the
+        # retransmission-emit hook in 'tcp__session__tx.py', which
+        # fires only for repairs actually OVERLAPPING a probe's
+        # range — entering recovery for ordinary loss elsewhere in
+        # the stream must not count against the probe ladder.)
+
         # RFC 5681 §3.2 step 2: ssthresh = max(FlightSize/2,
         # 2*SMSS). Captures the just-observed loss point so
         # the post-recovery slow-start exits at this boundary.
@@ -571,7 +588,7 @@ class TcpRetransmitter:
             else None
         )
         session._snd_seq.nxt = ns if ns is not None else session._snd_seq.una
-        __debug__ and log(
+        log.enabled and log(
             "tcp-ss",
             f"[{session}] - Got retransmit request, sending segment "
             f"{session._snd_seq.nxt}, keeping snd_ewn at {session._cc.snd_ewn}, "
@@ -646,6 +663,11 @@ class TcpRetransmitter:
             # Retransmit-style probe: walk SND.NXT back by one
             # MSS (or less if in-flight is shorter) so
             # _transmit_data re-sends the highest-seq segment.
+            # (PLPMTUD: if this re-send overlaps an in-flight
+            # MTU probe's range, the retransmission-emit hook
+            # in 'tcp__session__tx.py' declares that probe
+            # lost, keeping its later cum-ACK from reading as
+            # a genuine probe ACK.)
             flight_size = (session._snd_seq.max - session._snd_seq.una) & 0xFFFF_FFFF
             walk_back = min(session._win.snd_mss, flight_size)
             session._snd_seq.nxt = sub32(session._snd_seq.max, walk_back)

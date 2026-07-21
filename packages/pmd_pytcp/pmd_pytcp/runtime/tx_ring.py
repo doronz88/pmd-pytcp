@@ -125,7 +125,7 @@ class TxRing:
         self._mtu = mtu
         self._queue_max_size = queue_max_size
 
-        __debug__ and log(
+        log.enabled and log(
             "stack",
             f"Initializing {self._subsystem_name} [fd={fd}, mtu={mtu}, queue_max_size={queue_max_size}]",
         )
@@ -197,7 +197,7 @@ class TxRing:
         scheduled on demand by 'enqueue'.
         """
 
-        __debug__ and log("stack", f"Starting {self._subsystem_name}")
+        log.enabled and log("stack", f"Starting {self._subsystem_name}")
 
         self._loop = asyncio.get_running_loop()
         self._running = True
@@ -220,7 +220,7 @@ class TxRing:
         threaded worker had).
         """
 
-        __debug__ and log("stack", f"Stopping {self._subsystem_name}")
+        log.enabled and log("stack", f"Stopping {self._subsystem_name}")
 
         self._running = False
         if self._writer_armed and self._loop is not None:
@@ -334,7 +334,7 @@ class TxRing:
                     proto_info = info
                     break
         if proto_info is None:
-            __debug__ and log(
+            log.enabled and log(
                 "tx-ring",
                 f"{item.tracker} - <CRIT>Unknown packet type: " f"{type(item)!r}</>",
             )
@@ -345,7 +345,7 @@ class TxRing:
         mtu = self._mtu + mtu_extra
 
         if (packet_tx_len := len(item)) > mtu:
-            __debug__ and log(
+            log.enabled and log(
                 "tx-ring",
                 f"{item.tracker} - Unable to send frame, frame" f"len ({packet_tx_len}) > mtu ({mtu})",
             )
@@ -363,7 +363,7 @@ class TxRing:
             self._packet_stats.tx_ring__os_error__drop += 1
         else:
             self._os_error_drop_count += 1
-        __debug__ and log(
+        log.enabled and log(
             "tx-ring",
             f"<CRIT>Unable to send frame, OSError: {error}</>",
         )
@@ -390,9 +390,9 @@ class TxRing:
             return False
 
         if isinstance(item, (bytes, bytearray, memoryview)):
-            __debug__ and log("tx-ring", f"<B><lr>[TX]</> - sent raw frame, {len(item)} bytes")
+            log.enabled and log("tx-ring", f"<B><lr>[TX]</> - sent raw frame, {len(item)} bytes")
         else:
-            __debug__ and log(
+            log.enabled and log(
                 "tx-ring",
                 f"<B><lr>[TX]</> {item.tracker}<y>"
                 f"{item.tracker.latency}</> - sent frame, "
@@ -415,7 +415,7 @@ class TxRing:
                 self._packet_stats.tx_ring__queue_full__drop += 1
             else:
                 self._queue_full_drop_count += 1
-            __debug__ and log("tx-ring", "TX Queue is full, dropping raw frame")
+            log.enabled and log("tx-ring", "TX Queue is full, dropping raw frame")
             return
 
         self._tx_deque.append(frame)
@@ -424,7 +424,7 @@ class TxRing:
         if self._link_stats is not None:
             self._link_stats.tx_bytes += len(frame)
 
-        __debug__ and log("tx-ring", f"TX Queue len: {len(self._tx_deque)}")
+        log.enabled and log("tx-ring", f"TX Queue len: {len(self._tx_deque)}")
 
     def enqueue(
         self,
@@ -441,7 +441,7 @@ class TxRing:
                 self._packet_stats.tx_ring__queue_full__drop += 1
             else:
                 self._queue_full_drop_count += 1
-            __debug__ and log(
+            log.enabled and log(
                 "tx-ring",
                 f"{packet_tx.tracker} - TX Queue is full, dropping packet",
             )
@@ -458,7 +458,7 @@ class TxRing:
         if self._link_stats is not None:
             self._link_stats.tx_bytes += len(packet_tx)
 
-        __debug__ and log(
+        log.enabled and log(
             "tx-ring",
             f"{packet_tx.tracker} - TX Queue len: {len(self._tx_deque)}",
         )

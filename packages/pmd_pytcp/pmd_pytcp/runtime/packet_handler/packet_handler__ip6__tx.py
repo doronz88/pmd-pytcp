@@ -158,7 +158,7 @@ class Ip6TxHandler:
         # if so send it out.
         if len(ip6_packet_tx) <= self._if._interface_mtu:
             self._if._packet_stats_tx.ip6__mtu_ok__send += 1
-            __debug__ and log("ip6", f"{ip6_packet_tx.tracker} - {ip6_packet_tx}")
+            log.enabled and log("ip6", f"{ip6_packet_tx.tracker} - {ip6_packet_tx}")
             if self._if._interface_layer == InterfaceLayer.L2:
                 return self._if._phtx_ethernet(
                     ethernet__src=MacAddress(),
@@ -171,7 +171,7 @@ class Ip6TxHandler:
 
         # Fragment packet and send out.
         self._if._packet_stats_tx.ip6__mtu_exceed__frag += 1
-        __debug__ and log(
+        log.enabled and log(
             "ip6",
             f"{ip6_packet_tx.tracker} - IPv6 packet len " f"{len(ip6_packet_tx)} bytes, fragmentation needed",
         )
@@ -199,7 +199,7 @@ class Ip6TxHandler:
             Ip6Address(),
         }:
             self._if._packet_stats_tx.ip6__src_not_owned__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, stack "
                 f"doesn't own IPv6 address {ip6__src}, dropping</>",
@@ -212,14 +212,14 @@ class Ip6TxHandler:
             if self._if._ip6_unicast:
                 self._if._packet_stats_tx.ip6__src_multicast__replace += 1
                 ip6__src = self._if._ip6_unicast[0]
-                __debug__ and log(
+                log.enabled and log(
                     "ip6",
                     f"{tracker} - Packet is response to multicast, replaced "
                     f"source with stack link local IPv6 address {ip6__src}",
                 )
                 return ip6__src
             self._if._packet_stats_tx.ip6__src_multicast__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - <WARN>Unable to sent out IPv6 packet, no stack "
                 "link local unicast IPv6 address available</>",
@@ -244,7 +244,7 @@ class Ip6TxHandler:
             and ip6__payload.message.slla is None
         ):
             self._if._packet_stats_tx.ip6__src_unspecified__send += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - Packet source is unspecified, ICMPv6 ND DAD " "packet, sending",
             )
@@ -257,7 +257,7 @@ class Ip6TxHandler:
             and isinstance(ip6__payload.message, Icmp6Mld2MessageReport)
         ):
             self._if._packet_stats_tx.ip6__src_unspecified__send += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - Packet source is unspecified, ICMPv6 MLDv2 " "report, sending",
             )
@@ -281,7 +281,7 @@ class Ip6TxHandler:
                     self._if._packet_stats_tx.ip6__src_network_unspecified__replace_local += 1
                 else:
                     self._if._packet_stats_tx.ip6__src_network_unspecified__replace_external += 1
-                __debug__ and log(
+                log.enabled and log(
                     "ip6",
                     f"{tracker} - Packet source is unspecified, RFC 6724 "
                     f"selector picked source IPv6 address {selected}",
@@ -291,7 +291,7 @@ class Ip6TxHandler:
         # If src is unspecified and stack can't replace it.
         if ip6__src.is_unspecified:
             self._if._packet_stats_tx.ip6__src_unspecified__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - <WARN>Packet source is unspecified, unable to " "replace with valid source, dropping</>",
             )
@@ -308,7 +308,7 @@ class Ip6TxHandler:
         # layer to fall through to.
         if ip6_address_scope(ip6__src) < ip6_address_scope(ip6__dst):
             self._if._packet_stats_tx.ip6__src_scope_mismatch__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - <WARN>Source {ip6__src} has smaller scope than "
                 f"destination {ip6__dst}; RFC 4007 §6 violation, dropping</>",
@@ -437,7 +437,7 @@ class Ip6TxHandler:
         # Drop packet if the destination address is unspecified.
         if ip6__dst.is_unspecified:
             self._if._packet_stats_tx.ip6__dst_unspecified__drop += 1
-            __debug__ and log(
+            log.enabled and log(
                 "ip6",
                 f"{tracker} - <WARN>Destination address is unspecified, " "dropping</>",
             )

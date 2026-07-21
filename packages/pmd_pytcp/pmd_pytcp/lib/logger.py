@@ -113,3 +113,37 @@ def log(
     _LOGGER.debug(_apply_styles(output))
 
     return True
+
+
+def refresh_log_enabled() -> bool:
+    """
+    Recompute the fast hot-path gate 'log.enabled'.
+
+    Every hot-path call site is written as 'log.enabled and log(...)':
+    the guard is one attribute load on the (already-bound) 'log'
+    function, so when logging is off the f-string argument is never
+    even built. This replaces the historical 'log.enabled and log(...)'
+    pattern, whose guard was compile-time-constant True in any normal
+    interpreter run — the message strings for ~500 call sites (many
+    per packet) were fully formatted and then thrown away unless the
+    process ran under 'python -O' (measured at 30-55% of bulk-transfer
+    CPU through the userspace-tunnel stack).
+
+    Called by 'stack.init()' after logging/sysctl configuration is in
+    place. A host that flips the 'pmd_pytcp' logger's level (or edits
+    'stack.LOG__CHANNEL') at runtime AFTER init must call this again
+    to re-arm the gate — the per-call fallback gates inside 'log()'
+    still apply either way, so a stale True only costs performance,
+    never spurious output.
+    """
+
+    from pmd_pytcp.stack import LOG__CHANNEL
+
+    log.enabled = bool(LOG__CHANNEL) and _LOGGER.isEnabledFor(logging.DEBUG)
+    return log.enabled
+
+
+#: Fast hot-path gate (see 'refresh_log_enabled'). Starts True so any
+#: pre-'stack.init()' logging behaves exactly as before; the first
+#: 'stack.init()' resolves it against the live logging configuration.
+log.enabled = True  # type: ignore[attr-defined]
