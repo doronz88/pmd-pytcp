@@ -49,10 +49,10 @@ from pmd_net_proto import (
 )
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp import stack
+from pmd_pytcp._compat import as_buffer
 from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.packet_handler.packet_handler__udp__rx import UdpRxHandler
-from pmd_pytcp._compat import as_buffer
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -116,6 +116,9 @@ class _StubInterface:
         self.udp_tx_calls: list[dict[str, object]] = []
         self.icmp4_tx_calls: list[dict[str, object]] = []
         self.icmp6_tx_calls: list[dict[str, object]] = []
+        # 'None' = no interface in scope; interface-scope sysctl reads
+        # ('net.rx_cksum_validate') fall back to the '"default"' slot.
+        self._interface_name = None
 
     def _phtx_udp(self, **kwargs: object) -> TxStatus:
         self.udp_tx_calls.append(kwargs)
@@ -197,11 +200,13 @@ class TestPacketHandlerUdpRxParse(_UdpRxTestBase):
         """
 
         frame = bytearray(
-            as_buffer(Ip4Assembler(
-                ip4__src=HOST_A__IP4,
-                ip4__dst=STACK__IP4_ADDRESS,
-                ip4__payload=UdpAssembler(udp__sport=12345, udp__dport=54321),
-            ))
+            as_buffer(
+                Ip4Assembler(
+                    ip4__src=HOST_A__IP4,
+                    ip4__dst=STACK__IP4_ADDRESS,
+                    ip4__payload=UdpAssembler(udp__sport=12345, udp__dport=54321),
+                )
+            )
         )
         # UDP cksum is at offset IP4_header_len + 6. Minimum IP header is 20.
         frame[20 + 6] = 0xDE

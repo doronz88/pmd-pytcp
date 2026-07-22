@@ -41,6 +41,7 @@ from pmd_pytcp.lib.logger import log
 from pmd_pytcp.socket import AddressFamily
 from pmd_pytcp.socket.tcp__metadata import TcpMetadata
 from pmd_pytcp.socket.tcp__socket import TcpSocket
+from pmd_pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandler
@@ -68,7 +69,13 @@ class TcpRxHandler:
         self._if._packet_stats_rx.tcp__pre_parse += 1
 
         try:
-            TcpParser(packet_rx)
+            # 'net.<iface>.rx_cksum_validate' — the software RX-checksum-
+            # offload gate; False on links that guarantee integrity
+            # themselves (AEAD tunnel into an in-memory fd).
+            TcpParser(
+                packet_rx,
+                validate_checksum=sysctl_iface.get_for_iface("net.rx_cksum_validate", self._if._interface_name),
+            )
 
         except PacketValidationError as error:
             self._if._packet_stats_rx.tcp__failed_parse__drop += 1

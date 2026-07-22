@@ -36,7 +36,6 @@ from types import SimpleNamespace
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
-
 from pmd_net_addr import IpVersion
 from pmd_net_proto import PacketRx, UdpIntegrityError, UdpParser
 from pmd_net_proto.protocols.udp.udp__errors import UdpZeroCksumIp6Error
@@ -314,3 +313,67 @@ class TestUdpParserIntegrityZeroCksumIp6(TestCase):
                 "PacketValidationError catches still cover it."
             ),
         )
+
+
+# 24-byte frame with intentionally wrong non-zero cksum bytes 6-7 = 0xabcd
+# (same fixture as the parametrized checksum-rejection case above).
+_BAD_CKSUM_FRAME = (
+    b"\x30\x39\xd4\x31\x00\x18\xab\xcd\x30\x31\x32\x33\x34\x35\x36\x37" b"\x38\x39\x41\x42\x43\x44\x45\x46"
+)
+
+
+class TestUdpParserChecksumSkip(TestCase):
+    """
+    The 'validate_checksum=False' RX-checksum-offload gate: it must skip
+    ONLY the RFC 1071 checksum arithmetic — structural checks and the
+    RFC 8200 §8.1 zero-checksum policy stay active — and the default
+    must remain full validation.
+    """
+
+    def _packet_rx(self, frame: bytes, *, ver: IpVersion = IpVersion.IP4) -> PacketRx:
+        packet_rx = PacketRx(frame)
+        packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(frame),
+            pshdr_sum=0,
+            ver=ver,
+        )
+        return packet_rx
+
+    def test__udp__parser__cksum_skip__accepts_corrupted_checksum(self) -> None:
+        """
+        Ensure 'validate_checksum=False' parses a datagram whose non-zero
+        checksum is invalid — the receiver has vouched for link-level
+        integrity, so the arithmetic is not run at all.
+        """
+
+        parser = UdpParser(self._packet_rx(_BAD_CKSUM_FRAME), validate_checksum=False)
+
+        self.assertEqual(
+            parser.sport,
+            12345,
+            msg="Corrupted-checksum datagram must parse when validation is skipped.",
+        )
+
+    def test__udp__parser__cksum_skip__default_still_validates(self) -> None:
+        """
+        Ensure the default (no 'validate_checksum' argument) still
+        rejects the corrupted-checksum datagram — the gate is strictly
+        opt-out.
+        """
+
+        with self.assertRaises(UdpIntegrityError):
+            UdpParser(self._packet_rx(_BAD_CKSUM_FRAME))
+
+    def test__udp__parser__cksum_skip__zero_cksum_ip6_policy_still_active(self) -> None:
+        """
+        Ensure 'validate_checksum=False' does NOT bypass the RFC 8200
+        §8.1 default-mode drop of an IPv6 datagram with cksum=0 — the
+        zero-checksum policy is a protocol rule, not checksum
+        arithmetic, and stays gated on 'accept_zero_cksum_ip6' alone.
+        """
+
+        # Baseline header-only frame with cksum bytes 6-7 zeroed.
+        zero_cksum_frame = b"\x30\x39\xd4\x31\x00\x08\x00\x00"
+
+        with self.assertRaises(UdpZeroCksumIp6Error):
+            UdpParser(self._packet_rx(zero_cksum_frame, ver=IpVersion.IP6), validate_checksum=False)

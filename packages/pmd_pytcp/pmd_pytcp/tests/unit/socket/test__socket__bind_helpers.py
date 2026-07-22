@@ -32,6 +32,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import errno
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -107,7 +108,9 @@ class TestPickLocalIp6Address(TestCase):
         )
 
         with (
-            patch("pmd_pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)),
+            patch(
+                "pmd_pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)
+            ),
             patch("pmd_pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
         ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
@@ -139,7 +142,9 @@ class TestPickLocalIp6Address(TestCase):
         )
 
         with (
-            patch("pmd_pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)),
+            patch(
+                "pmd_pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)
+            ),
             patch("pmd_pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
         ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
@@ -164,7 +169,9 @@ class TestPickLocalIp6Address(TestCase):
         fib: RouteTable[Ip6Address, Ip6Network] = RouteTable()
 
         with (
-            patch("pmd_pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)),
+            patch(
+                "pmd_pytcp.socket.socket__bind_helpers.stack.local_ip6_hosts", return_value=tuple(fake_handler.ip6_host)
+            ),
             patch("pmd_pytcp.socket.socket__bind_helpers.stack.ip6_fib", fib, create=True),
         ):
             result = pick_local_ip6_address(remote_ip6_address=Ip6Address("2606:4700::1"))
@@ -228,7 +235,9 @@ class TestPickLocalIp4Address(TestCase):
         )
 
         with (
-            patch("pmd_pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)),
+            patch(
+                "pmd_pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)
+            ),
             patch("pmd_pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
         ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
@@ -260,7 +269,9 @@ class TestPickLocalIp4Address(TestCase):
         )
 
         with (
-            patch("pmd_pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)),
+            patch(
+                "pmd_pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)
+            ),
             patch("pmd_pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
         ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
@@ -285,7 +296,9 @@ class TestPickLocalIp4Address(TestCase):
         fib: RouteTable[Ip4Address, Ip4Network] = RouteTable()
 
         with (
-            patch("pmd_pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)),
+            patch(
+                "pmd_pytcp.socket.socket__bind_helpers.stack.local_ip4_hosts", return_value=tuple(fake_handler.ip4_host)
+            ),
             patch("pmd_pytcp.socket.socket__bind_helpers.stack.ip4_fib", fib, create=True),
         ):
             result = pick_local_ip4_address(remote_ip4_address=Ip4Address("8.8.8.8"))
@@ -449,7 +462,7 @@ class TestPickLocalPort(TestCase):
     def test__ip_helper__pick_local_port__raises_when_exhausted(self) -> None:
         """
         Ensure 'pick_local_port()' raises 'OSError' with the canonical
-        '[Errno 98] Address already in use' message when every port in
+        '[EADDRINUSE] Address already in use' message when every port in
         the ephemeral range is claimed.
 
         Reference: PyTCP test infrastructure (no RFC clause).
@@ -465,9 +478,9 @@ class TestPickLocalPort(TestCase):
                 pick_local_port()
 
         self.assertIn(
-            "[Errno 98] Address already in use",
+            f"[Errno {errno.EADDRINUSE}] Address already in use",
             str(context.exception),
-            msg="pick_local_port() must raise with the canonical Errno 98 message when exhausted.",
+            msg="pick_local_port() must raise with the canonical EADDRINUSE message when exhausted.",
         )
 
 
@@ -623,7 +636,7 @@ class TestPickLocalPortFor(TestCase):
     def test__ip_helper__pick_local_port_for__raises_when_exhausted(self) -> None:
         """
         Ensure the picker raises OSError with the canonical
-        '[Errno 98] Address already in use' message when every
+        '[EADDRINUSE] Address already in use' message when every
         port in the range is claimed, matching the contract of
         the bare 'pick_local_port'.
 
@@ -645,9 +658,9 @@ class TestPickLocalPortFor(TestCase):
                 )
 
         self.assertIn(
-            "[Errno 98] Address already in use",
+            f"[Errno {errno.EADDRINUSE}] Address already in use",
             str(context.exception),
-            msg="pick_local_port_for must raise with the canonical Errno 98 message when exhausted.",
+            msg="pick_local_port_for must raise with the canonical EADDRINUSE message when exhausted.",
         )
 
 

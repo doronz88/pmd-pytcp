@@ -158,7 +158,7 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__version__: str = "0.0.2"
+__version__: str = "0.0.3"
 
 __all__ = [
     "ClickTypeIfAddr",

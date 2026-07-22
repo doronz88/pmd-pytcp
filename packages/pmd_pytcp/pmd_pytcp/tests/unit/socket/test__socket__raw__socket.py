@@ -302,7 +302,7 @@ class TestRawSocketBind(_RawSocketTestCase):
     def test__raw_socket__bind_rejects_foreign_address(self) -> None:
         """
         Ensure binding to an IPv4 address not owned by the stack raises
-        'OSError' with the canonical Errno 99 message.
+        'OSError' with the canonical EADDRNOTAVAIL message.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -311,9 +311,9 @@ class TestRawSocketBind(_RawSocketTestCase):
         with self.assertRaises(OSError) as context:
             s.bind(("192.168.99.99", 0))
         self.assertIn(
-            "[Errno 99]",
+            f"[Errno {errno.EADDRNOTAVAIL}]",
             str(context.exception),
-            msg="bind() must raise with Errno 99 when the local IP is not stack-owned.",
+            msg="bind() must raise with EADDRNOTAVAIL when the local IP is not stack-owned.",
         )
 
     def test__raw_socket__bind_rejects_malformed_ip4(self) -> None:
@@ -331,7 +331,7 @@ class TestRawSocketBind(_RawSocketTestCase):
     def test__raw_socket__bind_ip6_rejects_foreign_address(self) -> None:
         """
         Ensure the IPv6 branch also checks the stack's unicast set and
-        raises Errno 99 when the address is not owned.
+        raises EADDRNOTAVAIL when the address is not owned.
 
         Reference: PyTCP test infrastructure (no RFC clause).
         """
@@ -340,9 +340,9 @@ class TestRawSocketBind(_RawSocketTestCase):
         with self.assertRaises(OSError) as context:
             s.bind(("2001:db8:dead::1", 0))
         self.assertIn(
-            "[Errno 99]",
+            f"[Errno {errno.EADDRNOTAVAIL}]",
             str(context.exception),
-            msg="bind() must raise with Errno 99 for foreign IPv6 addresses.",
+            msg="bind() must raise with EADDRNOTAVAIL for foreign IPv6 addresses.",
         )
 
     def test__raw_socket__bind_ip6_rejects_malformed_address(self) -> None:
@@ -440,7 +440,7 @@ class TestRawSocketSend(_RawSocketTestCase):
 
     async def test__raw_socket__send_requires_connect(self) -> None:
         """
-        Ensure send() raises 'OSError' with the Errno 89 message when
+        Ensure send() raises 'OSError' with the EDESTADDRREQ message when
         called before connect(), because the remote IP is still the
         unspecified placeholder.
 
@@ -451,9 +451,9 @@ class TestRawSocketSend(_RawSocketTestCase):
         with self.assertRaises(OSError) as context:
             await s.send(b"data")
         self.assertIn(
-            "[Errno 89]",
+            f"[Errno {errno.EDESTADDRREQ}]",
             str(context.exception),
-            msg="send() must raise with Errno 89 when no destination is set.",
+            msg="send() must raise with EDESTADDRREQ when no destination is set.",
         )
 
     async def test__raw_socket__send_ip4_returns_bytes_sent(self) -> None:

@@ -256,7 +256,7 @@ class TestUdpSocketBind(_UdpSocketTestCase):
     def test__udp_socket__bind_twice_raises(self) -> None:
         """
         Ensure binding an already-bound socket raises 'OSError' with
-        Errno 22 — the socket can be bound exactly once.
+        EINVAL — the socket can be bound exactly once.
 
         Reference: RFC 768 (UDP user interface).
         """
@@ -266,9 +266,9 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         with self.assertRaises(OSError) as context:
             s.bind(("10.0.0.1", 8081))
         self.assertIn(
-            "[Errno 22]",
+            f"[Errno {errno.EINVAL}]",
             str(context.exception),
-            msg="bind() must raise Errno 22 when called on a socket bound to a specific port.",
+            msg="bind() must raise EINVAL when called on a socket bound to a specific port.",
         )
 
     def test__udp_socket__bind_rejects_out_of_range_port(self) -> None:
@@ -286,7 +286,7 @@ class TestUdpSocketBind(_UdpSocketTestCase):
     def test__udp_socket__bind_rejects_foreign_ip(self) -> None:
         """
         Ensure bind() to a specific IPv4 address not owned by the
-        stack raises 'OSError' with Errno 99.
+        stack raises 'OSError' with EADDRNOTAVAIL.
 
         Reference: RFC 768 (UDP user interface).
         """
@@ -295,9 +295,9 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         with self.assertRaises(OSError) as context:
             s.bind(("192.168.99.99", 0))
         self.assertIn(
-            "[Errno 99]",
+            f"[Errno {errno.EADDRNOTAVAIL}]",
             str(context.exception),
-            msg="bind() must raise Errno 99 when the local IP is not stack-owned.",
+            msg="bind() must raise EADDRNOTAVAIL when the local IP is not stack-owned.",
         )
 
     def test__udp_socket__bind_rejects_malformed_ip(self) -> None:
@@ -340,7 +340,7 @@ class TestUdpSocketBind(_UdpSocketTestCase):
     def test__udp_socket__bind_rejects_port_in_use(self) -> None:
         """
         Ensure bind() to a port already claimed by another socket
-        raises 'OSError' with Errno 98.
+        raises 'OSError' with EADDRINUSE.
 
         Reference: RFC 768 (UDP user interface).
         """
@@ -352,9 +352,9 @@ class TestUdpSocketBind(_UdpSocketTestCase):
         with self.assertRaises(OSError) as context:
             second.bind(("10.0.0.1", 8080))
         self.assertIn(
-            "[Errno 98]",
+            f"[Errno {errno.EADDRINUSE}]",
             str(context.exception),
-            msg="bind() must raise Errno 98 when the (IP, port) is already in use.",
+            msg="bind() must raise EADDRINUSE when the (IP, port) is already in use.",
         )
 
 
@@ -461,7 +461,7 @@ class TestUdpSocketSend(_UdpSocketTestCase):
 
     async def test__udp_socket__send_requires_connect(self) -> None:
         """
-        Ensure send() raises 'OSError' with Errno 89 when neither the
+        Ensure send() raises 'OSError' with EDESTADDRREQ when neither the
         remote IP nor the remote port is set.
 
         Reference: RFC 768 (UDP user interface).
@@ -471,9 +471,9 @@ class TestUdpSocketSend(_UdpSocketTestCase):
         with self.assertRaises(OSError) as context:
             await s.send(b"data")
         self.assertIn(
-            "[Errno 89]",
+            f"[Errno {errno.EDESTADDRREQ}]",
             str(context.exception),
-            msg="send() must raise Errno 89 when no destination is set.",
+            msg="send() must raise EDESTADDRREQ when no destination is set.",
         )
 
     async def test__udp_socket__send_returns_bytes_sent(self) -> None:

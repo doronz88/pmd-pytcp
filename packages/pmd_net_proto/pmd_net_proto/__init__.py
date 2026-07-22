@@ -638,7 +638,7 @@ from pmd_net_proto.protocols.udp.udp__errors import (
 from pmd_net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
 from pmd_net_proto.protocols.udp.udp__parser import UdpParser
 
-__version__: str = "0.0.2"
+__version__: str = "0.0.3"
 
 __all__ = [
     "ARP__HARDWARE_LEN__ETHERNET",

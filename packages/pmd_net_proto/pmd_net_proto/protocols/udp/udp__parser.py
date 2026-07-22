@@ -32,8 +32,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from typing_extensions import override
-
 from pmd_net_addr import IpVersion
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
@@ -46,6 +44,7 @@ from pmd_net_proto.protocols.udp.udp__errors import (
     UdpZeroCksumIp6Error,
 )
 from pmd_net_proto.protocols.udp.udp__header import UDP__HEADER__LEN, UdpHeader
+from typing_extensions import override
 
 
 class UdpParser(Udp, ProtoParser):
@@ -55,7 +54,9 @@ class UdpParser(Udp, ProtoParser):
 
     _payload: Buffer
 
-    def __init__(self, packet_rx: PacketRx, *, accept_zero_cksum_ip6: bool = False) -> None:
+    def __init__(
+        self, packet_rx: PacketRx, *, accept_zero_cksum_ip6: bool = False, validate_checksum: bool = True
+    ) -> None:
         """
         Initialize the UDP packet parser.
         'accept_zero_cksum_ip6' is the RFC 6935 §5 per-port
@@ -64,6 +65,12 @@ class UdpParser(Udp, ProtoParser):
         with 'UDP_NO_CHECK6_RX' set: the handler re-parses
         with this flag True so the parser bypasses the
         RFC 8200 §8.1 default-mode integrity drop.
+        'validate_checksum' gates only the RFC 1071 checksum
+        arithmetic (structural checks and the RFC 8200 §8.1
+        zero-checksum policy always run). A receiver whose link
+        already guarantees payload integrity — e.g. an AEAD-
+        authenticated tunnel into an in-memory interface — may
+        pass False to skip the per-datagram checksum pass.
         """
 
         self._frame = packet_rx.frame
@@ -71,6 +78,7 @@ class UdpParser(Udp, ProtoParser):
         self._ip__pshdr_sum = packet_rx.ip.pshdr_sum
         self._ip__ver = packet_rx.ip.ver
         self._accept_zero_cksum_ip6 = accept_zero_cksum_ip6
+        self._validate_checksum = validate_checksum
 
         self._validate_integrity()
         self._parse()
@@ -139,7 +147,9 @@ class UdpParser(Udp, ProtoParser):
         # precomputed by the IP layer (RFC 2460 §8.1 for IPv6,
         # RFC 768 / RFC 791 §3 for IPv4) and passed in via
         # 'init=pshdr_sum'.
-        if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
+        # Skipped when the receiver vouches for link-level integrity
+        # (see '__init__' 'validate_checksum').
+        if self._validate_checksum and inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
             raise UdpIntegrityError("The packet checksum must be valid.")
 
     @override

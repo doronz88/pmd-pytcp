@@ -44,11 +44,11 @@ ver 3.0.7
 from __future__ import annotations
 
 from enum import auto
-from typing_extensions import override
+from typing import Generic, Optional, TypeVar, Union
 
 from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.lib.name_enum import NameEnum
-from typing import Generic, Optional, TypeVar, Union
+from typing_extensions import override
 
 # RFC 8899 §5.1.2 MAX_PROBES default — the number of
 # consecutive losses on the engine before black-hole
@@ -115,6 +115,8 @@ class PmtuState(NameEnum):
 
 
 A = TypeVar("A", bound=Union[Ip4Address, Ip6Address])
+
+
 class PmtuSearch(Generic[A]):
     """
     The unified per-destination PLPMTUD search engine.
@@ -216,7 +218,16 @@ class PmtuSearch(Generic[A]):
         self._state = PmtuState.BASE
         self._probing = probing
         if probing and plpmtu_seed is not None:
-            self._seed_mtu = min(max(plpmtu_seed, self._base_mtu), self._max_mtu)
+            # Floor at the family minimum link MTU, NOT at BASE_PLPMTU:
+            # the seed is the operator-declared-safe size, and paths whose
+            # MTU sits below BASE_PLPMTU are exactly the deployments that
+            # declare a small 'tcp.base_mss'. Raising the seed to
+            # BASE_PLPMTU would start the transport ABOVE the declared-
+            # safe size (and contradict the 'neither probed below nor
+            # synced away' contract in the class docstring). Linux
+            # 'tcp_base_mss' likewise starts probing at the operator
+            # value with no BASE_PLPMTU floor.
+            self._seed_mtu = min(max(plpmtu_seed, self._min_mtu), self._max_mtu)
         else:
             self._seed_mtu = self._base_mtu
         self._current_mtu = self._seed_mtu if probing else self._max_mtu
@@ -323,7 +334,7 @@ class PmtuSearch(Generic[A]):
                 return self._candidate_mtu
             return None
 
-        elif (self._state == PmtuState.BASE or self._state == PmtuState.SEARCHING):
+        elif self._state == PmtuState.BASE or self._state == PmtuState.SEARCHING:
             if self._candidate_mtu is None:
                 return None
             if self._probe_timer_expiry is None:
@@ -482,7 +493,11 @@ class PmtuSearch(Generic[A]):
             else:
                 self._enter_search_complete(now=now)
 
-        elif (self._state == PmtuState.BASE or self._state == PmtuState.SEARCHING or self._state == PmtuState.SEARCH_COMPLETE):
+        elif (
+            self._state == PmtuState.BASE
+            or self._state == PmtuState.SEARCHING
+            or self._state == PmtuState.SEARCH_COMPLETE
+        ):
             # Linux-aligned: ICMP shrinks 'current_mtu'
             # (the working PLPMTU per RFC 8201 §4) but
             # does NOT lower 'search_high' — the engine
