@@ -36,7 +36,6 @@ from types import SimpleNamespace
 from unittest import TestCase
 
 from parameterized import parameterized_class  # type: ignore[import-untyped]
-
 from pmd_net_proto import PacketRx, TcpIntegrityError, TcpParser
 
 # A valid 24-byte TCP frame used as the baseline for parser-integrity
@@ -239,3 +238,68 @@ class TestTcpParserIntegrityBoundary(TestCase):
             24,
             msg="Baseline-frame parser must report hlen=24.",
         )
+
+
+# 41-byte frame with intentionally invalid cksum bytes 16-17 = 0xbe86
+# (same fixture as the parametrized checksum-rejection case above).
+_BAD_CKSUM_FRAME = (
+    b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x60\x10\x2b\x67"
+    b"\xbe\x86\x00\x00\x03\x03\x0a\x01\x30\x31\x32\x33\x34\x35\x36\x37"
+    b"\x38\x39\x30\x41\x42\x43\x44\x45\x46"
+)
+
+
+class TestTcpParserChecksumSkip(TestCase):
+    """
+    The 'validate_checksum=False' RX-checksum-offload gate: it must skip
+    ONLY the RFC 1071 checksum arithmetic — structural integrity checks
+    stay active — and the default must remain full validation.
+    """
+
+    def _packet_rx(self, frame: bytes) -> PacketRx:
+        packet_rx = PacketRx(frame)
+        packet_rx.ip = SimpleNamespace(  # type: ignore[assignment]
+            payload_len=len(frame),
+            pshdr_sum=0,
+        )
+        return packet_rx
+
+    def test__tcp__parser__cksum_skip__accepts_corrupted_checksum(self) -> None:
+        """
+        Ensure 'validate_checksum=False' parses a frame whose checksum
+        is invalid — the receiver has vouched for link-level integrity,
+        so the arithmetic is not run at all.
+        """
+
+        parser = TcpParser(self._packet_rx(_BAD_CKSUM_FRAME), validate_checksum=False)
+
+        self.assertEqual(
+            parser.sport,
+            12345,
+            msg="Corrupted-checksum frame must parse when validation is skipped.",
+        )
+
+    def test__tcp__parser__cksum_skip__default_still_validates(self) -> None:
+        """
+        Ensure the default (no 'validate_checksum' argument) still
+        rejects the corrupted-checksum frame — the gate is strictly
+        opt-out.
+        """
+
+        with self.assertRaises(TcpIntegrityError):
+            TcpParser(self._packet_rx(_BAD_CKSUM_FRAME))
+
+    def test__tcp__parser__cksum_skip__structural_checks_still_active(self) -> None:
+        """
+        Ensure 'validate_checksum=False' does NOT disable the structural
+        integrity checks: a frame whose 'hlen' undercuts the fixed header
+        length must still be rejected.
+        """
+
+        # Byte 12 = 0x4c encodes hlen=16 — below the 20-byte minimum.
+        bad_hlen_frame = (
+            b"\x30\x39\xd4\x31\x00\x12\xd6\x87\x00\x74\xcb\xb1\x4c\x10\x2b\x67" b"\xdf\x5b\x00\x00\x01\x01\x01\x01"
+        )
+
+        with self.assertRaises(TcpIntegrityError):
+            TcpParser(self._packet_rx(bad_hlen_frame), validate_checksum=False)

@@ -234,6 +234,21 @@ UDP__ECHO_NATIVE = False
 STACK__EPHEMERAL_PORT_RANGE__LOW = 32768
 STACK__EPHEMERAL_PORT_RANGE__HIGH = 61000
 
+# Transport-layer (TCP/UDP) RX checksum verification, per interface.
+# The software analogue of a NIC's RX checksum offload ('ethtool -K
+# <iface> rx on|off'): when an interface's link already guarantees
+# payload integrity — packets arriving over an AEAD-authenticated
+# tunnel through an in-memory fd, loopback-style rigs, test harnesses
+# — the RFC 1071 checksum pass verifies bytes that cannot have been
+# corrupted, and it is the single most expensive step of per-packet
+# parsing. 'False' skips only the checksum arithmetic on RX; every
+# structural integrity check, the RFC 8200 §8.1 UDP zero-checksum
+# policy, and all TX checksum generation (the peer still verifies)
+# remain active. Default 'True' on every interface: correctness
+# first, opt out per interface via
+# 'net.<ifname>.rx_cksum_validate' / 'net.default.rx_cksum_validate'.
+NET__RX_CKSUM_VALIDATE: dict[str, bool] = {"default": True}
+
 
 # Sysctl registration. Every constant above (the four stack-wide
 # policy knobs) is operator-tunable at boot via
@@ -334,6 +349,22 @@ _sysctl_register(
         "RFC 6056 §3.2 ephemeral-port-range upper bound (exclusive,"
         " matching Python 'range' semantics); Linux"
         " 'net.ipv4.ip_local_port_range' upper-bound field."
+    ),
+)
+_sysctl_register(
+    key="net.rx_cksum_validate",
+    module_name=__name__,
+    attr="NET__RX_CKSUM_VALIDATE",
+    default=NET__RX_CKSUM_VALIDATE["default"],
+    validator=_stack__bool_validator("net.rx_cksum_validate"),
+    interface_scope=True,
+    description=(
+        "Software analogue of NIC RX checksum offload ('ethtool -K"
+        " <iface> rx'): False skips the RFC 1071 TCP/UDP checksum"
+        " arithmetic on packets received on this interface (structural"
+        " checks, UDP zero-cksum policy and TX checksums stay active)."
+        " Only for links that guarantee payload integrity themselves,"
+        " e.g. an AEAD-authenticated tunnel feeding an in-memory fd."
     ),
 )
 

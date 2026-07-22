@@ -32,8 +32,6 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from typing_extensions import override
-
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_net_proto.lib.inet_cksum import inet_cksum
 from pmd_net_proto.lib.packet_rx import PacketRx
@@ -45,6 +43,7 @@ from pmd_net_proto.protocols.tcp.tcp__errors import (
     TcpSanityError,
 )
 from pmd_net_proto.protocols.tcp.tcp__header import TCP__HEADER__LEN, TcpHeader
+from typing_extensions import override
 
 
 class TcpParser(Tcp, ProtoParser):
@@ -54,14 +53,22 @@ class TcpParser(Tcp, ProtoParser):
 
     _payload: Buffer
 
-    def __init__(self, packet_rx: PacketRx) -> None:
+    def __init__(self, packet_rx: PacketRx, *, validate_checksum: bool = True) -> None:
         """
         Initialize the TCP packet parser.
+
+        'validate_checksum' gates only the RFC 1071 checksum arithmetic in
+        '_validate_integrity' (structural length/offset/option checks always
+        run). A receiver whose link already guarantees payload integrity —
+        e.g. packets arriving over an AEAD-authenticated tunnel into an
+        in-memory interface — may pass False to skip the per-packet
+        checksum pass; it is the single most expensive step of parsing.
         """
 
         self._frame = packet_rx.frame
         self._ip__payload_len = packet_rx.ip.payload_len
         self._ip__pshdr_sum = packet_rx.ip.pshdr_sum
+        self._validate_checksum = validate_checksum
 
         self._validate_integrity()
         self._parse()
@@ -104,7 +111,9 @@ class TcpParser(Tcp, ProtoParser):
         # words in the header and text. ... The checksum also
         # covers a pseudo header conceptually prefixed to the TCP
         # header." Algorithm: RFC 1071 one's-complement sum.
-        if inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
+        # Skipped when the receiver vouches for link-level integrity
+        # (see '__init__' 'validate_checksum').
+        if self._validate_checksum and inet_cksum(self._frame[: self._ip__payload_len], init=self._ip__pshdr_sum):
             raise TcpIntegrityError(
                 "The packet checksum must be valid.",
             )

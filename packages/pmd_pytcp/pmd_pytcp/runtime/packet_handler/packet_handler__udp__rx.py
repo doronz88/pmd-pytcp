@@ -52,6 +52,7 @@ from pmd_pytcp.protocols.icmp.icmp__error_emitter import try_emit_icmp_error
 from pmd_pytcp.protocols.icmp.icmp__inbound_classifier import classify_inbound
 from pmd_pytcp.socket.udp__metadata import UdpMetadata
 from pmd_pytcp.socket.udp__socket import UdpSocket
+from pmd_pytcp.stack import sysctl_iface
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandler
@@ -98,7 +99,11 @@ class UdpRxHandler:
         for socket_id in candidate_md.socket_ids:
             socket = cast(UdpSocket, stack.sockets.get(socket_id, None))
             if socket is not None and socket._udp_no_check6_rx:
-                UdpParser(packet_rx, accept_zero_cksum_ip6=True)
+                UdpParser(
+                    packet_rx,
+                    accept_zero_cksum_ip6=True,
+                    validate_checksum=sysctl_iface.get_for_iface("net.rx_cksum_validate", self._if._interface_name),
+                )
                 return True
         return False
 
@@ -133,7 +138,13 @@ class UdpRxHandler:
         self._if._packet_stats_rx.udp__pre_parse += 1
 
         try:
-            UdpParser(packet_rx)
+            # 'net.<iface>.rx_cksum_validate' — the software RX-checksum-
+            # offload gate; False on links that guarantee integrity
+            # themselves (AEAD tunnel into an in-memory fd).
+            UdpParser(
+                packet_rx,
+                validate_checksum=sysctl_iface.get_for_iface("net.rx_cksum_validate", self._if._interface_name),
+            )
 
         except UdpZeroCksumIp6Error as error:
             # RFC 8200 §8.1 / RFC 6935 §5: default-mode silent

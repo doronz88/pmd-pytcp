@@ -41,10 +41,11 @@ from pmd_net_addr import Ip4Address
 from pmd_net_proto import Ip4Assembler, Ip4Parser, TcpAssembler
 from pmd_net_proto.lib.packet_rx import PacketRx
 from pmd_pytcp import stack
+from pmd_pytcp._compat import as_buffer
 from pmd_pytcp.lib.packet_stats import PacketStatsRx
 from pmd_pytcp.lib.tx_status import TxStatus
 from pmd_pytcp.runtime.packet_handler.packet_handler__tcp__rx import TcpRxHandler
-from pmd_pytcp._compat import as_buffer
+from pmd_pytcp.stack import sysctl as sysctl_module
 
 if TYPE_CHECKING:
     from pmd_pytcp.runtime.packet_handler import PacketHandlerL2, PacketHandlerL3
@@ -91,6 +92,9 @@ class _StubInterface:
     def __init__(self) -> None:
         self._packet_stats_rx = PacketStatsRx()
         self.tcp_tx_calls: list[dict[str, object]] = []
+        # 'None' = no interface in scope; interface-scope sysctl reads
+        # ('net.rx_cksum_validate') fall back to the '"default"' slot.
+        self._interface_name = None
 
     def _marshal_tx(self, run: Callable[[], TxStatus], /) -> TxStatus:
         # RST replies marshal '_phtx_tcp' through '_marshal_tx'; with no
@@ -169,11 +173,13 @@ class TestPacketHandlerTcpRxParse(_TcpRxTestBase):
 
         # Build a valid IP+TCP frame then corrupt the TCP cksum field.
         frame = bytearray(
-            as_buffer(Ip4Assembler(
-                ip4__src=HOST_A__IP4,
-                ip4__dst=STACK__IP4_ADDRESS,
-                ip4__payload=TcpAssembler(tcp__sport=12345, tcp__dport=80),
-            ))
+            as_buffer(
+                Ip4Assembler(
+                    ip4__src=HOST_A__IP4,
+                    ip4__dst=STACK__IP4_ADDRESS,
+                    ip4__payload=TcpAssembler(tcp__sport=12345, tcp__dport=80),
+                )
+            )
         )
         # TCP cksum is at offset IP4_header_len + 16. Minimum IP header is 20.
         frame[20 + 16] = 0xDE
@@ -417,4 +423,67 @@ class TestPacketHandlerTcpRxDualStack(_TcpRxTestBase):
             self._if._packet_stats_rx.tcp__no_socket_match__respond_rst,
             1,
             msg="A SYN with no listener match must fall through to the no-match RST path.",
+        )
+
+
+class TestPacketHandlerTcpRxCksumOffload(_TcpRxTestBase):
+    """
+    The 'net.rx_cksum_validate' software RX-checksum-offload gate at the
+    handler level: with the knob off, a corrupt-checksum segment must
+    survive the parse (structural checks still apply); with the default
+    on, it must keep dropping.
+    """
+
+    def _corrupt_cksum_packet_rx(self) -> PacketRx:
+        frame = bytearray(
+            as_buffer(
+                Ip4Assembler(
+                    ip4__src=HOST_A__IP4,
+                    ip4__dst=STACK__IP4_ADDRESS,
+                    ip4__payload=TcpAssembler(tcp__sport=12345, tcp__dport=80),
+                )
+            )
+        )
+        # TCP cksum is at offset IP4_header_len (20) + 16.
+        frame[20 + 16] = 0xDE
+        frame[20 + 17] = 0xAD
+        packet_rx = PacketRx(bytes(frame))
+        Ip4Parser(packet_rx)
+        return packet_rx
+
+    def test__stack__packet_handler__tcp__rx__cksum_offload_accepts_corrupt_cksum(self) -> None:
+        """
+        Ensure that with 'net.default.rx_cksum_validate' = False the
+        corrupt-checksum segment parses and proceeds to socket dispatch
+        (here: the no-match RST path) instead of being dropped.
+        """
+
+        sysctl_module.set("net.default.rx_cksum_validate", False)
+        self.addCleanup(sysctl_module.reset_to_defaults)
+
+        self._tcp_rx._phrx_tcp(self._corrupt_cksum_packet_rx())
+
+        self.assertEqual(
+            self._if._packet_stats_rx.tcp__failed_parse__drop,
+            0,
+            msg="With rx_cksum_validate off, the corrupt checksum must not drop the segment.",
+        )
+        self.assertEqual(
+            len(self._if.tcp_tx_calls),
+            1,
+            msg="The segment must reach the no-match RST path — proof it passed parsing.",
+        )
+
+    def test__stack__packet_handler__tcp__rx__cksum_validation_remains_default(self) -> None:
+        """
+        Ensure the knob defaults to full validation: without touching the
+        sysctl, the corrupt-checksum segment still drops.
+        """
+
+        self._tcp_rx._phrx_tcp(self._corrupt_cksum_packet_rx())
+
+        self.assertEqual(
+            self._if._packet_stats_rx.tcp__failed_parse__drop,
+            1,
+            msg="With the default knob value, the corrupt checksum must drop the segment.",
         )
