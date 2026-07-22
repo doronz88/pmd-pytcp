@@ -33,13 +33,12 @@ ver 3.0.7
 from __future__ import annotations
 
 import re
-import socket
 
+from pmd_net_addr._compat import as_buffer
 from pmd_net_addr.errors import Ip4MaskFormatError
-from pmd_net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
+from pmd_net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK, parse_ip4_dotted_decimal
 from pmd_net_addr.ip_mask import IpMask
 from pmd_net_addr.ip_version import IpVersion
-from pmd_net_addr._compat import as_buffer
 from typing_extensions import Self, final, override
 
 
@@ -93,15 +92,12 @@ class Ip4Mask(IpMask):
                     self._mask = ((1 << bit_count) - 1) << (IP4__ADDRESS_LEN * 8 - bit_count)
                     return
 
-            # 'socket.inet_pton' is the strict POSIX parser; the
-            # legacy 'socket.inet_aton' would accept octal / hex
-            # octets and leading zeros and silently reinterpret the
-            # dotted netmask.
-            try:
-                candidate = int.from_bytes(socket.inet_pton(socket.AF_INET, text), "big")
-            except OSError:
-                pass
-            else:
+            # Canonical dotted-decimal parse done in-package
+            # ('parse_ip4_dotted_decimal') rather than via
+            # 'socket.inet_pton', whose strictness is platform-
+            # dependent (Darwin accepts leading-zero octets, which
+            # would silently reinterpret the dotted netmask).
+            if (candidate := parse_ip4_dotted_decimal(text)) is not None:
                 if self._is_contiguous_mask(candidate, IP4__ADDRESS_LEN * 8):
                     self._mask = candidate
                     return
@@ -115,6 +111,7 @@ class Ip4Mask(IpMask):
         """
 
         return memoryview(bytearray(as_buffer(self._mask.to_bytes(IP4__ADDRESS_LEN, "big"))))
+
     @override
     def __bytes__(self) -> bytes:
         """
@@ -123,4 +120,3 @@ class Ip4Mask(IpMask):
         """
 
         return bytes(self.__buffer__(0))
-

@@ -32,18 +32,48 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import re
 import socket
-from typing import ClassVar
-from typing_extensions import Self, final, override
+from typing import ClassVar, Optional
 
+from pmd_net_addr._compat import as_buffer
 from pmd_net_addr.errors import Ip4AddressFormatError, Ip4AddressSanityError, NetAddrError
 from pmd_net_addr.ip_address import IpAddress
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.mac_address import MAC__IP4_MULTICAST_PREFIX, MacAddress
-from pmd_net_addr._compat import as_buffer
+from typing_extensions import Self, final, override
 
 IP4__ADDRESS_LEN = 4
 IP4__MASK = 0xFF_FF_FF_FF
+
+# Canonical dotted-decimal: exactly four decimal octets, each either '0' or
+# starting with a nonzero digit (leading zeros rejected — an '010' octet is
+# octal to 'inet_aton' and decimal to a human, and that ambiguity is a
+# documented address-spoofing vector; Python's own 'ipaddress' module rejects
+# leading zeros for the same reason since CVE-2021-29921).
+_IP4_DOTTED_DECIMAL_RE = re.compile(
+    r"^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$"
+)
+
+
+def parse_ip4_dotted_decimal(text: str, /) -> Optional[int]:
+    """
+    Parse a canonical four-octet dotted-decimal IPv4 string into its 32-bit
+    integer value, or return None when the string is not canonical.
+
+    This deliberately does NOT delegate to 'socket.inet_pton': POSIX requires
+    it to be strict, and glibc's is, but Darwin's 'inet_pton(AF_INET)'
+    accepts 'inet_aton' leniencies (leading-zero octets), so a libc-backed
+    parse is platform-dependent exactly where strictness matters.
+    """
+
+    match = _IP4_DOTTED_DECIMAL_RE.match(text)
+    if match is None:
+        return None
+    octets = [int(octet) for octet in match.groups()]
+    if any(octet > 255 for octet in octets):
+        return None
+    return (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]
 
 
 @final
@@ -89,17 +119,14 @@ class Ip4Address(IpAddress):
 
         if isinstance(address, str):
             # Surrounding whitespace is stripped uniformly across
-            # every pmd_net_addr string constructor. 'socket.inet_pton'
-            # is the strict POSIX parser: it accepts only canonical
-            # four-octet dotted-decimal and rejects the legacy
-            # 'socket.inet_aton' leniencies (octal / hex octets,
-            # leading zeros, fewer than four parts) that would
-            # otherwise silently reinterpret the address.
-            try:
-                self._address = int.from_bytes(socket.inet_pton(socket.AF_INET, address.strip()), "big")
+            # every pmd_net_addr string constructor. The canonical
+            # dotted-decimal parse is done in-package
+            # ('parse_ip4_dotted_decimal') rather than via
+            # 'socket.inet_pton', whose strictness is platform-
+            # dependent (Darwin accepts leading-zero octets).
+            if (value := parse_ip4_dotted_decimal(address.strip())) is not None:
+                self._address = value
                 return
-            except OSError:
-                pass
 
         raise Ip4AddressFormatError(address)
 
@@ -118,6 +145,7 @@ class Ip4Address(IpAddress):
         """
 
         return memoryview(bytearray(as_buffer(self._address.to_bytes(IP4__ADDRESS_LEN, "big"))))
+
     @override
     def __bytes__(self) -> bytes:
         """
@@ -126,7 +154,6 @@ class Ip4Address(IpAddress):
         """
 
         return bytes(self.__buffer__(0))
-
 
     @property
     @override

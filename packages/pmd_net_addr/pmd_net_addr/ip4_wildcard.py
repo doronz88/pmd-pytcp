@@ -34,11 +34,11 @@ from __future__ import annotations
 
 import socket
 
+from pmd_net_addr._compat import as_buffer
 from pmd_net_addr.errors import Ip4WildcardFormatError
-from pmd_net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK
+from pmd_net_addr.ip4_address import IP4__ADDRESS_LEN, IP4__MASK, parse_ip4_dotted_decimal
 from pmd_net_addr.ip_version import IpVersion
 from pmd_net_addr.ip_wildcard import IpWildcard
-from pmd_net_addr._compat import as_buffer
 from typing_extensions import Self, final, override
 
 
@@ -84,16 +84,15 @@ class Ip4Wildcard(IpWildcard):
 
         if isinstance(wildcard, str):
             # Surrounding whitespace is stripped uniformly across
-            # every pmd_net_addr string constructor. 'socket.inet_pton'
-            # is the strict POSIX parser; the legacy
-            # 'socket.inet_aton' would accept octal / hex octets and
-            # leading zeros and silently reinterpret the dotted
-            # wildcard.
-            try:
-                self._wildcard = int.from_bytes(socket.inet_pton(socket.AF_INET, wildcard.strip()), "big")
+            # every pmd_net_addr string constructor. The canonical
+            # dotted-decimal parse is done in-package
+            # ('parse_ip4_dotted_decimal') rather than via
+            # 'socket.inet_pton', whose strictness is platform-
+            # dependent (Darwin accepts leading-zero octets, which
+            # would silently reinterpret the dotted wildcard).
+            if (value := parse_ip4_dotted_decimal(wildcard.strip())) is not None:
+                self._wildcard = value
                 return
-            except OSError:
-                pass
 
         raise Ip4WildcardFormatError(wildcard)
 
@@ -112,6 +111,7 @@ class Ip4Wildcard(IpWildcard):
         """
 
         return memoryview(bytearray(as_buffer(self._wildcard.to_bytes(IP4__ADDRESS_LEN, "big"))))
+
     @override
     def __bytes__(self) -> bytes:
         """
@@ -120,4 +120,3 @@ class Ip4Wildcard(IpWildcard):
         """
 
         return bytes(self.__buffer__(0))
-
