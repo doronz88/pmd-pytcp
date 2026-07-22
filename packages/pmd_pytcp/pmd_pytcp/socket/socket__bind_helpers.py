@@ -32,6 +32,7 @@ ver 3.0.7
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import secrets
 from typing import TypeVar, cast
@@ -45,8 +46,9 @@ from pmd_net_addr import (
 from pmd_pytcp import stack
 from pmd_pytcp.socket import AddressFamily, SocketType
 
-
 T = TypeVar("T", bound=IpAddress)
+
+
 def pick_local_ip_address(*, remote_ip_address: T) -> T:
     """
     Pick an appropriate source IP address based on the provided destination IP address.
@@ -178,7 +180,10 @@ def pick_local_port() -> int:
     available = [port for port in _ephemeral_port_pool() if port not in used]
 
     if not available:
-        raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
+        raise OSError(
+            errno.EADDRINUSE,
+            "Address already in use - [Unable to find free local ephemeral port]",
+        )
 
     return secrets.choice(available)
 
@@ -231,7 +236,10 @@ def pick_local_port_for(
         if port not in used:
             return port
 
-    raise OSError("[Errno 98] Address already in use - [Unable to find free local ephemeral port]")
+    raise OSError(
+        errno.EADDRINUSE,
+        "Address already in use - [Unable to find free local ephemeral port]",
+    )
 
 
 def is_address_in_use(

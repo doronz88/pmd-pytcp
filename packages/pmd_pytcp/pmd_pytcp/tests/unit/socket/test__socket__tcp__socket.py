@@ -270,7 +270,7 @@ class TestTcpSocketBind(_TcpSocketTestCase):
 
     def test__tcp_socket__bind_rejects_rebinding(self) -> None:
         """
-        Ensure calling bind() twice raises 'OSError' with Errno 22 —
+        Ensure calling bind() twice raises 'OSError' with EINVAL —
         the socket can be bound to a specific port exactly once.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
@@ -281,15 +281,15 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         with self.assertRaises(OSError) as context:
             s.bind(("10.0.0.1", 8081))
         self.assertIn(
-            "[Errno 22]",
+            f"[Errno {errno.EINVAL}]",
             str(context.exception),
-            msg="bind() must raise Errno 22 when called a second time.",
+            msg="bind() must raise EINVAL when called a second time.",
         )
 
     def test__tcp_socket__bind_rejects_foreign_ip(self) -> None:
         """
         Ensure bind() to a specific IP not owned by the stack raises
-        'OSError' with Errno 99.
+        'OSError' with EADDRNOTAVAIL.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
         """
@@ -298,9 +298,9 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         with self.assertRaises(OSError) as context:
             s.bind(("192.168.99.99", 0))
         self.assertIn(
-            "[Errno 99]",
+            f"[Errno {errno.EADDRNOTAVAIL}]",
             str(context.exception),
-            msg="bind() must raise Errno 99 for a foreign local IP.",
+            msg="bind() must raise EADDRNOTAVAIL for a foreign local IP.",
         )
 
     def test__tcp_socket__bind_rejects_malformed_ip(self) -> None:
@@ -348,7 +348,7 @@ class TestTcpSocketBind(_TcpSocketTestCase):
 
     def test__tcp_socket__bind_rejects_port_in_use(self) -> None:
         """
-        Ensure bind() raises 'OSError' with Errno 98 when another
+        Ensure bind() raises 'OSError' with EADDRINUSE when another
         socket has already claimed the port.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
@@ -361,9 +361,9 @@ class TestTcpSocketBind(_TcpSocketTestCase):
         with self.assertRaises(OSError) as context:
             second.bind(("10.0.0.1", 8080))
         self.assertIn(
-            "[Errno 98]",
+            f"[Errno {errno.EADDRINUSE}]",
             str(context.exception),
-            msg="bind() must raise Errno 98 when the (IP, port) is already in use.",
+            msg="bind() must raise EADDRINUSE when the (IP, port) is already in use.",
         )
 
     def test__tcp_socket__so_reuseport_allows_duplicate_bind_into_cohort(self) -> None:
@@ -459,7 +459,7 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
         """
         Ensure a 'TcpSessionError("Connection refused")' raised by the
         session is translated into 'ConnectionRefusedError' with the
-        Errno 111 message.
+        ECONNREFUSED message.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
         """
@@ -477,15 +477,15 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
             with self.assertRaises(ConnectionRefusedError) as context:
                 await s.connect(("10.0.0.5", 80))
         self.assertIn(
-            "[Errno 111]",
+            f"[Errno {errno.ECONNREFUSED}]",
             str(context.exception),
-            msg="TcpSessionError('Connection refused') must translate to Errno 111.",
+            msg="TcpSessionError('Connection refused') must translate to ECONNREFUSED.",
         )
 
     async def test__tcp_socket__connect_translates_timeout(self) -> None:
         """
         Ensure a 'TcpSessionError("Connection timeout")' raised by the
-        session is translated into 'TimeoutError' with the Errno 110
+        session is translated into 'TimeoutError' with the ETIMEDOUT
         message.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
@@ -504,15 +504,15 @@ class TestTcpSocketConnect(_TcpSocketTestCase):
             with self.assertRaises(TimeoutError) as context:
                 await s.connect(("10.0.0.5", 80))
         self.assertIn(
-            "[Errno 110]",
+            f"[Errno {errno.ETIMEDOUT}]",
             str(context.exception),
-            msg="TcpSessionError('Connection timeout') must translate to Errno 110.",
+            msg="TcpSessionError('Connection timeout') must translate to ETIMEDOUT.",
         )
 
     async def test__tcp_socket__connect_rejects_unspecified_remote(self) -> None:
         """
         Ensure connecting to '0.0.0.0' raises 'ConnectionRefusedError'
-        with the '[Errno 111]' message — unspecified remote is not a
+        with the '[ECONNREFUSED]' message — unspecified remote is not a
         valid destination for a stream socket.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
@@ -672,7 +672,7 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
     async def test__tcp_socket__send_translates_session_error(self) -> None:
         """
         Ensure a 'TcpSessionError' from the session surfaces as a
-        'BrokenPipeError' with the Errno 32 message, matching the
+        'BrokenPipeError' with the EPIPE message, matching the
         BSD stream-socket contract.
 
         Reference: RFC 9293 §3.9 (User/TCP interface).
@@ -684,9 +684,9 @@ class TestTcpSocketSendRecvClose(_TcpSocketTestCase):
         with self.assertRaises(BrokenPipeError) as context:
             await s.send(b"data")
         self.assertIn(
-            "[Errno 32]",
+            f"[Errno {errno.EPIPE}]",
             str(context.exception),
-            msg="send() must translate TcpSessionError into BrokenPipeError with Errno 32.",
+            msg="send() must translate TcpSessionError into BrokenPipeError with EPIPE.",
         )
 
     async def test__tcp_socket__recv_returns_session_data(self) -> None:
