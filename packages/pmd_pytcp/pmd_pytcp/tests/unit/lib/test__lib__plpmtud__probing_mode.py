@@ -30,9 +30,10 @@
 Unit tests for the 'PmtuSearch' engine's active-probing mode —
 the behaviours added for grow-through-validation MSS discovery:
 
-  * 'probing=True' seeds the working PLPMTU at BASE_PLPMTU (or at
-    the operator-declared 'plpmtu_seed'), never at the interface
-    MTU; 'probing=False' keeps the classical interface-MTU seed.
+  * 'probing=True' seeds the working PLPMTU at BASE_PLPMTU (or
+    exactly at the operator-declared 'plpmtu_seed', floored only at
+    the family minimum link MTU), never at the interface MTU;
+    'probing=False' keeps the classical interface-MTU seed.
   * SEARCHING candidates commit only after VALIDATION_ACKS
     consecutive probe ACKs of the same size; a loss in between
     voids the streak.
@@ -57,16 +58,18 @@ from __future__ import annotations
 
 from unittest import TestCase
 
-from pmd_net_addr import Ip6Address
+from pmd_net_addr import Ip4Address, Ip6Address
 from pmd_pytcp.lib.plpmtud import (
     BASE_PLPMTU__IP6,
     MAX_PROBES,
+    MIN_PLPMTU__IP6,
     VALIDATION_ACKS,
     PmtuSearch,
     PmtuState,
 )
 
 _IP6_DST = Ip6Address("2001:db8::91")
+_IP4_DST = Ip4Address("192.0.2.91")
 
 _SEED = 1400
 _IFACE_MTU = 16000
@@ -132,9 +135,7 @@ class TestPmtuSearch__ProbingSeed(TestCase):
         the probing-mode working PLPMTU.
         """
 
-        engine: PmtuSearch = PmtuSearch(
-            address=_IP6_DST, interface_mtu=_IFACE_MTU, probing=True, plpmtu_seed=_SEED
-        )
+        engine: PmtuSearch = PmtuSearch(address=_IP6_DST, interface_mtu=_IFACE_MTU, probing=True, plpmtu_seed=_SEED)
 
         self.assertEqual(
             engine.current_mtu,
@@ -159,18 +160,39 @@ class TestPmtuSearch__ProbingSeed(TestCase):
 
     def test__plpmtud__seed_is_clamped_to_engine_bounds(self) -> None:
         """
-        Ensure a pathological seed below BASE_PLPMTU (or above the
-        interface MTU) is clamped into the engine's legal range.
+        Ensure a pathological seed below the family minimum link MTU
+        (or above the interface MTU) is clamped into the engine's
+        legal range. The floor is MIN_PLPMTU, NOT BASE_PLPMTU — an
+        operator-declared-safe seed between the two must be honoured
+        exactly (see the sibling test below).
         """
 
-        engine: PmtuSearch = PmtuSearch(
-            address=_IP6_DST, interface_mtu=_IFACE_MTU, probing=True, plpmtu_seed=100
-        )
+        engine: PmtuSearch = PmtuSearch(address=_IP6_DST, interface_mtu=_IFACE_MTU, probing=True, plpmtu_seed=100)
 
         self.assertEqual(
             engine.current_mtu,
-            BASE_PLPMTU__IP6,
-            msg="A sub-base plpmtu_seed MUST clamp up to BASE_PLPMTU.",
+            MIN_PLPMTU__IP6,
+            msg="A seed below the family minimum MUST clamp up to MIN_PLPMTU.",
+        )
+
+    def test__plpmtud__seed_below_base_plpmtu_is_honoured_exactly(self) -> None:
+        """
+        Ensure an operator-declared-safe seed BETWEEN the family
+        minimum and BASE_PLPMTU starts the working PLPMTU exactly
+        there — paths whose MTU sits below BASE_PLPMTU are precisely
+        the deployments that declare a small 'tcp.base_mss', and
+        flooring the seed at BASE_PLPMTU would start the transport
+        above the declared-safe size (the regression behind the
+        handshake-clamp integration failure). Linux 'tcp_base_mss'
+        semantics: probing starts at the operator value.
+        """
+
+        engine: PmtuSearch = PmtuSearch(address=_IP4_DST, interface_mtu=_IFACE_MTU, probing=True, plpmtu_seed=1064)
+
+        self.assertEqual(
+            engine.current_mtu,
+            1064,
+            msg="A seed between MIN_PLPMTU and BASE_PLPMTU MUST be honoured exactly.",
         )
 
 
