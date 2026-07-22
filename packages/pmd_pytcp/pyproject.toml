@@ -30,7 +30,7 @@ keywords = [
     "ethernet",
     "icmp",
 ]
-dependencies = ["pmd-net-addr==0.0.2", "pmd-net-proto==0.0.2", "typing_extensions>=4.6"]
+dependencies = ["pmd-net-addr==0.0.3", "pmd-net-proto==0.0.3", "typing_extensions>=4.6"]
 requires-python = ">=3.9"
 dynamic = ["version"]
 
