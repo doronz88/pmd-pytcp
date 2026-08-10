@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.protocols.tcp import tcp__constants
-from pmd_pytcp.protocols.tcp.tcp__enums import FsmState
+from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pmd_pytcp.protocols.tcp.tcp__seq import ge32, gt32, in_range32
 
 if TYPE_CHECKING:
@@ -56,6 +56,21 @@ def fsm__fin_wait_1__timer(session: TcpSession) -> None:
 
     session._retransmit_packet_timeout()
     session._transmit_data()
+
+
+def fsm__fin_wait_1__syscall(session: TcpSession, syscall: SysCall) -> None:
+    """
+    TCP FSM FIN_WAIT_1 state syscall handler.
+
+    Got ABORT syscall -> flush and reset per RFC 9293 §3.9.1
+    (FIN_WAIT_1 is synchronized: RST goes on the wire).
+    'TcpSession.abort()' owns the per-state semantics and the
+    terminal transition to CLOSED that unregisters the socket
+    and releases its local port.
+    """
+
+    if syscall is SysCall.ABORT:
+        session.abort()
 
 
 def fsm__fin_wait_1__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:

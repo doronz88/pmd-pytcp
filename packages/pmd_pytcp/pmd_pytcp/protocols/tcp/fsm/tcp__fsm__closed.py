@@ -55,3 +55,11 @@ def fsm__closed__syscall(session: TcpSession, syscall: SysCall) -> None:
     # Got LISTEN syscall -> Change state to LISTEN.
     if syscall is SysCall.LISTEN:
         session._change_state(FsmState.LISTEN)
+
+    # Got ABORT syscall -> already CLOSED, but a bound-never-
+    # connected socket sits in CLOSED while registered on
+    # 'stack.sockets'; 'TcpSession.abort()' re-drives the CLOSED
+    # transition, whose unregister is identity-idempotent, so the
+    # socket (and its local port) is released either way.
+    if syscall is SysCall.ABORT:
+        session.abort()

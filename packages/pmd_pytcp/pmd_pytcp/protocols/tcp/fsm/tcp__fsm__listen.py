@@ -76,6 +76,13 @@ def fsm__listen__syscall(session: TcpSession, syscall: SysCall) -> None:
     if syscall is SysCall.CLOSE:
         session._change_state(FsmState.CLOSED)
 
+    # Got ABORT syscall -> delete the TCB per RFC 9293 §3.9.1
+    # (LISTEN is unsynchronized: no RST on the wire).
+    # 'TcpSession.abort()' drives the terminal CLOSED transition
+    # that unregisters the socket and releases its local port.
+    if syscall is SysCall.ABORT:
+        session.abort()
+
 
 def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """

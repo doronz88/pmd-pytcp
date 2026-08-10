@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.protocols.tcp import tcp__constants
-from pmd_pytcp.protocols.tcp.tcp__enums import FsmState
+from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pmd_pytcp.protocols.tcp.tcp__seq import add32, gt32
 
 if TYPE_CHECKING:
@@ -56,6 +56,22 @@ def fsm__time_wait__timer(session: TcpSession) -> None:
 
     if session._timer_expired("time_wait"):
         session._change_state(FsmState.CLOSED)
+
+
+def fsm__time_wait__syscall(session: TcpSession, syscall: SysCall) -> None:
+    """
+    TCP FSM TIME_WAIT state syscall handler.
+
+    Got ABORT syscall -> delete the TCB per RFC 9293 §3.9.1
+    (TIME_WAIT is post-close: respond "ok" and delete, no RST on
+    the wire). 'TcpSession.abort()' owns the per-state semantics
+    and the terminal transition to CLOSED that unregisters the
+    socket and releases its local port, without waiting out the
+    2MSL delay.
+    """
+
+    if syscall is SysCall.ABORT:
+        session.abort()
 
 
 def fsm__time_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:

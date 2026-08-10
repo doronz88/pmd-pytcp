@@ -1120,3 +1120,66 @@ class TestTcpSessionEnqueueRxBuffer(_TcpSessionFsmFixture):
             session._event__rx_buffer.is_set(),
             msg="_enqueue_rx_buffer must set the rx-buffer event so receive() wakes.",
         )
+
+
+class TestTcpFsmAbortSyscall(_TcpSessionFsmFixture):
+    """
+    The 'SysCall.ABORT' per-state dispatch tests.
+    """
+
+    # RFC 9293 §3.9.1: the states whose ABORT emits an RST on the
+    # wire; the unsynchronized (CLOSED / LISTEN / SYN_SENT) and
+    # post-close (CLOSING / LAST_ACK / TIME_WAIT) states delete
+    # the TCB silently.
+    _RST_STATES = {
+        FsmState.SYN_RCVD,
+        FsmState.ESTABLISHED,
+        FsmState.FIN_WAIT_1,
+        FsmState.FIN_WAIT_2,
+        FsmState.CLOSE_WAIT,
+    }
+
+    def test__tcp_session__abort_reaches_closed_and_unregisters_in_every_state(self) -> None:
+        """
+        Ensure ABORT dispatched through 'tcp_fsm' tears the session
+        down from EVERY FSM state: the FSM reaches CLOSED, the
+        socket is unregistered from 'stack.sockets', and the RST is
+        emitted for exactly the synchronized states. A state whose
+        syscall dispatch drops ABORT leaves the socket registered
+        forever — permanently consuming its local port, since the
+        ephemeral-port pickers exclude every port held by a
+        registered socket (the address-removal / interface-teardown
+        cascade relies on this dispatch reaching ANY state).
+
+        Reference: RFC 9293 §3.9.1 (ABORT call, per-state) + §3.10.7.4 (RST emission / TCB deletion).
+        """
+
+        for state in FsmState:
+            with self.subTest(state=state):
+                session = self._make_session()
+                session._state = state
+
+                # The lightweight fixture has no egress path (no FIB /
+                # packet handler), so capture the RST emission at the
+                # '_transmit_packet' seam instead of on the wire.
+                with patch.object(session, "_transmit_packet") as mock_transmit:
+                    session.tcp_fsm(syscall=SysCall.ABORT)
+
+                self.assertIs(
+                    session.state,
+                    FsmState.CLOSED,
+                    msg=f"ABORT dispatched in {state.name} must drive the FSM to CLOSED.",
+                )
+                self.assertNotIn(
+                    session.socket.socket_id,
+                    self._sockets,
+                    msg=f"ABORT dispatched in {state.name} must unregister the socket from stack.sockets.",
+                )
+                if state in self._RST_STATES:
+                    mock_transmit.assert_called_once_with(
+                        flag_rst=True,
+                        flag_ack=True,
+                        seq=session._snd_seq.nxt,
+                    )
+                else:
+                    mock_transmit.assert_not_called()

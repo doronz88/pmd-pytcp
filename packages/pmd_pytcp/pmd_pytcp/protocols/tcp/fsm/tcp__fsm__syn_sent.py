@@ -174,6 +174,15 @@ def fsm__syn_sent__syscall(session: TcpSession, syscall: SysCall) -> None:
         session._event__connect.release()
         session._change_state(FsmState.CLOSED)
 
+    # Got ABORT syscall -> delete the TCB per RFC 9293 §3.9.1
+    # (SYN_SENT is unsynchronized: no RST on the wire).
+    # 'TcpSession.abort()' also unblocks any pending CONNECT
+    # caller with 'ConnError.CANCELED' and drives the terminal
+    # CLOSED transition that unregisters the socket and releases
+    # its local port.
+    if syscall is SysCall.ABORT:
+        session.abort()
+
 
 def fsm__syn_sent__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """

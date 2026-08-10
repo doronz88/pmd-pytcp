@@ -92,6 +92,14 @@ def fsm__established__syscall(session: TcpSession, syscall: SysCall) -> None:
     if syscall is SysCall.CLOSE:
         session._closing = True
 
+    # Got ABORT syscall -> flush and reset per RFC 9293 §3.9.1.
+    # 'TcpSession.abort()' owns the per-state semantics (RST at
+    # SND.NXT for synchronized states, plain TCB deletion
+    # otherwise) and the terminal transition to CLOSED that
+    # unregisters the socket and releases its local port.
+    if syscall is SysCall.ABORT:
+        session.abort()
+
 
 def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """

@@ -55,7 +55,10 @@ from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__close_wait import (
     fsm__close_wait__timer,
 )
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__closed import fsm__closed__syscall
-from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__closing import fsm__closing__packet
+from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__closing import (
+    fsm__closing__packet,
+    fsm__closing__syscall,
+)
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__established import (
     fsm__established__packet,
     fsm__established__syscall,
@@ -63,11 +66,16 @@ from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__established import (
 )
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_1 import (
     fsm__fin_wait_1__packet,
+    fsm__fin_wait_1__syscall,
     fsm__fin_wait_1__timer,
 )
-from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_2 import fsm__fin_wait_2__packet
+from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_2 import (
+    fsm__fin_wait_2__packet,
+    fsm__fin_wait_2__syscall,
+)
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__last_ack import (
     fsm__last_ack__packet,
+    fsm__last_ack__syscall,
     fsm__last_ack__timer,
 )
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__listen import (
@@ -88,6 +96,7 @@ from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__syn_sent import (
 )
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__time_wait import (
     fsm__time_wait__packet,
+    fsm__time_wait__syscall,
     fsm__time_wait__timer,
 )
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
@@ -150,7 +159,12 @@ FSM_SYSCALL_HANDLERS: dict[FsmState, Callable[..., None]] = {
     FsmState.SYN_SENT: fsm__syn_sent__syscall,
     FsmState.SYN_RCVD: fsm__syn_rcvd__syscall,
     FsmState.ESTABLISHED: fsm__established__syscall,
+    FsmState.FIN_WAIT_1: fsm__fin_wait_1__syscall,
+    FsmState.FIN_WAIT_2: fsm__fin_wait_2__syscall,
+    FsmState.CLOSING: fsm__closing__syscall,
     FsmState.CLOSE_WAIT: fsm__close_wait__syscall,
+    FsmState.LAST_ACK: fsm__last_ack__syscall,
+    FsmState.TIME_WAIT: fsm__time_wait__syscall,
 }
 
 FSM_TIMER_HANDLERS: dict[FsmState, Callable[..., None]] = {
@@ -200,8 +214,11 @@ def dispatch_packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
 def dispatch_syscall(session: TcpSession, syscall: SysCall) -> None:
     """
     Dispatch a syscall event to the per-state syscall handler
-    for the session's current state. States without a syscall
-    handler (e.g. CLOSING, FIN_WAIT_1) silently no-op.
+    for the session's current state. Every state installs a
+    syscall handler (ABORT must reach a session in ANY state —
+    a dropped ABORT leaves the socket registered forever,
+    permanently leaking its local port); a handler ignores the
+    syscalls that are invalid for its state.
     """
 
     handler = FSM_SYSCALL_HANDLERS.get(session._state)
