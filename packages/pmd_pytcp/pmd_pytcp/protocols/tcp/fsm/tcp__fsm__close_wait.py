@@ -78,6 +78,13 @@ def fsm__close_wait__syscall(session: TcpSession, syscall: SysCall) -> None:
     if syscall is SysCall.CLOSE:
         session._closing = True
 
+    # Got ABORT syscall -> flush and reset per RFC 9293 §3.9.1
+    # (CLOSE_WAIT is synchronized: RST goes on the wire).
+    # 'TcpSession.abort()' drives the terminal CLOSED transition
+    # that unregisters the socket and releases its local port.
+    if syscall is SysCall.ABORT:
+        session.abort()
+
 
 def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """

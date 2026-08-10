@@ -78,6 +78,14 @@ def fsm__syn_rcvd__syscall(session: TcpSession, syscall: SysCall) -> None:
         session._event__connect.release()
         session._change_state(FsmState.FIN_WAIT_1)
 
+    # Got ABORT syscall -> flush and reset per RFC 9293 §3.9.1
+    # (SYN_RCVD is synchronized: RST goes on the wire).
+    # 'TcpSession.abort()' also unblocks any pending CONNECT
+    # caller and drives the terminal CLOSED transition that
+    # unregisters the socket and releases its local port.
+    if syscall is SysCall.ABORT:
+        session.abort()
+
 
 def fsm__syn_rcvd__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
     """
