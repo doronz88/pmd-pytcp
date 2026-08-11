@@ -724,6 +724,10 @@ class TcpSocket(socket):
         try:
             await self._tcp_session.connect()
         except TcpSessionError as error:
+            # The session already drove itself to CLOSED (and
+            # unregistered the socket, releasing the local port)
+            # before releasing the connect event — only the
+            # error-type mapping happens here.
             if str(error) == "Connection refused":
                 raise ConnectionRefusedError(
                     errno.ECONNREFUSED,
@@ -734,6 +738,27 @@ class TcpSocket(socket):
                     errno.ETIMEDOUT,
                     "Connection timed out - [No valid response received from remote host]",
                 ) from error
+            # "Connection canceled" (a concurrent close()/abort()
+            # tore the pending connect down). Previously this fell
+            # through both mappings and was silently swallowed —
+            # connect() returned as if it had succeeded on a dead,
+            # unregistered session.
+            raise ConnectionAbortedError(
+                errno.ECONNABORTED,
+                "Connection aborted - [Connection canceled by concurrent close or abort]",
+            ) from error
+        except BaseException:
+            # Cancellation (or any unexpected failure) while the
+            # handshake is in flight: nobody owns the half-open
+            # session the awaiter just abandoned, so without an
+            # explicit teardown it would keep retransmitting SYNs
+            # until the R2 budget expires — holding its registered
+            # socket (and ephemeral port) the whole time. Abort it
+            # here so a connect() that raises NEVER leaves anything
+            # registered: unsynchronized states tear down silently,
+            # a just-established one emits RST.
+            self._tcp_session.abort()
+            raise
 
         log.enabled and log("socket", f"<g>[{self}]</> - Connected socket")
 
