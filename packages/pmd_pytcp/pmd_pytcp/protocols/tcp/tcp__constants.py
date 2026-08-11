@@ -72,6 +72,18 @@ TCP__RETRANSMIT__MAX_COUNT = 6
 # conservative 30 s MSL.
 TCP__TIME_WAIT__DELAY_MS = 30000
 
+# Linux 'net.ipv4.tcp_fin_timeout' parity: how long an ORPHANED
+# connection — one whose socket the application has fully closed, so
+# nobody can ever read the peer's remaining data — may sit in
+# FIN_WAIT_2 awaiting the peer's FIN before the stack reaps it.
+# RFC 9293 prescribes holding FIN_WAIT_2 indefinitely, but an
+# unbounded hold lets a peer that vanishes after ACKing our FIN pin
+# the TCB (and its local port) forever; every mainstream stack bounds
+# the orphan case. A connection merely half-closed via
+# 'shutdown(SHUT_WR)' — the application still reading — is NOT
+# orphaned and is never reaped. Linux's default matches (60 s).
+TCP__FIN_WAIT_2__TIMEOUT_MS = 60000
+
 # RFC 1122 §4.2.3.2 / RFC 9293 §3.8.6.3 delayed-ACK delay. The
 # receiver SHOULD coalesce ACKs to amortize the wire cost; the
 # coalescing window MUST NOT exceed 500 ms.
@@ -306,6 +318,14 @@ register(
     default=TCP__TIME_WAIT__DELAY_MS,
     validator=is_positive_int("tcp.time_wait.delay_ms"),
     description="RFC 9293 §3.10.1 TIME-WAIT delay (2*MSL) in milliseconds.",
+)
+register(
+    key="tcp.fin_wait_2.timeout_ms",
+    module_name=__name__,
+    attr="TCP__FIN_WAIT_2__TIMEOUT_MS",
+    default=TCP__FIN_WAIT_2__TIMEOUT_MS,
+    validator=is_positive_int("tcp.fin_wait_2.timeout_ms"),
+    description="Linux 'tcp_fin_timeout' parity — orphaned FIN_WAIT_2 reap timeout in milliseconds.",
 )
 register(
     key="tcp.delayed_ack.delay_ms",
