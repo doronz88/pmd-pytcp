@@ -33,6 +33,7 @@ ver 3.0.7
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 import secrets
 import time
@@ -750,7 +751,21 @@ class PacketHandler(ABC):
 
         while True:
             await asyncio.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
-            self._maybe_run_periodic_tasks()
+            try:
+                self._maybe_run_periodic_tasks()
+            except Exception:  # pylint: disable=broad-exception-caught
+                # One raising pass must not kill housekeeping for
+                # the run: the RFC 8981 temp-address regeneration
+                # and the SLAAC expiry sweeps would silently stop —
+                # expired addresses kept accepting RX and winning
+                # source selection — with the only trace a late GC
+                # warning. Reported through the stdlib logger
+                # unconditionally (the stack's own channel log is
+                # disabled in embedded deployments).
+                logging.getLogger(__name__).exception(
+                    "%s: periodic housekeeping raised; continuing",
+                    self._subsystem_name,
+                )
 
     def _maybe_run_periodic_tasks(self) -> None:
         """

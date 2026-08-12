@@ -538,3 +538,65 @@ class TestSubsystemStartStopEdgeCases(IsolatedAsyncioTestCase):
             finally:
                 subsystem.stop()
                 await subsystem.wait_stopped()
+
+
+class _RaisingOnceSubsystem(Subsystem):
+    """
+    A 'Subsystem' subclass whose first loop iteration raises — the
+    bug-shaped stimulus for the worker's exception guard. Later
+    iterations run normally and signal the survival event.
+    """
+
+    _subsystem_name = "raising-once-subsystem"
+
+    def __init__(self) -> None:
+        self.loop_iterations = 0
+        self.survived = asyncio.Event()
+        super().__init__()
+
+    @override
+    async def _subsystem_loop(self) -> None:
+        self.loop_iterations += 1
+        if self.loop_iterations == 1:
+            raise RuntimeError("boom (deliberate test failure)")
+        self.survived.set()
+        await asyncio.sleep(0)
+
+
+class TestSubsystemExceptionGuard(IsolatedAsyncioTestCase):
+    """
+    The per-iteration exception-guard tests: one raising iteration
+    must not kill the subsystem for the rest of the run.
+    """
+
+    async def test__subsystem__iteration_exception_does_not_kill_the_loop(self) -> None:
+        """
+        Ensure an exception escaping one '_subsystem_loop' iteration
+        is contained: the worker logs it and keeps iterating instead
+        of dying silently. A dead NUD-maintenance worker means no
+        retransmits, no REACHABLE aging, and no GC — the stack looks
+        alive while neighbor resolution is frozen, and the stored
+        exception surfaced only at stack stop() (where it then broke
+        teardown midway).
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        with (
+            patch("pmd_pytcp.stack.LOG__OUTPUT", io.StringIO()),
+            patch("pmd_pytcp.runtime.subsystem.SUBSYSTEM_SLEEP_TIME__SEC", 0.001),
+        ):
+            subsystem = _RaisingOnceSubsystem()
+            with self.assertLogs("pmd_pytcp.runtime.subsystem", level="ERROR"):
+                subsystem.start()
+                try:
+                    await asyncio.wait_for(subsystem.survived.wait(), timeout=2.0)
+                finally:
+                    subsystem.stop()
+                    await subsystem.wait_stopped()
+
+        self.assertGreaterEqual(
+            subsystem.loop_iterations,
+            2,
+            msg="The loop must keep iterating after a raising iteration.",
+        )

@@ -33,7 +33,9 @@ ver 3.0.7
 from __future__ import annotations
 
 import asyncio
+import logging
 from abc import ABC, abstractmethod
+from pmd_pytcp._compat import wait_event
 
 from pmd_pytcp.lib.logger import log
 
@@ -152,7 +154,29 @@ class Subsystem(ABC):
 
         try:
             while not self._event__stop_subsystem.is_set():
-                await self._subsystem_loop()
+                try:
+                    await self._subsystem_loop()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # One raising iteration must not kill the worker
+                    # for the run: a dead NUD-maintenance loop means
+                    # no retransmits, no REACHABLE aging, and no GC
+                    # while the stack looks alive — and the stored
+                    # exception used to surface only at stack stop(),
+                    # where it then broke teardown midway. Reported
+                    # through the stdlib logger unconditionally: the
+                    # stack's own channel log is disabled in embedded
+                    # deployments, and a should-never-happen bug trap
+                    # must not vanish with it.
+                    logging.getLogger(__name__).exception(
+                        "%s: subsystem iteration raised; continuing",
+                        self._subsystem_name,
+                    )
+                    # Pace the retry: the iteration's inter-loop sleep
+                    # may have been skipped by the raise, and a
+                    # persistently-raising loop must not spin hot.
+                    await wait_event(self._event__stop_subsystem, SUBSYSTEM_SLEEP_TIME__SEC)
         except asyncio.CancelledError:
             pass
 

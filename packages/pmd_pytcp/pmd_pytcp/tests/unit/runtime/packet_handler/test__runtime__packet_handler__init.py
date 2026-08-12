@@ -691,3 +691,55 @@ class TestPacketHandlerInitDispatchRegistry(TestCase):
             handler._ethertype_registry.get(EtherType.IP6),
             msg="An IPv6-disabled interface must not register the IPv6 EtherType.",
         )
+
+
+class TestPacketHandlerHousekeepingGuard(IsolatedAsyncioTestCase):
+    """
+    The periodic-housekeeping exception-guard tests: one raising
+    housekeeping pass must not kill the task for the run — a dead
+    housekeeping task means RFC 8981 temp-address regeneration and
+    the SLAAC expiry sweeps silently stop, with the only trace a
+    late GC warning.
+    """
+
+    async def test__packet_handler__housekeeping_exception_does_not_kill_the_task(self) -> None:
+        """
+        Ensure an exception escaping one '_maybe_run_periodic_tasks'
+        pass is contained: the loop logs it and keeps ticking.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        from pmd_pytcp.runtime.packet_handler import PacketHandler
+
+        calls = []
+        survived = asyncio.Event()
+
+        class _FakeHandler:
+            _subsystem_name = "fake-handler"
+
+            def _maybe_run_periodic_tasks(self) -> None:
+                calls.append(len(calls))
+                if len(calls) == 1:
+                    raise RuntimeError("boom (deliberate test failure)")
+                survived.set()
+
+        with patch("pmd_pytcp.runtime.packet_handler.SUBSYSTEM_SLEEP_TIME__SEC", 0.001):
+            task = asyncio.get_running_loop().create_task(
+                PacketHandler._task__periodic_housekeeping(_FakeHandler())  # pyright: ignore[reportArgumentType]
+            )
+            try:
+                with self.assertLogs("pmd_pytcp.runtime.packet_handler", level="ERROR"):
+                    await asyncio.wait_for(survived.wait(), timeout=2.0)
+            finally:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        self.assertGreaterEqual(
+            len(calls),
+            2,
+            msg="Housekeeping must keep ticking after a raising pass.",
+        )

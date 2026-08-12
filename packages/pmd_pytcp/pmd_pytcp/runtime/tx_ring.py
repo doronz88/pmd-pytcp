@@ -33,6 +33,7 @@ ver 3.0.7
 from __future__ import annotations
 
 import asyncio
+import logging
 import collections
 from typing_extensions import TypeAliasType
 
@@ -272,6 +273,17 @@ class TxRing:
                     self._loop.add_writer(self._fd, self._on_writable)
                     self._writer_armed = True
                 return
+            except Exception:  # pylint: disable=broad-exception-caught
+                # A frame whose assembly raises must be DROPPED, not
+                # left at the head of the deque: this callback runs
+                # again on every subsequent enqueue, would re-raise
+                # on the same item each time, and egress would be
+                # wedged for the life of the ring (the deque pinned
+                # at max size, all new TX dropped as "queue full").
+                # Reported through the stdlib logger unconditionally.
+                logging.getLogger(__name__).exception(
+                    "tx-ring: dropping frame whose transmit raised"
+                )
             self._tx_deque.popleft()
 
         if self._writer_armed and self._loop is not None:
@@ -301,7 +313,17 @@ class TxRing:
             self._writer_wakeup.clear()
             while self._tx_deque:
                 item = self._tx_deque[0]
-                buffers = self._wire_buffers(item)
+                try:
+                    buffers = self._wire_buffers(item)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # A raising assembly must not kill the writer
+                    # task (egress dead for the life of the ring) —
+                    # drop the poison frame and keep draining, same
+                    # policy as the fd-path '_drain'.
+                    logging.getLogger(__name__).exception(
+                        "tx-ring: dropping frame whose assembly raised"
+                    )
+                    buffers = None
                 if buffers is not None:
                     try:
                         await self._loop.sock_sendall(sock, b"".join(buffers))

@@ -937,3 +937,44 @@ class TestTxRingDispatchFastPath(_TxRingFixture):
             1,
             msg="_send_item must invoke io_backend.writev exactly once on a successful dispatch.",
         )
+
+
+class TestTxRingPoisonItem(_TxRingFixture):
+    """
+    The poison-item containment tests: a frame whose assembly
+    raises must be dropped, not left at the head of the deque —
+    where every subsequent drain would re-raise on it and egress
+    would be wedged for the life of the ring (all new TX silently
+    dropped at 'queue full' once the deque pinned at max size).
+    """
+
+    def test__tx_ring__drain_drops_frame_whose_assembly_raises(self) -> None:
+        """
+        Ensure '_drain' pops a frame whose 'assemble()' raises and
+        keeps draining: the good frame behind it must still reach
+        the wire.
+
+        Reference: PyTCP test infrastructure (no RFC clause).
+        """
+
+        poison = _make_ethernet()
+        poison.assemble.side_effect = RuntimeError("boom (deliberate test failure)")
+        good = _make_ethernet()
+
+        self._ring.enqueue(poison)
+        self._ring.enqueue(good)
+        self._ring._running = True
+
+        with self.assertLogs("pmd_pytcp.runtime.tx_ring", level="ERROR"):
+            self._ring._drain()
+
+        self.assertEqual(
+            len(self._ring._tx_deque),
+            0,
+            msg="The poison frame must be dropped and the drain must continue.",
+        )
+        self.assertEqual(
+            os.read(self._read_fd, 1024),
+            b"x" * 64,
+            msg="The good frame behind the poison one must still be transmitted.",
+        )
