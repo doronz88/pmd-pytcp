@@ -738,6 +738,16 @@ class TcpSocket(socket):
                     errno.ETIMEDOUT,
                     "Connection timed out - [No valid response received from remote host]",
                 ) from error
+            if str(error) == "Host unreachable":
+                raise OSError(
+                    errno.EHOSTUNREACH,
+                    "Host unreachable - [Received ICMP Host Unreachable during handshake]",
+                ) from error
+            if str(error) == "Network unreachable":
+                raise OSError(
+                    errno.ENETUNREACH,
+                    "Network unreachable - [Received ICMP Net Unreachable during handshake]",
+                ) from error
             # "Connection canceled" (a concurrent close()/abort()
             # tore the pending connect down). Previously this fell
             # through both mappings and was silently swallowed —

@@ -927,6 +927,10 @@ class TcpSession:
             raise TcpSessionError("Connection timeout")
         if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.CANCELED:
             raise TcpSessionError("Connection canceled")
+        if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.HOST_UNREACHABLE:
+            raise TcpSessionError("Host unreachable")
+        if self._state is not FsmState.ESTABLISHED and self._connection_error is ConnError.NET_UNREACHABLE:
+            raise TcpSessionError("Network unreachable")
 
     def send(self, *, data: bytes) -> int:
         """

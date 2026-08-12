@@ -116,15 +116,22 @@ def fsm__syn_sent__icmp(session: TcpSession, metadata: IcmpMetadata) -> None:
             session._event__connect.release()
             session._change_state(FsmState.CLOSED)
             return
+        # Net/Host Unreachable are hint-not-proof soft errors
+        # (RFC 5927 §6, RFC 1122 §4.2.3.9): record them but do NOT
+        # abort and do NOT wake the blocked CONNECT — a blind
+        # attacker spoofing ICMP must not be able to kill a pending
+        # connect, and the handshake may still succeed. The record
+        # is reported if the connect ultimately fails: the R2
+        # give-up surfaces it instead of a bare timeout (Linux
+        # 'sk_err_soft' parity). The previous shape released the
+        # connect event here without an error 'connect()' mapped,
+        # so the caller returned as if CONNECTED to a session that
+        # was still mid-handshake.
         if type_code in _SYN_SENT__SOFT_HOST_CODES:
             session._connection_error = ConnError.HOST_UNREACHABLE
-            session._event__rx_buffer.set()
-            session._event__connect.release()
             return
         if type_code in _SYN_SENT__SOFT_NET_CODES:
             session._connection_error = ConnError.NET_UNREACHABLE
-            session._event__rx_buffer.set()
-            session._event__connect.release()
             return
         return
 

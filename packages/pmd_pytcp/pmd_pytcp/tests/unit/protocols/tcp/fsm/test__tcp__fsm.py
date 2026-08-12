@@ -751,9 +751,10 @@ class TestTcpFsmSynSentHandleIcmp(_TcpSessionFsmFixture):
     def test__tcp_session__syn_sent_icmp_v4_host_unreachable_is_advisory(self) -> None:
         """
         Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 1 (Host
-        Unreachable) records HOST_UNREACHABLE and releases the blocked
-        CONNECT but does NOT abort the FSM — Net/Host Unreachable are
-        hint-not-proof soft errors.
+        Unreachable) records HOST_UNREACHABLE but neither aborts the
+        FSM nor wakes the blocked CONNECT — Net/Host Unreachable are
+        hint-not-proof soft errors; the record is reported if the R2
+        budget later gives up (Linux 'sk_err_soft' parity).
 
         Reference: RFC 5927 §6 (Net/Host Unreachable are hint-not-proof
         soft errors).
@@ -779,8 +780,9 @@ class TestTcpFsmSynSentHandleIcmp(_TcpSessionFsmFixture):
     def test__tcp_session__syn_sent_icmp_v4_net_unreachable_is_advisory(self) -> None:
         """
         Ensure SYN_SENT receiving ICMPv4 Type 3 / Code 0 (Net
-        Unreachable) records NET_UNREACHABLE and releases the blocked
-        CONNECT but does NOT abort.
+        Unreachable) records NET_UNREACHABLE but neither aborts nor
+        wakes the blocked CONNECT (hint-not-proof; reported at the
+        R2 give-up).
 
         Reference: RFC 5927 §6 (Net/Host Unreachable are hint-not-proof
         soft errors).
