@@ -608,6 +608,8 @@ class UdpSocket(socket):
         Read data from socket as a memoryview.
         """
 
+        self._raise_if_closed()
+
         if self._unreachable:
             self._unreachable = False
             raise ConnectionRefusedError(
@@ -625,6 +627,12 @@ class UdpSocket(socket):
             acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
+            if self._closed:
+                # close()'s wake permit, not data: cascade it to
+                # any other parked waiter, then report the dead
+                # socket.
+                self._packet_rx_md_ready.release()
+                self._raise_if_closed()
             data_rx = self._packet_rx_md.pop(0).udp__data
             # POSIX recv(2) on SOCK_DGRAM truncates the datagram to
             # 'bufsize' bytes and silently discards the remainder;
@@ -659,6 +667,8 @@ class UdpSocket(socket):
         Read data from socket as a memoryview.
         """
 
+        self._raise_if_closed()
+
         # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
         # supplies the default; otherwise the blocking flag picks
         # blocking-forever vs non-blocking-EAGAIN.
@@ -669,6 +679,12 @@ class UdpSocket(socket):
             acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
+            if self._closed:
+                # close()'s wake permit, not data: cascade it to
+                # any other parked waiter, then report the dead
+                # socket.
+                self._packet_rx_md_ready.release()
+                self._raise_if_closed()
             packet_rx_md = self._packet_rx_md.pop(0)
             data_rx = packet_rx_md.udp__data
             if bufsize is not None:
@@ -724,6 +740,8 @@ class UdpSocket(socket):
         if flags & MSG_ERRQUEUE:
             return await self._recvmsg_errqueue(ancbufsize=ancbufsize, timeout=timeout)
 
+        self._raise_if_closed()
+
         # Per-call 'timeout' wins; otherwise SO_RCVTIMEO (if set)
         # supplies the default; otherwise the blocking flag picks
         # blocking-forever vs non-blocking-EAGAIN.
@@ -734,6 +752,12 @@ class UdpSocket(socket):
             acquired = await _sem_acquire(self._packet_rx_md_ready, timeout=effective_timeout)
 
         if acquired:
+            if self._closed:
+                # close()'s wake permit, not data: cascade it to
+                # any other parked waiter, then report the dead
+                # socket.
+                self._packet_rx_md_ready.release()
+                self._raise_if_closed()
             packet_rx_md = self._packet_rx_md.pop(0)
             data_rx = packet_rx_md.udp__data
             if bufsize is not None:
@@ -858,11 +882,16 @@ class UdpSocket(socket):
     @override
     def close(self) -> None:
         """
-        Close socket.
+        Close socket. Releases the rx semaphore once so a blocked
+        'recv()'-family waiter wakes with EBADF (each woken waiter
+        cascades the permit to the next); without the wake, nothing
+        would ever release a closed socket's semaphore again and
+        the waiter task would park for the loop's lifetime.
         """
 
         stack.sockets.unregister(self)
         self._mark_closed()
+        self._packet_rx_md_ready.release()
 
         log.enabled and log("socket", f"<g>[{self}]</> - Closed socket")
 

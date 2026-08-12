@@ -1467,6 +1467,18 @@ class socket(ABC):
 
         return self._blocking
 
+    def _raise_if_closed(self) -> None:
+        """
+        Raise EBADF when the socket has been closed — the POSIX
+        recv-family contract. A closed socket's rx semaphore is
+        never released by delivery again (the close-during-
+        delivery drain drops inbound packets), so blocking on it
+        would park the caller forever.
+        """
+
+        if self._closed:
+            raise OSError(errno.EBADF, os.strerror(errno.EBADF))
+
     def _mark_closed(self) -> None:
         """
         Mark the socket closed. Concrete 'close()' overrides call

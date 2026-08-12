@@ -149,6 +149,8 @@ class PacketSocket(socket):
         'TimeoutError' when a timeout elapses.
         """
 
+        self._raise_if_closed()
+
         # SO_RCVTIMEO supplies the default if no per-call timeout.
         effective_timeout = timeout if timeout is not None else self._so_rcvtimeo
         if effective_timeout is None and not self._blocking:
@@ -160,6 +162,12 @@ class PacketSocket(socket):
             if effective_timeout is None and not self._blocking:
                 raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
             raise TimeoutError("PACKET Socket - Receive operation timed out.")
+
+        if self._closed:
+            # close()'s wake permit, not data: cascade it to any
+            # other parked waiter, then report the dead socket.
+            self._packet_rx_md_ready.release()
+            self._raise_if_closed()
 
         return self._packet_rx_md.pop(0)
 
@@ -192,11 +200,14 @@ class PacketSocket(socket):
     def close(self) -> None:
         """
         Close the socket: deregister its capture filter and release its
-        OS-level runtime.
+        OS-level runtime. Releases the rx semaphore once so a blocked
+        'recv()'-family waiter wakes with EBADF (each woken waiter
+        cascades the permit to the next).
         """
 
         stack.packet_sockets.unregister(self)
         self._mark_closed()
+        self._packet_rx_md_ready.release()
         log.enabled and log("socket", f"<g>[{self}]</> - Closed packet socket")
 
     @override

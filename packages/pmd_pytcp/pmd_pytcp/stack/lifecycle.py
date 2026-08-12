@@ -766,31 +766,33 @@ async def start() -> None:
 
 def _abort_open_sockets() -> None:
     """
-    Abort every registered connection-oriented socket (TCP) so any
-    task awaiting the socket's 'recv()' / 'connect()' coroutine
-    unblocks with a connection error instead of staying parked
-    forever — after teardown nothing ever sets those sessions'
-    events again, so a coroutine still awaiting one would hang for
-    the loop's lifetime. Called from 'stop()' while the TX path is
-    still live so the RFC 9293 §3.9.1 RSTs emitted for synchronized
-    states actually reach the peers. Datagram / raw sockets have no
-    'abort' (nothing blocks beyond per-call timeouts the caller
-    opted into) and are skipped; a raising 'abort' is logged and
-    skipped so one bad session cannot stall stack teardown.
+    Release every registered socket's blocked waiters so no task
+    stays parked past a completed 'stop()' — after teardown nothing
+    ever sets those sockets' events / semaphores again, so a
+    coroutine still awaiting one would hang for the loop's
+    lifetime. Connection-oriented sockets (TCP) are aborted, which
+    wakes their recv()/connect() waiters with a connection error;
+    called from 'stop()' while the TX path is still live so the
+    RFC 9293 §3.9.1 RSTs emitted for synchronized states actually
+    reach the peers. Datagram / raw / packet sockets have no
+    'abort' but their default mode is blocking-with-no-timeout, so
+    a recv() parked on the rx semaphore would strand its task —
+    'close()' wakes those waiters with EBADF. A raising teardown is
+    logged and skipped so one bad socket cannot stall stack
+    teardown.
     """
 
     import pmd_pytcp.stack as _stack
 
-    for sock in _stack.sockets.values():
+    for sock in list(_stack.sockets.values()) + _stack.packet_sockets.snapshot():
         abort = getattr(sock, "abort", None)
-        if abort is None:
-            continue
+        teardown = abort if abort is not None else sock.close
         try:
-            abort()
+            teardown()
         except Exception as error:  # pylint: disable=broad-exception-caught
             log.enabled and log(
                 "stack",
-                f"<WARN>Aborting {sock} during stop() raised {type(error).__name__}: {error}</>",
+                f"<WARN>Releasing {sock} during stop() raised {type(error).__name__}: {error}</>",
             )
 
 
