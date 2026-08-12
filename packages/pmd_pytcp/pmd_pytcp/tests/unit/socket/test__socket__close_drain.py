@@ -37,9 +37,11 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from pmd_net_proto.lib.enums import IpProto
+from pmd_pytcp import stack
 from pmd_pytcp.socket import AddressFamily
 from pmd_pytcp.socket.raw__metadata import RawMetadata
 from pmd_pytcp.socket.raw__socket import RawSocket
+from pmd_pytcp.socket.tcp__socket import TcpSocket
 from pmd_pytcp.socket.udp__metadata import UdpMetadata
 from pmd_pytcp.socket.udp__socket import UdpSocket
 
@@ -109,6 +111,61 @@ class TestSocketCloseDrainUdp(TestCase):
 
         sock.close()
 
+        self.assertTrue(sock._closed, msg="close() must mark the socket closed.")
+
+
+class TestTcpSocketCloseWithoutSession(TestCase):
+    """
+    The 'TcpSocket' session-less close tests.
+    """
+
+    def setUp(self) -> None:
+        """
+        Silence the socket-module log lines and isolate the global
+        socket registry for the test duration.
+        """
+
+        self.enterContext(patch("pmd_pytcp.socket.tcp__socket.log"))
+        self._sockets_prior = dict(stack.sockets)
+        stack.sockets.clear()
+
+    def tearDown(self) -> None:
+        """
+        Restore the global socket registry.
+        """
+
+        stack.sockets.clear()
+        stack.sockets.update(self._sockets_prior)
+
+    def test__tcp_socket__close_without_session_unregisters(self) -> None:
+        """
+        Ensure 'close()' on a bound-but-never-connected socket —
+        which owns no TcpSession — unregisters the socket and
+        releases its bound port. Only a session's CLOSED
+        transition ever unregisters TCP sockets, so the old
+        'assert _tcp_session is not None' left the registry entry
+        (and the port, which the ephemeral-port pickers exclude
+        while the entry exists) leaked with no recovery path:
+        close() itself was the thing that raised.
+
+        Reference: POSIX close(2) (valid on any open socket, connected or not).
+        """
+
+        sock = TcpSocket(family=AddressFamily.INET4)
+        sock.bind(("0.0.0.0", 12345))
+        self.assertIn(
+            sock.socket_id,
+            stack.sockets,
+            msg="bind() must register the socket (test precondition).",
+        )
+
+        sock.close()
+
+        self.assertNotIn(
+            sock.socket_id,
+            stack.sockets,
+            msg="close() on a session-less socket must unregister it, releasing the port.",
+        )
         self.assertTrue(sock._closed, msg="close() must mark the socket closed.")
 
 

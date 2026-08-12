@@ -998,7 +998,18 @@ class TcpSocket(socket):
         Close socket and the TCP session(s) it owns.
         """
 
-        assert self._tcp_session is not None
+        if self._tcp_session is None:
+            # A bound-but-never-connected socket owns no session, and
+            # only a session's CLOSED transition ever unregisters TCP
+            # sockets — so close() must unregister directly here or
+            # the registry entry (and the bound port, which the
+            # ephemeral-port pickers exclude while the entry exists)
+            # leaks with no recovery path. The previous 'assert' made
+            # close() itself the thing that raised.
+            stack.sockets.unregister(self)
+            self._mark_closed()
+            log.enabled and log("socket", f"<g>[{self}]</> - Closed socket (no session)")
+            return
 
         linger = self._so_linger
 
