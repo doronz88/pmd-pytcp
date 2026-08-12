@@ -72,6 +72,7 @@ from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_1 import (
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__fin_wait_2 import (
     fsm__fin_wait_2__packet,
     fsm__fin_wait_2__syscall,
+    fsm__fin_wait_2__timer,
 )
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__last_ack import (
     fsm__last_ack__packet,
@@ -172,6 +173,7 @@ FSM_TIMER_HANDLERS: dict[FsmState, Callable[..., None]] = {
     FsmState.SYN_RCVD: fsm__syn_rcvd__timer,
     FsmState.ESTABLISHED: fsm__established__timer,
     FsmState.FIN_WAIT_1: fsm__fin_wait_1__timer,
+    FsmState.FIN_WAIT_2: fsm__fin_wait_2__timer,
     FsmState.CLOSE_WAIT: fsm__close_wait__timer,
     FsmState.LAST_ACK: fsm__last_ack__timer,
     FsmState.TIME_WAIT: fsm__time_wait__timer,
