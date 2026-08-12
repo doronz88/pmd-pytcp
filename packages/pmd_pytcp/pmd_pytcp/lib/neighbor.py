@@ -211,7 +211,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
             STALE → transition to DELAY, return MAC.
             DELAY → return MAC.
             PROBE → return MAC.
-            FAILED → return None (FSM has given up).
+            FAILED → restart resolution (→ INCOMPLETE, fire solicit), return None.
             PERMANENT → return MAC.
         """
 
@@ -242,7 +242,26 @@ class NeighborCache(Subsystem, Generic[A, P]):
             # to fire before we send a unicast probe).
             self._transition(entry, NudState.DELAY, now)
             return entry.mac_address
-        # INCOMPLETE / FAILED: no MAC available.
+        if entry.state is NudState.FAILED:
+            # Linux parity ('neigh_event_send'): FAILED is not
+            # terminal for TX — the next send restarts resolution
+            # with a fresh solicit budget. Without this, a single
+            # missed solicit burst (peer asleep / rebooting for a
+            # few seconds) black-holes the destination until GC
+            # evicts the entry — and GC never runs below
+            # 'gc_thresh1' entries, so on a small cache (e.g. a
+            # point-to-point tunnel) the failure would be
+            # permanent for the process lifetime.
+            self._transition(entry, NudState.INCOMPLETE, now)
+            object.__setattr__(entry, "probe_count", 1)
+            object.__setattr__(entry, "mac_address", None)
+            log.enabled and log(
+                "stack",
+                f"NUD: {address} FAILED → INCOMPLETE — TX restarted resolution",
+            )
+            self._solicit_callback(address, None)
+            return None
+        # INCOMPLETE: no MAC available yet (loop drives retransmits).
         return None
 
     def _add_entry(self, address: A, mac_address: MacAddress) -> None:
@@ -465,7 +484,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
                 cached_mac = entry.mac_address
             elif state is NudState.INCOMPLETE:
                 if entry.probe_count >= max_multicast_solicit:
-                    self._transition(entry, NudState.FAILED, now)
+                    self._fail_entry(entry, now)
                     continue
                 if age >= retrans_timer:
                     object.__setattr__(entry, "probe_count", entry.probe_count + 1)
@@ -475,7 +494,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
                     continue
             elif state is NudState.PROBE:
                 if entry.probe_count >= max_unicast_solicit:
-                    self._transition(entry, NudState.FAILED, now)
+                    self._fail_entry(entry, now)
                     continue
                 if age >= retrans_timer:
                     object.__setattr__(entry, "probe_count", entry.probe_count + 1)
@@ -512,9 +531,14 @@ class NeighborCache(Subsystem, Generic[A, P]):
 
         Entries that are NEVER eviction-eligible:
           - PERMANENT (operator-configured static neighbours).
-          - INCOMPLETE / PROBE / DELAY entries with a
-            non-empty 'queued_packets' queue (would lose the
-            queued TX).
+          - Non-FAILED entries with a non-empty
+            'queued_packets' queue (would lose a queued TX
+            that resolution may still deliver). FAILED entries
+            are always eligible — their queue is undeliverable
+            by definition (and is cleared on the FAILED
+            transition anyway), and exempting them would both
+            make them immortal and let them slip under the
+            gc_thresh3 hard cap.
 
         Eviction priority is deliberately conservative —
         FAILED first (no working neighbour to lose), then
@@ -535,7 +559,7 @@ class NeighborCache(Subsystem, Generic[A, P]):
         evictable = [
             entry
             for entry in self._entries.values()
-            if entry.state is not NudState.PERMANENT and not entry.queued_packets
+            if entry.state is not NudState.PERMANENT and (entry.state is NudState.FAILED or not entry.queued_packets)
         ]
 
         # Tier 1 — FAILED entries (oldest first).
@@ -596,6 +620,25 @@ class NeighborCache(Subsystem, Generic[A, P]):
     # ------------------------------------------------------------
     # Internal helpers.
     # ------------------------------------------------------------
+
+    def _fail_entry(self, entry: NeighborEntry[A, P], now: float) -> None:
+        """
+        Transition an entry to FAILED and drop its queued
+        packets (Linux 'neigh_invalidate' arp_queue purge):
+        resolution has given up, so the frames can never be
+        transmitted — holding them would pin full link-layer
+        frames for the entry's remaining lifetime and (via the
+        GC queued-packet exemption) make the entry immortal.
+        """
+
+        dropped = len(entry.queued_packets)
+        entry.queued_packets.clear()
+        self._transition(entry, NudState.FAILED, now)
+        if dropped:
+            log.enabled and log(
+                "stack",
+                f"NUD: {entry.address} FAILED — dropped {dropped} queued packet(s)",
+            )
 
     def _transition(self, entry: NeighborEntry[A, P], new_state: NudState, now: float) -> None:
         """

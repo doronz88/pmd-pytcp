@@ -542,14 +542,20 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
             msg="PROBE entry past MAX_UNICAST_SOLICIT retries must transition to FAILED.",
         )
 
-    def test__lib__neighbor__find_on_failed_returns_none(self) -> None:
+    def test__lib__neighbor__find_on_failed_restarts_resolution(self) -> None:
         """
-        Ensure 'find_entry' on a FAILED entry returns None
-        without firing a new solicit — the FSM has given up
-        and a fresh resolution attempt requires explicit
-        eviction (Phase 5 GC) followed by a new find.
+        Ensure 'find_entry' on a FAILED entry restarts
+        resolution — Linux parity: the next TX to a failed
+        neighbour re-enters INCOMPLETE and fires a fresh
+        multicast solicit instead of black-holing the
+        destination until GC happens to evict the entry.
+        (GC never runs below 'gc_thresh1' = 128 entries, so on
+        a small cache — e.g. a point-to-point tunnel — a
+        terminal FAILED would otherwise be permanent: one
+        missed solicit burst while the peer rebooted or slept
+        would kill the path for the process lifetime.)
 
-        Reference: RFC 4861 §7.3.3 (FAILED gates new TX).
+        Reference: Linux 'net/core/neighbour.c' neigh_event_send (FAILED → re-resolution on TX).
         """
 
         # Drive entry into FAILED state by short-circuiting.
@@ -565,13 +571,49 @@ class TestNeighborCacheProbeToFailed(_NeighborCacheFixture):
 
         self.assertIsNone(
             result,
-            msg="find_entry on FAILED must return None (the FSM has given up).",
+            msg="find_entry on FAILED must return None (no MAC yet — resolution just restarted).",
+        )
+        self.assertIs(
+            self._cache._entries[ADDR_A].state,
+            NudState.INCOMPLETE,
+            msg="find_entry on FAILED must restart resolution (FAILED → INCOMPLETE).",
+        )
+        self.assertEqual(
+            self._cache._entries[ADDR_A].probe_count,
+            1,
+            msg="The restarted resolution must begin a fresh solicit budget.",
         )
         self.assertEqual(
             self._solicit_calls,
-            [],
-            msg="find_entry on FAILED must NOT fire a new solicit.",
+            [(ADDR_A, None)],
+            msg="find_entry on FAILED must fire a fresh multicast solicit.",
         )
+
+    def test__lib__neighbor__failed_entry_recovers_when_peer_returns(self) -> None:
+        """
+        Ensure the full recovery path: a FAILED entry whose
+        peer comes back is usable again after one TX-driven
+        resolution restart plus the peer's Reply — no GC, no
+        operator flush, no process restart required.
+
+        Reference: Linux 'net/core/neighbour.c' (FAILED is never terminal for TX).
+        """
+
+        self._cache._entries[ADDR_A] = NeighborEntry(
+            address=ADDR_A,
+            state=NudState.FAILED,
+            state_changed_at=1000.0,
+        )
+
+        with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1010.0):
+            self.assertIsNone(self._cache._find_entry(ADDR_A))  # restart → INCOMPLETE
+            self._cache._add_entry(ADDR_A, MAC_A)  # peer replies
+
+            self.assertEqual(
+                self._cache._find_entry(ADDR_A),
+                MAC_A,
+                msg="A recovered neighbour must resolve again after restart + Reply.",
+            )
 
 
 class TestNeighborCacheProbeToReachable(_NeighborCacheFixture):
@@ -804,6 +846,39 @@ class TestNeighborCacheIncompleteRetransmits(_NeighborCacheFixture):
             self._cache._entries[ADDR_A].state,
             NudState.FAILED,
             msg="INCOMPLETE entry past MAX_MULTICAST_SOLICIT must transition to FAILED.",
+        )
+
+    async def test__lib__neighbor__failed_transition_flushes_queued_packets(self) -> None:
+        """
+        Ensure the INCOMPLETE → FAILED transition drops the
+        entry's queued packets: resolution has given up, so
+        the frames can never be transmitted — holding them
+        pins full link-layer frames for as long as the entry
+        lives (and, combined with the GC queued-packet
+        exemption, once made the entry immortal).
+
+        Reference: Linux 'net/core/neighbour.c' neigh_invalidate (arp_queue purged on failure).
+        """
+
+        with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+            self._cache._find_entry(ADDR_A)
+            self._cache._enqueue_pending(ADDR_A, packet=object())
+            self._cache._enqueue_pending(ADDR_A, packet=object())
+
+        await self._run_loop_once(now=1001.5)
+        await self._run_loop_once(now=1002.6)
+        await self._run_loop_once(now=1003.7)
+
+        entry = self._cache._entries[ADDR_A]
+        self.assertIs(
+            entry.state,
+            NudState.FAILED,
+            msg="INCOMPLETE entry past MAX_MULTICAST_SOLICIT must transition to FAILED.",
+        )
+        self.assertEqual(
+            len(entry.queued_packets),
+            0,
+            msg="The FAILED transition must drop the undeliverable queued packets.",
         )
 
 
@@ -1079,12 +1154,6 @@ class TestNeighborCacheGcPass(_NeighborCacheFixture):
                 self._cache._find_entry(ADDR_A)  # → INCOMPLETE
                 self._cache._enqueue_pending(ADDR_A, packet=object())
 
-            # Drive the entry to FAILED while keeping the
-            # queued_packet — represents the worst case
-            # (resolution gave up, but a packet is still
-            # held).
-            self._force_state(ADDR_A, NudState.FAILED)
-
             self._cache._gc_pass(now=2000.0)
 
             self.assertIn(
@@ -1094,6 +1163,39 @@ class TestNeighborCacheGcPass(_NeighborCacheFixture):
                     "Entry with queued_packet must NOT be evicted; doing so "
                     "would lose the queued TX. RFC 1122 §2.3.2.2."
                 ),
+            )
+
+    def test__lib__neighbor__gc_evicts_failed_even_with_queued_packet(self) -> None:
+        """
+        Ensure a FAILED entry is evictable regardless of its
+        queue: resolution has given up, so anything still
+        queued is dead weight — exempting it (as the code once
+        did, contradicting its own docstring) made
+        FAILED-with-queue entries immortal AND uncountable
+        against the gc_thresh3 hard cap, so the "cap" was not
+        actually a cap.
+
+        Reference: Linux 'net/core/neighbour.c' neigh_forced_gc (dead entries always collectable).
+        """
+
+        with (
+            sysctl_module.override("neighbor.gc_thresh1", 0),
+            sysctl_module.override("neighbor.gc_thresh3", 0),
+        ):
+            with patch("pmd_pytcp.lib.neighbor.time.monotonic", return_value=1000.0):
+                self._cache._find_entry(ADDR_A)  # → INCOMPLETE
+                self._cache._enqueue_pending(ADDR_A, packet=object())
+
+            # A legacy / crash-shaped entry: FAILED yet still
+            # holding a queued packet.
+            self._force_state(ADDR_A, NudState.FAILED)
+
+            self._cache._gc_pass(now=2000.0)
+
+            self.assertNotIn(
+                ADDR_A,
+                self._cache._entries,
+                msg="A FAILED entry must be evictable even while holding a queued packet.",
             )
 
 
