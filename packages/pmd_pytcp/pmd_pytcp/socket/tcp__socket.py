@@ -848,6 +848,8 @@ class TcpSocket(socket):
         # Per-call 'timeout' takes precedence over 'setblocking()';
         # otherwise non-blocking mode equates to a non-blocking
         # acquire that surfaces as 'BlockingIOError(EAGAIN)'.
+        self._raise_if_closed()
+
         if timeout is None and not self._blocking:
             acquired = await _sem_acquire(self._event__tcp_session_established, blocking=False)
         else:
@@ -857,6 +859,19 @@ class TcpSocket(socket):
             if timeout is None and not self._blocking:
                 raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
             raise TimeoutError("TCP Socket - Accept operation timed out.")
+
+        if not self._tcp_accept:
+            # A teardown wake (close()/abort() drained the backlog),
+            # not a connection: cascade the permit to any other
+            # parked waiter, then report per POSIX — EBADF once the
+            # listener is closed, ECONNABORTED for an aborted-but-
+            # still-open one.
+            self._event__tcp_session_established.release()
+            self._raise_if_closed()
+            raise ConnectionAbortedError(
+                errno.ECONNABORTED,
+                "Connection aborted - [Listener torn down while accept() was blocked]",
+            )
 
         socket = cast(TcpSocket, self._tcp_accept.pop(0))
         # POSIX accept(2) inherits the listener's O_NONBLOCK on the
@@ -992,11 +1007,36 @@ class TcpSocket(socket):
                 "Connection aborted - [Connection canceled by concurrent close or abort]",
             ) from error
 
+    def _teardown_listener_backlog(self) -> None:
+        """
+        Reset and deregister every established-but-unaccepted child
+        queued in the accept backlog, then wake any blocked
+        'accept()' (which reports EBADF and cascades the permit).
+        Linux parity ('inet_csk_listen_stop'): un-accepted
+        connections are reset when the listener goes away — an idle
+        peer would otherwise keep a backlog child ESTABLISHED,
+        registered, and port-holding forever. No-op on non-listener
+        sockets (empty backlog; the stray permit is harmless since
+        nothing ever awaits accept() on them). Embryonic (SYN_RCVD)
+        children are not tracked here — their own retransmission
+        budget bounds them in time.
+        """
+
+        children, self._tcp_accept[:] = list(self._tcp_accept), []
+        for child in children:
+            try:
+                cast(TcpSocket, child).abort()
+            except Exception:  # pylint: disable=broad-exception-caught
+                log.enabled and log("socket", f"<g>[{self}]</> - backlog child abort raised; continuing")
+        self._event__tcp_session_established.release()
+
     @override
     def close(self) -> None:
         """
         Close socket and the TCP session(s) it owns.
         """
+
+        self._teardown_listener_backlog()
 
         if self._tcp_session is None:
             # A bound-but-never-connected socket owns no session, and
@@ -1069,6 +1109,8 @@ class TcpSocket(socket):
         unblock with a connection error. On a fresh / closed socket
         with no associated session, this is a no-op.
         """
+
+        self._teardown_listener_backlog()
 
         if self._tcp_session is not None:
             self._tcp_session.abort()
