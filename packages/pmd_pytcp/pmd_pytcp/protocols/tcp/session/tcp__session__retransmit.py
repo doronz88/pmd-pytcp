@@ -614,6 +614,15 @@ class TcpRetransmitter:
         """
 
         session = self._session
+        if not session._timer_expired("tlp"):
+            return
+        # Consume the expiry up front: every path below either
+        # fires the probe (which re-arms the RTO fallback) or
+        # declines it — leaving the expired deadline armed would
+        # spin the coalesced service at its 1 ms floor until the
+        # next full cum-ACK drain happened to cancel it. A fresh
+        # send re-arms the PTO through '_transmit_packet'.
+        session._cancel_timer("tlp")
         # tlp_armed gates the firing path: only when the
         # arming logic in '_transmit_packet' actually armed
         # the TLP timer should this tick treat a
@@ -623,8 +632,6 @@ class TcpRetransmitter:
         # downstream expiry check and _tlp_pto_tick would
         # spuriously fire a retransmit on every FSM tick.
         if not session._rack_tlp.tlp_armed:
-            return
-        if not session._timer_expired("tlp"):
             return
         if session._snd_seq.una == session._snd_seq.max:
             # Nothing in flight - no tail to probe.
@@ -699,6 +706,12 @@ class TcpRetransmitter:
         session = self._session
         if not session._timer_expired("rack"):
             return
+        # Consume the expiry up front: every exit below either
+        # re-arms for the remaining candidates or has nothing left
+        # to do — leaving the expired deadline armed would spin
+        # the coalesced service at its 1 ms floor until an
+        # unrelated event happened to cancel it.
+        session._cancel_timer("rack")
         if session._rack_tlp.rack_xmit_ts == 0:
             return
         reo_wnd_ms = rack_compute_reo_wnd(

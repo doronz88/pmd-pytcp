@@ -797,6 +797,10 @@ class TcpAckProcessor:
         if session._win.snd_wnd > 0 and session._persist.active:
             log.enabled and log("tcp-ss", f"[{session}] - Persist: peer reopened window, deactivating timer")
             session._persist.deactivate(initial_timeout=tcp__constants.TCP__RTO__INITIAL_MS)
+            # Cancel the logical deadline too: a deactivated-but-
+            # armed deadline is permanently expired and would spin
+            # the coalesced service at its 1 ms floor forever.
+            session._cancel_timer("persist")
         log.enabled and log(
             "tcp-ss",
             f"[{session}] - cwnd={session._cc.cwnd} ssthresh={session._cc.ssthresh} snd_ewn={session._cc.snd_ewn}",

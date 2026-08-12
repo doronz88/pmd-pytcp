@@ -244,7 +244,7 @@ def rack_detect_loss(
       1. It is not already lost ('seg.lost is False'), AND
       2. RACK was 'sent after' it lexicographically
          (rack_xmit_ts, rack_end_seq) > (seg.xmit_ts, seg.end_seq), AND
-      3. 'now_ms - seg.xmit_ts > reo_wnd_ms' (the reordering
+      3. 'now_ms - seg.xmit_ts >= reo_wnd_ms' (the reordering
          tolerance has elapsed since the segment was sent).
 
     A segment in flight that satisfies (1) + (2) but not (3) is
@@ -292,8 +292,15 @@ def rack_detect_loss(
             new_segments[seq] = seg
             continue
         # RACK is 'sent after' this segment - it is a loss
-        # candidate. Apply the reordering-window check.
-        if now_ms - seg.xmit_ts > reo_wnd_ms:
+        # candidate. Apply the reordering-window check. '>=' per
+        # RFC 8985 §6.2 step 5 / Linux 'tcp_rack_skb_timeout'
+        # (remaining <= 0 marks lost): the reorder timer fires at
+        # exactly 'seg.xmit_ts + reo_wnd_ms', so a strict '>'
+        # would find the candidate not-yet-due at its own fire
+        # tick, compute a zero re-arm timeout, and strand the
+        # segment unmarked until an unrelated tick re-ran the
+        # detection.
+        if now_ms - seg.xmit_ts >= reo_wnd_ms:
             new_segments[seq] = RackSegment(
                 end_seq=seg.end_seq,
                 xmit_ts=INFINITE_TS,

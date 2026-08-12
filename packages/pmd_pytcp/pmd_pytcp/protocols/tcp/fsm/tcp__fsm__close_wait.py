@@ -151,6 +151,11 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
                     )
                     session._persist.active = False
                     session._persist.timeout = tcp__constants.TCP__RTO__INITIAL_MS
+                    # Cancel the logical deadline too: a
+                    # deactivated-but-armed deadline is permanently
+                    # expired and would spin the coalesced service
+                    # at its 1 ms floor forever.
+                    session._cancel_timer("persist")
                 session._ingest_sack_info(packet_rx_md)
                 return
             # Window unchanged -> true duplicate ACK per RFC

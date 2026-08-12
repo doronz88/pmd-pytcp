@@ -743,9 +743,22 @@ class TcpSession:
         keep-alive / RACK / TLP / persist / TIME_WAIT need no
         entry here: each is a logical timer the coalesced
         '_service_handle' already drives.
+
+        The '_closing' flag counts only while the deferred close
+        transition is still pending (ESTABLISHED / CLOSE_WAIT ->
+        FIN exchange). The flag is never cleared, so counting it
+        unconditionally would re-arm the pump for the session's
+        entire post-close life — 30 s of 1 kHz no-op wakes per
+        gracefully closed connection in TIME_WAIT alone; the
+        unacked FIN itself is already covered by the in-flight
+        term, and its retransmission by the retransmit timer.
         """
 
-        return bool(self._tx.buffer) or self._snd_seq.una != self._snd_seq.max or self._closing
+        return (
+            bool(self._tx.buffer)
+            or self._snd_seq.una != self._snd_seq.max
+            or (self._closing and self._state in {FsmState.ESTABLISHED, FsmState.CLOSE_WAIT})
+        )
 
     def _pump_tail(self, state_at_entry: FsmState, external: bool, /) -> None:
         """
