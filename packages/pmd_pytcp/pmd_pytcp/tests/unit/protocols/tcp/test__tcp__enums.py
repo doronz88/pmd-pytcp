@@ -208,23 +208,30 @@ class TestConnError(TestCase):
 
     def test__tcp_session__conn_error_members(self) -> None:
         """
-        Ensure 'ConnError' exposes the four connection-failure codes
-        used by the session: NONE, REFUSED, TIMEOUT, CANCELED.
-        'CANCELED' supports 'close()' issued mid-handshake from a
-        different thread than the one blocked on 'connect()'; signals
-        the canceled-error so the blocked caller raises
+        Ensure 'ConnError' exposes the connection-failure codes
+        used by the session: NONE, REFUSED, TIMEOUT, CANCELED,
+        RESET, HOST_UNREACHABLE, NET_UNREACHABLE. 'CANCELED'
+        supports 'close()' issued mid-handshake from a different
+        thread than the one blocked on 'connect()'; signals the
+        canceled-error so the blocked caller raises
         'TcpSessionError("Connection canceled")' on unblock.
+        'RESET' marks a synchronized session destroyed by an
+        acceptable inbound RST so a blocked / subsequent
+        'receive()' raises 'TcpSessionError("Connection reset by
+        peer")' instead of misreading the destroyed stream as a
+        clean EOF.
 
         Reference: RFC 9293 §3.10.1 (OPEN error signalling).
         Reference: RFC 9293 §3.10.7.3 (RST in SYN-SENT triggers connection refused).
+        Reference: RFC 9293 §3.10.7.4 (RST in synchronized states signals 'connection reset').
         """
 
         self.assertEqual(
             {member.name for member in ConnError},
-            {"NONE", "REFUSED", "TIMEOUT", "CANCELED", "HOST_UNREACHABLE", "NET_UNREACHABLE"},
+            {"NONE", "REFUSED", "TIMEOUT", "CANCELED", "RESET", "HOST_UNREACHABLE", "NET_UNREACHABLE"},
             msg=(
-                "ConnError must expose the six canonical connection-fail reasons "
-                "(NONE, REFUSED, TIMEOUT, CANCELED, HOST_UNREACHABLE, NET_UNREACHABLE)."
+                "ConnError must expose the seven canonical connection-fail reasons "
+                "(NONE, REFUSED, TIMEOUT, CANCELED, RESET, HOST_UNREACHABLE, NET_UNREACHABLE)."
             ),
         )
 

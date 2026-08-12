@@ -75,6 +75,7 @@ class ConnError(NameEnum):
     REFUSED = auto()
     TIMEOUT = auto()
     CANCELED = auto()
+    RESET = auto()
     HOST_UNREACHABLE = auto()
     NET_UNREACHABLE = auto()
 

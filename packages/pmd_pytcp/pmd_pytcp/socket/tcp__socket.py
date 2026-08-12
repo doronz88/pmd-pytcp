@@ -959,6 +959,29 @@ class TcpSocket(socket):
                 raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN)) from error
             raise TimeoutError("TCP Socket - Receive operation timed out.") from error
 
+        except TcpSessionError as error:
+            # The session died under the reader; map the session's
+            # terminal signal to the POSIX exception, mirroring the
+            # 'connect()' error-type mapping. Graceful peer closes
+            # are NOT errors — they return 'b""' from the session
+            # and never reach this handler.
+            if str(error) == "Connection reset by peer":
+                raise ConnectionResetError(
+                    errno.ECONNRESET,
+                    "Connection reset - [Received RST packet from remote host]",
+                ) from error
+            if str(error) == "Connection timeout":
+                raise TimeoutError(
+                    errno.ETIMEDOUT,
+                    "Connection timed out - [No valid response received from remote host]",
+                ) from error
+            # "Connection canceled" (a concurrent close()/abort()
+            # tore the connection down under the reader).
+            raise ConnectionAbortedError(
+                errno.ECONNABORTED,
+                "Connection aborted - [Connection canceled by concurrent close or abort]",
+            ) from error
+
     @override
     def close(self) -> None:
         """

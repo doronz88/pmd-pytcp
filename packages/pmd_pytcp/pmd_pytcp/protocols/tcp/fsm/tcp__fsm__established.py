@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.protocols.tcp import tcp__constants
-from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pmd_pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pmd_pytcp.protocols.tcp.tcp__seq import add32, ge32, gt32, in_range32, le32, lt32, sub32
 
 if TYPE_CHECKING:
@@ -333,11 +333,12 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
     # (folding RFC 5961 §3.2 blind-RST attack mitigation) via
     # the shared '_check_rst_acceptability' helper which runs
     # the three-way classification (case 1 reset / case 2
-    # challenge ACK / case 3 silent drop). On case 1 we
-    # additionally wake any blocked 'recv()' caller so the
-    # application sees the connection-reset signal without
-    # blocking forever on the rx-buffer event.
+    # challenge ACK / case 3 silent drop). On case 1 mark the
+    # connection reset so a blocked / subsequent 'recv()' raises
+    # a connection-reset error instead of misreading the
+    # destroyed stream as a clean EOF; the CLOSED transition
+    # itself wakes any blocked reader.
     if packet_rx_md.tcp__flag_rst and not any({packet_rx_md.tcp__flag_fin, packet_rx_md.tcp__flag_syn}):
         if session._check_rst_acceptability(packet_rx_md):
-            session._event__rx_buffer.set()
+            session._connection_error = ConnError.RESET
             session._change_state(FsmState.CLOSED)

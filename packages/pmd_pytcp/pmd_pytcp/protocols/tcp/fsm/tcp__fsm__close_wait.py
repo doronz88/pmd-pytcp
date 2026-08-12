@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING
 
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.protocols.tcp import tcp__constants
-from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
+from pmd_pytcp.protocols.tcp.tcp__enums import ConnError, FsmState, SysCall
 from pmd_pytcp.protocols.tcp.tcp__seq import gt32, in_range32
 
 if TYPE_CHECKING:
@@ -226,4 +226,8 @@ def fsm__close_wait__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> N
         }
     ):
         if session._check_rst_acceptability(packet_rx_md):
+            # Mark the connection reset so a blocked / subsequent
+            # 'recv()' raises instead of misreading the destroyed
+            # stream as a clean EOF.
+            session._connection_error = ConnError.RESET
             session._change_state(FsmState.CLOSED)

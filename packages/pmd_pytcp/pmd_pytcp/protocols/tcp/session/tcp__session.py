@@ -957,13 +957,28 @@ class TcpSession:
         if not data_ready:
             raise TimeoutError("TCP session receive operation timed out while waiting for data.")
 
-        # If there is no data in RX buffer and remote end closed connection
-        # then notify application by returning empty byte string.
-        if not self._rx_buffer and self._state in {
-            FsmState.CLOSE_WAIT,
-            FsmState.CLOSED,
-        }:
-            return b""
+        # A dead or reset connection must not read as a graceful
+        # shutdown. Data that arrived ahead of the failure is still
+        # delivered below; the call that finds the buffer empty
+        # surfaces the terminal signal instead — an error for a
+        # reset / abort / keepalive-timeout collapse, EOF ('b""')
+        # for a graceful peer close (every state entered by
+        # consuming the peer's FIN: CLOSE_WAIT, CLOSING, TIME_WAIT,
+        # plus terminal CLOSED).
+        if not self._rx_buffer:
+            if self._connection_error is ConnError.RESET:
+                raise TcpSessionError("Connection reset by peer")
+            if self._connection_error is ConnError.CANCELED:
+                raise TcpSessionError("Connection canceled")
+            if self._connection_error is ConnError.TIMEOUT:
+                raise TcpSessionError("Connection timeout")
+            if self._state in {
+                FsmState.CLOSE_WAIT,
+                FsmState.CLOSING,
+                FsmState.TIME_WAIT,
+                FsmState.CLOSED,
+            }:
+                return b""
 
         if byte_count is None:
             byte_count = len(self._rx_buffer)
@@ -975,13 +990,15 @@ class TcpSession:
 
         # Clear the event only when the buffer is fully drained
         # AND the remote end is still open. When the remote
-        # closed (CLOSE_WAIT or CLOSED), leave the event set so
-        # the next 'receive()' returns 'b""' immediately - the
-        # BSD-socket EOF semantics, where a connection-closed
-        # state must be re-readable as zero bytes without
-        # blocking the caller.
+        # closed (any post-FIN state) or the connection collapsed,
+        # leave the event set so the next 'receive()' surfaces the
+        # EOF / error immediately - the BSD-socket EOF semantics,
+        # where a connection-closed state must be re-readable
+        # without blocking the caller.
         if not self._rx_buffer and self._state not in {
             FsmState.CLOSE_WAIT,
+            FsmState.CLOSING,
+            FsmState.TIME_WAIT,
             FsmState.CLOSED,
         }:
             self._event__rx_buffer.clear()
@@ -1213,6 +1230,19 @@ class TcpSession:
             if self._fastopen.pending_counted:
                 stack.tcp_stack.decr_fastopen_pending()
                 self._fastopen.pending_counted = False
+
+        # Wake any blocked 'receive()' whenever the session's
+        # readable life ends: CLOSING / TIME_WAIT are entered by
+        # consuming the peer's FIN (EOF), CLOSED is terminal
+        # however it was reached (RST, abort, reaper, 2MSL). This
+        # is the single catch-all wake site — individual FSM
+        # handlers do not need to remember it, so no death path
+        # can strand a reader task forever (observed live through
+        # the pymobiledevice3 userspace tunnel as relay handlers
+        # parked on sessions that were already CLOSED and
+        # unregistered).
+        if state in {FsmState.CLOSING, FsmState.TIME_WAIT, FsmState.CLOSED}:
+            self._event__rx_buffer.set()
 
         # Unregister session.
         if self._state is FsmState.CLOSED:
