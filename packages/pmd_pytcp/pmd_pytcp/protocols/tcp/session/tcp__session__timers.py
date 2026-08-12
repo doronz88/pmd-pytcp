@@ -66,7 +66,7 @@ _SERVICED_TIMERS_BY_STATE: dict[FsmState, frozenset[str]] = {
     FsmState.CLOSE_WAIT: frozenset({"retransmit", "persist", "delayed_ack", _PUMP}),
     FsmState.FIN_WAIT_1: frozenset({"retransmit", "persist", _PUMP}),
     FsmState.FIN_WAIT_2: frozenset({"fin_wait_2", _PUMP}),
-    FsmState.CLOSING: frozenset({_PUMP}),
+    FsmState.CLOSING: frozenset({"retransmit", "persist", _PUMP}),
     FsmState.LAST_ACK: frozenset({"retransmit", "persist", _PUMP}),
     FsmState.TIME_WAIT: frozenset({"time_wait", _PUMP}),
 }

@@ -58,6 +58,7 @@ from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__closed import fsm__closed__syscall
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__closing import (
     fsm__closing__packet,
     fsm__closing__syscall,
+    fsm__closing__timer,
 )
 from pmd_pytcp.protocols.tcp.fsm.tcp__fsm__established import (
     fsm__established__packet,
@@ -174,6 +175,7 @@ FSM_TIMER_HANDLERS: dict[FsmState, Callable[..., None]] = {
     FsmState.ESTABLISHED: fsm__established__timer,
     FsmState.FIN_WAIT_1: fsm__fin_wait_1__timer,
     FsmState.FIN_WAIT_2: fsm__fin_wait_2__timer,
+    FsmState.CLOSING: fsm__closing__timer,
     FsmState.CLOSE_WAIT: fsm__close_wait__timer,
     FsmState.LAST_ACK: fsm__last_ack__timer,
     FsmState.TIME_WAIT: fsm__time_wait__timer,

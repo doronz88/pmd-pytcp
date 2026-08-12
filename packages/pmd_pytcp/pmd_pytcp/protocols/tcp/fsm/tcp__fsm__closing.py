@@ -46,6 +46,26 @@ if TYPE_CHECKING:
     from pmd_pytcp.socket.tcp__metadata import TcpMetadata
 
 
+def fsm__closing__timer(session: TcpSession) -> None:
+    """
+    TCP FSM CLOSING state timer handler.
+
+    Run retransmit-timeout machinery and drain the TX buffer —
+    same shape as FIN_WAIT_1 / LAST_ACK, whose FIN is equally
+    still unacked. CLOSING is reached when the FINs cross
+    (simultaneous close); if the peer's ACK of our FIN is then
+    lost, the peer sits in TIME_WAIT retransmitting nothing, so
+    our FIN retransmission is the only stimulus that can
+    complete the close — and the retransmission budget is the
+    only exit when the peer has vanished. Without this handler
+    the state could never make progress on its own: the session
+    (and its local port) leaked forever.
+    """
+
+    session._retransmit_packet_timeout()
+    session._transmit_data()
+
+
 def fsm__closing__syscall(session: TcpSession, syscall: SysCall) -> None:
     """
     TCP FSM CLOSING state syscall handler.

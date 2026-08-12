@@ -680,7 +680,14 @@ class TcpTxEngine:
                 return
 
         # Check if we need to (re)transmit final FIN packet.
-        if session._state in {FsmState.FIN_WAIT_1, FsmState.LAST_ACK} and session._snd_seq.nxt != session._snd_seq.fin:
+        # CLOSING belongs in the set: it is FIN_WAIT_1's crossing-FIN
+        # sibling and its FIN is equally still unacked (a session can
+        # even enter CLOSING before the FIN went out, when the peer's
+        # FIN beats ours through the handler).
+        if (
+            session._state in {FsmState.FIN_WAIT_1, FsmState.CLOSING, FsmState.LAST_ACK}
+            and session._snd_seq.nxt != session._snd_seq.fin
+        ):
             log.enabled and log(
                 "tcp-ss",
                 f"[{session}] - Transmitting final FIN packet_rx_md: seq {session._snd_seq.nxt}",

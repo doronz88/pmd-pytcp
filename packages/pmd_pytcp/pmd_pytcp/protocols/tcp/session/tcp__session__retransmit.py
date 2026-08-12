@@ -167,6 +167,7 @@ class TcpRetransmitter:
                 FsmState.ESTABLISHED,
                 FsmState.FIN_WAIT_1,
                 FsmState.FIN_WAIT_2,
+                FsmState.CLOSING,
                 FsmState.CLOSE_WAIT,
             }:
                 session._connection_error = ConnError.TIMEOUT
