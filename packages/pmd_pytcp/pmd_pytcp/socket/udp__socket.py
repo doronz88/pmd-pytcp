@@ -930,9 +930,15 @@ class UdpSocket(socket):
             return
         # deque(maxlen=...) silently drops the oldest entry on
         # overflow — matches the FIFO-drop semantics documented
-        # on 'ErrorQueueEntry'.
+        # on 'ErrorQueueEntry'. Release a permit only when the
+        # append actually grew the queue: an overflow append is
+        # net-zero (one dropped, one added), and an unconditional
+        # release would accumulate phantom permits that later let
+        # 'recvmsg(MSG_ERRQUEUE)' pop an empty deque (IndexError).
+        was_full = len(self._error_queue) == self._error_queue.maxlen
         self._error_queue.append(entry)
-        self._error_queue_ready.release()
+        if not was_full:
+            self._error_queue_ready.release()
 
     def notify_unreachable(
         self,
