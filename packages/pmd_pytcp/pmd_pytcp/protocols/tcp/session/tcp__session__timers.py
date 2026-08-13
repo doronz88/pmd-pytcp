@@ -128,6 +128,16 @@ class TcpTimerService:
             stack.timer.cancel(self._service_handle)
             self._service_handle = None
 
+    def deadline(self, name: str, /) -> int | None:
+        """
+        Return the named logical timer's absolute deadline
+        (monotonic ms) when armed, else None. The RFC 8985 §7.2
+        'do not outlast RTO' clamp reads the in-flight retransmit
+        deadline through this.
+        """
+
+        return self._deadlines.get(name)
+
     def armed(self, name: str, /) -> bool:
         """
         Return True iff the named logical timer is armed and has

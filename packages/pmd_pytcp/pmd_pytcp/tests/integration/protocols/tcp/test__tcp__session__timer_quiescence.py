@@ -211,3 +211,42 @@ class TestTcpTimerQuiescence(TcpTestCase):
             session._timers._deadlines,
             msg="An expired 'tlp' deadline the tick declined to act on must be cancelled.",
         )
+
+
+class TestTlpRtoClamp(TcpTestCase):
+    """
+    The RFC 8985 §7.2 'do not outlast RTO' TLP clamp tests.
+    """
+
+    def test__tlp__pto_is_clamped_to_the_rto_deadline(self) -> None:
+        """
+        Ensure the armed TLP deadline never sits past the armed
+        retransmit deadline: 2*SRTT can exceed the remaining RTO,
+        and an unclamped PTO means the RTO always preempts — the
+        probe silently never fires, degrading every tail loss to
+        a full RTO + slow-start instead of a RACK-repaired probe.
+        (The old clamp input read 'stack.timer._timers', a field
+        that no longer exists, so 'rto_expiration_ms' was always
+        None and the clamp was dead code.)
+
+        Reference: RFC 8985 §7.2 (PTO MUST NOT outlast the RTO expiration).
+        """
+
+        session = self._drive_handshake_to_established(iss=LOCAL__ISS, peer_iss=PEER__ISS)
+        # An SRTT large enough that 2*SRTT far exceeds the RTO
+        # (frozen dataclass — same mutation pattern as the FSM).
+        object.__setattr__(session._rto_state, "srtt_ms", 5000)
+
+        session.send(data=b"x" * 100)
+        self._advance(ms=1)
+
+        rto_deadline = session._timers.deadline("retransmit")
+        tlp_deadline = session._timers.deadline("tlp")
+        self.assertIsNotNone(rto_deadline, msg="Data in flight must arm the retransmit timer.")
+        self.assertIsNotNone(tlp_deadline, msg="Data in flight with a valid SRTT must arm the TLP timer.")
+        assert rto_deadline is not None and tlp_deadline is not None
+        self.assertLessEqual(
+            tlp_deadline,
+            rto_deadline,
+            msg="The TLP deadline must not outlast the RTO deadline (RFC 8985 §7.2 clamp).",
+        )

@@ -1283,13 +1283,15 @@ class TcpTxEngine:
             and (session._rto_state.srtt_ms or 0) > 0
         ):
             flight_size = (session._snd_seq.max - session._snd_seq.una) & 0xFFFF_FFFF
-            # Use the IN-FLIGHT RTO timer's actual remaining
-            # time (when accessible) so the §7.2 'do not
-            # outlast RTO' clamp respects the real expiration.
-            # Fall back to None when the timer subsystem does
-            # not expose internal state (e.g. unit-test stubs).
-            rto_remaining_ms = getattr(stack.timer, "_timers", {}).get(f"{session}-retransmit")
-            rto_expiration_ms = (stack.timer.now_ms + rto_remaining_ms) if rto_remaining_ms else None
+            # Use the IN-FLIGHT retransmit deadline so the §7.2
+            # 'do not outlast RTO' clamp respects the real
+            # expiration. The per-session logical timers are the
+            # source of truth (the pre-refactor form read a
+            # 'stack.timer._timers' dict that no longer exists, so
+            # the clamp was dead code and TLP silently never fired
+            # whenever 2*SRTT reached past the remaining RTO —
+            # every tail loss degraded to a full RTO + slow-start).
+            rto_expiration_ms = session._timers.deadline("retransmit")
             pto_ms = tlp_calc_pto(
                 srtt_ms=session._rto_state.srtt_ms,
                 flight_size=flight_size,
