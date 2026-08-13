@@ -815,6 +815,28 @@ class TcpAckProcessor:
                     "tcp-ss",
                     f"[{session}] - Purged expired TX packet retransmit request counter for {seq}",
                 )
+        # Purge out-of-order entries stranded below RCV.NXT: the
+        # exact-key pop below can never reach them (their key fell
+        # behind when a RE-SEGMENTED retransmission covered several
+        # queued ranges in one segment), so without this sweep each
+        # one pins its full packet buffer for the session's
+        # remaining life AND keeps being advertised as a SACK block
+        # entirely below the peer's SND.UNA — which an RFC 2883
+        # peer parses as DSACK, a spurious-retransmit signal that
+        # can wrongly undo its cwnd reductions. An entry merely
+        # straddling RCV.NXT is equally unreachable by the
+        # exact-key pop; dropping it loses no capability (the peer
+        # retransmits from RCV.NXT regardless). Modular 'lt32' so
+        # entries near the 32-bit wrap compare correctly.
+        if session._ooo_packet_queue:
+            for seq in list(session._ooo_packet_queue):
+                if lt32(seq, session._rcv_seq.nxt):
+                    session._ooo_packet_queue.pop(seq)
+                    log.enabled and log(
+                        "tcp-ss",
+                        f"[{session}] - Purged stranded Out of Order entry {seq} below RCV.NXT",
+                    )
+
         # Bring next packet from ooo_packet_queue if available.
         if ooo_packet := session._ooo_packet_queue.pop(session._rcv_seq.nxt, None):
             log.enabled and log(

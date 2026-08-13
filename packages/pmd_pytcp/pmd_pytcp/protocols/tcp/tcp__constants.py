@@ -89,6 +89,19 @@ TCP__FIN_WAIT_2__TIMEOUT_MS = 60000
 # coalescing window MUST NOT exceed 500 ms.
 TCP__DELAYED_ACK__DELAY_MS = 100
 
+# Cap on the per-session out-of-order reassembly queue (entry count,
+# not bytes). Each entry pins its full inbound packet buffer, and the
+# receive window alone does not bound the entry COUNT — a peer
+# streaming disjoint 1-byte out-of-order segments could pin one
+# buffer per in-window byte (~64k buffers per session at the default
+# window). Segments arriving with the queue full are dropped after
+# the mandatory RFC 5681 §4.2 immediate dup-ACK; the peer simply
+# retransmits them once the gap fills (Linux bounds its out-of-order queue the
+# same way, via rcvbuf pruning in 'tcp_prune_ofo_queue'). 64 entries
+# comfortably covers genuine network reordering, which shuffles a
+# handful of segments, not tens of thousands.
+TCP__OOO_QUEUE__MAX_LEN = 64
+
 # RFC 5961 §3 / §4 challenge-ACK rate limit. The receiver SHOULD NOT
 # emit more than one challenge ACK per sliding 1-second window, so a
 # burst of unacceptable segments cannot amplify into an outbound ACK

@@ -242,7 +242,17 @@ def fsm__established__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> 
                     if lt32(ovl_left, ovl_right):
                         session._pending_dsack = (ovl_left, ovl_right)
                         break
-            session._ooo_packet_queue[packet_rx_md.tcp__seq] = packet_rx_md
+            # Bounded queue: a segment arriving with the queue full
+            # is dropped — the mandatory immediate dup-ACK below
+            # still goes out and the peer retransmits the segment
+            # once the gap fills. Without the cap a peer streaming
+            # disjoint tiny out-of-order segments pins one full
+            # packet buffer per in-window byte.
+            if (
+                len(session._ooo_packet_queue) < tcp__constants.TCP__OOO_QUEUE__MAX_LEN
+                or packet_rx_md.tcp__seq in session._ooo_packet_queue
+            ):
+                session._ooo_packet_queue[packet_rx_md.tcp__seq] = packet_rx_md
             # RFC 5681 §4.2: a TCP receiver MUST send an
             # immediate duplicate ACK on every out-of-order
             # segment arrival - no per-gap rate limit. The
