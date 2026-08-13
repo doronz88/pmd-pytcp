@@ -37,8 +37,8 @@ ver 3.0.7
 
 from __future__ import annotations
 
-from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest import IsolatedAsyncioTestCase, TestCase
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pmd_pytcp.stack as stack
 import pmd_pytcp.stack.lifecycle as lifecycle
@@ -122,3 +122,33 @@ class TestStopAbortsOpenSockets(TestCase):
             lifecycle._abort_open_sockets()
 
         tcp_socket.abort.assert_called_once_with()
+
+
+class TestStopAwaitsEverySubsystem(IsolatedAsyncioTestCase):
+    """
+    The stop()-await-loop containment tests: one worker whose
+    'wait_stopped' raises must not abort teardown midway — the
+    remaining subsystems must still be awaited (and the sysctl
+    reset in stop()'s finally must still run), or a partial
+    teardown leaves live workers behind a "fully quiesced" return.
+    """
+
+    async def test__lifecycle__await_stopped_survives_a_raising_worker(self) -> None:
+        """
+        Ensure '_await_stopped_subsystems' awaits every subsystem
+        even when an earlier one's 'wait_stopped' raises: the
+        error is logged and teardown continues.
+
+        Reference: PyTCP teardown contract (stop() leaves no live worker behind).
+        """
+
+        raising = MagicMock(spec=["wait_stopped"])
+        raising.wait_stopped = AsyncMock(side_effect=RuntimeError("worker died mid-run"))
+        healthy = MagicMock(spec=["wait_stopped"])
+        healthy.wait_stopped = AsyncMock()
+        no_wait = MagicMock(spec=[])  # no wait_stopped attribute at all
+
+        with self.assertLogs("pmd_pytcp.stack.lifecycle", level="ERROR"):
+            await lifecycle._await_stopped_subsystems([raising, no_wait, healthy])
+
+        healthy.wait_stopped.assert_awaited_once_with()

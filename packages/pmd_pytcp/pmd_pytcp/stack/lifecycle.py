@@ -796,6 +796,35 @@ def _abort_open_sockets() -> None:
             )
 
 
+async def _await_stopped_subsystems(stopped_subsystems: "list[Any]") -> None:
+    """
+    Await every stopped subsystem's actual worker exit. One worker
+    whose 'wait_stopped' raises must not abort teardown midway —
+    the remaining subsystems would stay live behind a "fully
+    quiesced" stop() return, and the sysctl reset would be
+    skipped. The error is reported through the stdlib logger
+    unconditionally (the stack's own channel log is disabled in
+    embedded deployments) and teardown continues.
+    """
+
+    import asyncio
+    import logging
+
+    for subsystem in stopped_subsystems:
+        wait_stopped = getattr(subsystem, "wait_stopped", None)
+        if wait_stopped is None:
+            continue
+        try:
+            await wait_stopped()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # pylint: disable=broad-exception-caught
+            logging.getLogger(__name__).exception(
+                "stop(): awaiting %s raised; continuing teardown",
+                subsystem,
+            )
+
+
 async def stop() -> None:
     """
     Stop stack components. A coroutine — after signalling every
@@ -864,16 +893,16 @@ async def stop() -> None:
         stopped_subsystems.append(iface._nd_cache)
 
     # Await every cancelled worker's actual exit so teardown is
-    # complete (not merely signalled) when 'stop()' returns.
-    for subsystem in stopped_subsystems:
-        wait_stopped = getattr(subsystem, "wait_stopped", None)
-        if wait_stopped is not None:
-            await wait_stopped()
+    # complete (not merely signalled) when 'stop()' returns. The
+    # sysctl reset runs in a finally so a raising worker cannot
+    # leak this run's overrides into the next init cycle.
+    try:
+        await _await_stopped_subsystems(stopped_subsystems)
+    finally:
+        # Restore every registered sysctl to its compile-time
+        # default so a follow-up 'stack.init()' (typical in
+        # long-running test harnesses) starts from a clean baseline
+        # rather than inheriting overrides from the prior run.
+        from pmd_pytcp.stack import sysctl as sysctl_module
 
-    # Restore every registered sysctl to its compile-time default
-    # so a follow-up 'stack.init()' (typical in long-running test
-    # harnesses) starts from a clean baseline rather than
-    # inheriting overrides from the prior run.
-    from pmd_pytcp.stack import sysctl as sysctl_module
-
-    sysctl_module.reset_to_defaults()
+        sysctl_module.reset_to_defaults()
