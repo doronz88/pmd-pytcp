@@ -752,6 +752,12 @@ class PacketHandler(ABC):
         while True:
             await asyncio.sleep(SUBSYSTEM_SLEEP_TIME__SEC)
             try:
+                # Reap timed-out reassembly flows even when no new
+                # fragment arrives: the admission-time lazy sweep
+                # alone retained the LAST burst of incomplete flows
+                # indefinitely.
+                self._ip4_frag_table.sweep_expired()
+                self._ip6_frag_table.sweep_expired()
                 self._maybe_run_periodic_tasks()
             except Exception:  # pylint: disable=broad-exception-caught
                 # One raising pass must not kill housekeeping for

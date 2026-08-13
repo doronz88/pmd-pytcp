@@ -715,8 +715,15 @@ class TestPacketHandlerHousekeepingGuard(IsolatedAsyncioTestCase):
         calls = []
         survived = asyncio.Event()
 
+        from pmd_pytcp.protocols.ip.ip_frag_table import IpFragTable
+
         class _FakeHandler:
             _subsystem_name = "fake-handler"
+            # Real frag tables: the housekeeping loop sweeps them
+            # each tick (timed-out flows must be reaped even when
+            # no new fragment arrives).
+            _ip4_frag_table = IpFragTable(timeout=5.0)
+            _ip6_frag_table = IpFragTable(timeout=5.0)
 
             def _maybe_run_periodic_tasks(self) -> None:
                 calls.append(len(calls))

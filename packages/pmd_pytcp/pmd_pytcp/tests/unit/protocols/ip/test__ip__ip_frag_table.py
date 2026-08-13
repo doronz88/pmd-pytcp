@@ -43,7 +43,7 @@ from pmd_pytcp.protocols.ip.ip_frag import (
     ECN__NOT_ECT,
     IpFragFlowId,
 )
-from pmd_pytcp.protocols.ip.ip_frag_table import IpFragAddOutcome, IpFragTable
+from pmd_pytcp.protocols.ip.ip_frag_table import IP_FRAG__MAX_FLOWS, IpFragAddOutcome, IpFragAddResult, IpFragTable
 
 _HOST_A__IP4 = Ip4Address("10.0.0.1")
 _HOST_B__IP4 = Ip4Address("10.0.0.2")
@@ -892,4 +892,93 @@ class TestIpFragTableEcnAggregation(TestCase):
             result.ecn,
             ECN__NOT_ECT,
             msg="Omitting ecn= must default to Not-ECT on the aggregated result.",
+        )
+
+
+class TestIpFragTableBounds(TestCase):
+    """
+    The 'IpFragTable' flow-count-bound and periodic-sweep tests:
+    within the expiry window the flow count was unbounded (a
+    never-completing-fragment flood grows the store at line rate),
+    and with only the lazy admission-time sweep, the LAST burst of
+    incomplete flows was retained indefinitely when no further
+    fragment ever arrived.
+    """
+
+    def _make_flow_id(self, i: int) -> IpFragFlowId:
+        return IpFragFlowId(src=_HOST_A__IP4, dst=_HOST_B__IP4, id=i, proto=IpProto.UDP)
+
+    def _admit(self, table: IpFragTable, flow_id: IpFragFlowId) -> IpFragAddResult:
+        return table.add_fragment(
+            flow_id=flow_id,
+            offset=0,
+            payload=b"\xaa" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+
+    def test__ip_frag_table__new_flow_is_refused_at_the_cap(self) -> None:
+        """
+        Ensure the store refuses a NEW flow once it holds
+        'IP_FRAG__MAX_FLOWS' incomplete flows (a fragment flood
+        must not grow memory at line rate), while fragments for
+        EXISTING flows are still admitted so in-progress
+        reassembly completes.
+
+        Reference: Linux 'ipfrag_high_thresh' (reassembly memory is bounded; over-threshold fragments are dropped).
+        """
+
+        table = IpFragTable(timeout=5.0)
+        for i in range(IP_FRAG__MAX_FLOWS):
+            self.assertIs(self._admit(table, self._make_flow_id(i)).outcome, IpFragAddOutcome.PENDING)
+
+        refused = self._admit(table, self._make_flow_id(IP_FRAG__MAX_FLOWS))
+        self.assertIs(
+            refused.outcome,
+            IpFragAddOutcome.DISCARDED,
+            msg="A NEW flow arriving at the cap must be refused.",
+        )
+        self.assertEqual(
+            len(table.flows),
+            IP_FRAG__MAX_FLOWS,
+            msg="The flow store must not grow past its cap.",
+        )
+
+        # An existing flow still accepts its continuation fragment.
+        continuation = table.add_fragment(
+            flow_id=self._make_flow_id(0),
+            offset=8,
+            payload=b"\xbb" * 8,
+            flag_mf=True,
+            header=b"\x45" + b"\x00" * 19,
+        )
+        self.assertIs(
+            continuation.outcome,
+            IpFragAddOutcome.PENDING,
+            msg="Fragments for flows already in the store must still be admitted at the cap.",
+        )
+
+    def test__ip_frag_table__sweep_expired_reaps_without_traffic(self) -> None:
+        """
+        Ensure 'sweep_expired' reaps timed-out flows on its own:
+        the lazy admission-time sweep only runs when ANOTHER
+        fragment arrives, so the last burst of incomplete flows
+        was otherwise retained indefinitely. The periodic
+        housekeeping task calls this.
+
+        Reference: RFC 8504 §16 (host buffer-hygiene requirement).
+        """
+
+        table = IpFragTable(timeout=5.0)
+        flow_id = self._make_flow_id(7)
+        self._admit(table, flow_id)
+        stale_flow = table.flows[flow_id]
+        object.__setattr__(stale_flow, "timestamp", stale_flow.timestamp - 10.0)
+
+        table.sweep_expired()
+
+        self.assertEqual(
+            table.flows,
+            {},
+            msg="sweep_expired() must reap timed-out flows without needing new traffic.",
         )

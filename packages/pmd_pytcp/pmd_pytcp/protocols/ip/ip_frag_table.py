@@ -40,6 +40,15 @@ from time import time
 from pmd_net_proto.lib.buffer import Buffer
 from pmd_pytcp.protocols.ip.ip_frag import IpFragData, IpFragFlowId, aggregate_ecn
 
+# Cap on concurrent reassembly flows per table. Within the expiry
+# window the flow count was otherwise unbounded — a never-completing
+# fragment flood grows the store at line rate (Linux bounds the
+# analogous store by memory via 'ipfrag_high_thresh', 4 MB default;
+# 64 flows x the 64 KB max datagram is the same ceiling). A NEW flow
+# arriving at the cap is refused; fragments for flows already in the
+# store are still admitted so in-progress reassembly completes.
+IP_FRAG__MAX_FLOWS = 64
+
 
 class IpFragAddOutcome(Enum):
     """
@@ -105,6 +114,21 @@ class IpFragTable:
         """
 
         return self._flows
+
+    def sweep_expired(self) -> None:
+        """
+        Reap flows whose timestamp aged past the timeout. The
+        admission path runs this lazily on every fragment, but a
+        burst of incomplete flows followed by silence would
+        otherwise be retained indefinitely — the periodic
+        housekeeping task calls this so the LAST burst is reaped
+        too (RFC 8504 §16 buffer hygiene).
+        """
+
+        now = time()
+        self._flows = {
+            flow: self._flows[flow] for flow in self._flows if now - self._flows[flow].timestamp < self._timeout
+        }
 
     def add_fragment(
         self,
@@ -174,14 +198,17 @@ class IpFragTable:
             )
 
         # Lazy expiry sweep.
-        now = time()
-        self._flows = {
-            flow: self._flows[flow] for flow in self._flows if now - self._flows[flow].timestamp < self._timeout
-        }
+        self.sweep_expired()
 
         # RFC 5722 §3: a fragment arriving for an already-
         # discarded flow is silently dropped.
         if flow_id in self._flows and self._flows[flow_id].discarded:
+            return IpFragAddResult(outcome=IpFragAddOutcome.DISCARDED)
+
+        # Flow-count bound: refuse a NEW flow once the store is
+        # full (fragment-flood memory bound; existing flows keep
+        # accepting fragments so in-progress reassembly completes).
+        if flow_id not in self._flows and len(self._flows) >= IP_FRAG__MAX_FLOWS:
             return IpFragAddResult(outcome=IpFragAddOutcome.DISCARDED)
 
         # RFC 5722 §3: detect overlap with any previously-stored
