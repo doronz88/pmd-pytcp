@@ -850,30 +850,46 @@ class TcpSocket(socket):
         # acquire that surfaces as 'BlockingIOError(EAGAIN)'.
         self._raise_if_closed()
 
-        if timeout is None and not self._blocking:
-            acquired = await _sem_acquire(self._event__tcp_session_established, blocking=False)
-        else:
-            acquired = await _sem_acquire(self._event__tcp_session_established, timeout=timeout)
-
-        if not acquired:
+        while True:
             if timeout is None and not self._blocking:
-                raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
-            raise TimeoutError("TCP Socket - Accept operation timed out.")
+                acquired = await _sem_acquire(self._event__tcp_session_established, blocking=False)
+            else:
+                acquired = await _sem_acquire(self._event__tcp_session_established, timeout=timeout)
 
-        if not self._tcp_accept:
-            # A teardown wake (close()/abort() drained the backlog),
-            # not a connection: cascade the permit to any other
-            # parked waiter, then report per POSIX — EBADF once the
-            # listener is closed, ECONNABORTED for an aborted-but-
-            # still-open one.
-            self._event__tcp_session_established.release()
-            self._raise_if_closed()
-            raise ConnectionAbortedError(
-                errno.ECONNABORTED,
-                "Connection aborted - [Listener torn down while accept() was blocked]",
-            )
+            if not acquired:
+                if timeout is None and not self._blocking:
+                    raise BlockingIOError(errno.EAGAIN, os.strerror(errno.EAGAIN))
+                raise TimeoutError("TCP Socket - Accept operation timed out.")
 
-        socket = cast(TcpSocket, self._tcp_accept.pop(0))
+            if not self._tcp_accept:
+                # A teardown wake (close()/abort() drained the backlog),
+                # not a connection: cascade the permit to any other
+                # parked waiter, then report per POSIX — EBADF once the
+                # listener is closed, ECONNABORTED for an aborted-but-
+                # still-open one.
+                self._event__tcp_session_established.release()
+                self._raise_if_closed()
+                raise ConnectionAbortedError(
+                    errno.ECONNABORTED,
+                    "Connection aborted - [Listener torn down while accept() was blocked]",
+                )
+
+            socket = cast(TcpSocket, self._tcp_accept.pop(0))
+            # A child reset by its peer while queued is dead: its
+            # session reached CLOSED (and deregistered) but the queue
+            # entry survived, and handing it out gives the
+            # application a socket whose first recv()/send() fails
+            # confusingly (Linux 'inet_csk_accept' reaps disconnected
+            # children instead). Consume its permit and wait for a
+            # live one. (A re-acquire restarts the full 'timeout' —
+            # an acceptable imprecision for this rare path.)
+            if socket._tcp_session is not None and socket._tcp_session.state is FsmState.CLOSED:
+                log.enabled and log(
+                    "socket",
+                    f"<g>[{self}]</> - Skipping dead (reset-before-accept) backlog child",
+                )
+                continue
+            break
         # POSIX accept(2) inherits the listener's O_NONBLOCK on the
         # accepted child; mirror that so apps that flip the listener
         # to non-blocking get non-blocking children.

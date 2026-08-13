@@ -284,3 +284,42 @@ class TestTcpListenerSynBacklog(TcpTestCase):
             self._TEST__SYN_BACKLOG,
             msg="A SYN flood must not fork embryonic children past the SYN-backlog cap.",
         )
+
+
+class TestTcpAcceptDeadChild(TcpTestCase):
+    """
+    The dead-backlog-child tests: a child reset by its peer between
+    establishment and accept() reached CLOSED (and deregistered)
+    but stayed queued, so accept() handed the application a dead
+    socket whose first recv()/send() failed confusingly.
+    """
+
+    async def test__accept__skips_a_child_reset_before_accept(self) -> None:
+        """
+        Ensure accept() never returns a child whose session died
+        while queued: the dead entry is skipped (its wake permit
+        consumed) and accept() keeps waiting for a live one.
+
+        Reference: Linux inet_csk_accept (reaps disconnected children from the queue).
+        """
+
+        listen_socket = TestTcpListenerClose._make_listen_socket(self)
+        TestTcpListenerClose._drive_backlog_child(self, listen_socket)
+
+        # The peer resets the established-but-unaccepted child.
+        rst_frame = build_tcp4(
+            sport=PEER__PORT,
+            dport=LISTEN__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("RST", "ACK"),
+            win=PEER__WIN,
+        )
+        self._drive_rx(frame=rst_frame)
+
+        listen_socket.setblocking(False)
+        with self.assertRaises(
+            BlockingIOError,
+            msg="accept() must skip the dead child and report an empty queue, not hand it out.",
+        ):
+            await listen_socket.accept()
