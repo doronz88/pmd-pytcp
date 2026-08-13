@@ -311,3 +311,69 @@ class TestIcmp6Nd__AsyncDad__ClaimAsyncReturnsThread(NdTestCase, IsolatedAsyncio
         # scope; this no-op keeps the import truly used at runtime under
         # mypy strict if a future test variant is added.
         _ = MacAddress
+
+
+class TestIcmp6Nd__AsyncDad__CancellationSafety(NdTestCase, IsolatedAsyncioTestCase):
+    """
+    The DAD-claim cancellation-safety tests: the slot install /
+    state entry / solicited-node join were torn down only on the
+    straight-line path, so a claim cancelled mid-probe (stack stop
+    during boot, a DHCPv6 lease replaced) leaked the registry slot
+    and its nonces, left a stale TENTATIVE state entry, and stayed
+    joined to a solicited-node group for an address never claimed.
+    """
+
+    def tearDown(self) -> None:
+        """
+        Restore sysctl defaults so per-test overrides don't leak.
+        """
+
+        sysctl_module.reset_to_defaults()
+        super().tearDown()
+
+    async def test__icmp6__nd__dad__cancelled_claim_leaks_no_state(self) -> None:
+        """
+        Ensure a DAD claim cancelled while awaiting a probe reply
+        tears everything down: registry slot gone, per-address
+        state entry gone, solicited-node group left.
+
+        Reference: RFC 4862 §5.4 (DAD state is transient per attempt).
+        """
+
+        handler = self._packet_handler
+        with (
+            sysctl_module.override("icmp6.default.max_rtr_solicitation_delay_ms", 0),
+            sysctl_module.override("icmp6.default.retrans_timer_ms", 60_000),
+        ):
+            task = asyncio.get_running_loop().create_task(
+                handler._perform_ip6_nd_dad(ip6_unicast_candidate=_CANDIDATE_A)
+            )
+            # Let the claim run up to its probe-reply wait.
+            for _ in range(10):
+                await asyncio.sleep(0)
+            self.assertIn(
+                _CANDIDATE_A,
+                handler._icmp6_nd_dad__registry._events,
+                msg="Test precondition: the claim must be parked with its slot installed.",
+            )
+
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        self.assertNotIn(
+            _CANDIDATE_A,
+            handler._icmp6_nd_dad__registry._events,
+            msg="A cancelled claim must tear down its DAD registry slot.",
+        )
+        self.assertIsNone(
+            handler.get_icmp6_dad_state(address=_CANDIDATE_A),
+            msg="A cancelled claim must drop its per-address DAD state entry.",
+        )
+        self.assertNotIn(
+            _CANDIDATE_A.solicited_node_multicast,
+            handler._ip6_multicast,
+            msg="A cancelled claim must leave the solicited-node group it joined for DAD.",
+        )

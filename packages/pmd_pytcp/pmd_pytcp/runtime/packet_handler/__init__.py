@@ -3012,99 +3012,123 @@ class PacketHandlerL2(
                 ip6_unicast_candidate: Icmp6DadState.TENTATIVE,
             }
 
-        # RFC 4862 §5.4.2 — random initial delay before the
-        # first DAD probe to alleviate fleet-wide
-        # synchronisation when many hosts boot at the same
-        # instant. Ceiling is 'icmp6.max_rtr_solicitation_delay_ms'
-        # (default 1000 ms = RFC 4861 §10). Setting the sysctl
-        # to 0 disables.
-        max_initial_delay_ms = sysctl_iface.get_for_iface("icmp6.max_rtr_solicitation_delay_ms", self._interface_name)
-        if max_initial_delay_ms > 0:
-            await asyncio.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))
-
-        # The optimistic wrapper has already joined the
-        # solicited-node multicast group via '_assign_ip6_host';
-        # in the strict path the multicast must be joined here
-        # so DAD probes can be received back from peers.
-        solicited_node = ip6_unicast_candidate.solicited_node_multicast
-        joined_for_dad = solicited_node not in self._ip6_multicast
-        if joined_for_dad:
-            self._assign_ip6_multicast(ip6_multicast=solicited_node)
-
-        # RFC 4861 §6.3.4: an RA-advertised Retrans Timer
-        # supersedes the operator-configured sysctl default. The
-        # mirror is captured by §13a; consumer wiring is §13b.
-        effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or sysctl_iface.get_for_iface(
-            "icmp6.retrans_timer_ms", self._interface_name
-        )
-        retrans_timer_s = effective_retrans_timer_ms / 1000.0
-        conflict = False
-        for _probe_index in range(sysctl_iface.get_for_iface("icmp6.dad_transmits", self._interface_name)):
-            # RFC 7527 §4.1: every NS(DAD) carries a fresh
-            # random nonce when Enhanced DAD is enabled. The
-            # nonce is registered with the slot under the
-            # registry's lock so the RX nonce-membership read
-            # in 'registry.try_signal_conflict' cannot observe
-            # a partially-mutated set.
-            nonce: bytes | None = None
-            if sysctl_iface.get_for_iface("icmp6.enhanced_dad", self._interface_name):
-                nonce = secrets.token_bytes(6)
-                self._icmp6_nd_dad__registry.register_nonce(ip6_unicast_candidate, nonce)
-            self._send_icmp6_nd_dad_message(
-                ip6_unicast_candidate=ip6_unicast_candidate,
-                nonce=nonce,
+        # Everything from here to the end runs under a single
+        # try/finally: the coroutine awaits at the initial delay
+        # and at every probe-reply wait, and a claim cancelled at
+        # either point (stack stop during boot, a DHCPv6 lease
+        # replaced mid-claim) previously leaked the registry slot
+        # and its nonces, left a stale TENTATIVE state entry, and
+        # stayed joined to a solicited-node group for an address
+        # that was never claimed.
+        joined_for_dad = False
+        try:
+            # RFC 4862 §5.4.2 — random initial delay before the
+            # first DAD probe to alleviate fleet-wide
+            # synchronisation when many hosts boot at the same
+            # instant. Ceiling is 'icmp6.max_rtr_solicitation_delay_ms'
+            # (default 1000 ms = RFC 4861 §10). Setting the sysctl
+            # to 0 disables.
+            max_initial_delay_ms = sysctl_iface.get_for_iface(
+                "icmp6.max_rtr_solicitation_delay_ms", self._interface_name
             )
-            if await wait_event(dad_event, retrans_timer_s):
-                conflict = True
-                break
+            if max_initial_delay_ms > 0:
+                await asyncio.sleep(random.uniform(0, max_initial_delay_ms / 1000.0))
 
-        if conflict:
-            # The RX path captured the peer's TLLA into the
-            # slot under the registry's lock; we read it back
-            # the same way.
-            conflict_tlla = self._icmp6_nd_dad__registry.peer_info(ip6_unicast_candidate)
-            log.enabled and log(
-                "stack",
-                "<WARN>ICMPv6 ND DAD - Duplicate IPv6 address detected, "
-                f"{ip6_unicast_candidate} advertised by "
-                f"{conflict_tlla}</>",
-            )
-            # Conflict — drop the per-address state entry; the
-            # caller is responsible for reverting any pre-claim
-            # (Optimistic-DAD wrapper removes the address from
-            # '_ip6_ifaddr'; the strict path never assigned it).
-            self._icmp6_dad__states = {
-                addr: state for addr, state in self._icmp6_dad__states.items() if addr != ip6_unicast_candidate
-            }
-        else:
-            log.enabled and log(
-                "stack",
-                "ICMPv6 ND DAD - No duplicate address detected for " f"{ip6_unicast_candidate}",
-            )
-            # Promote the per-address state to VALID before the
-            # gratuitous NA goes out so the NA emit path's
-            # OPTIMISTIC-source Override-flag suppression no
-            # longer applies (RFC 9131 §3 announcement carries
-            # Override=1 by design, RFC 4429 §3.3 step 5).
-            self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
-            # RFC 9131 §3 — gratuitous Neighbor Advertisement(s)
-            # on host attachment so peers preemptively populate
-            # their neighbour cache for our newly-claimed
-            # address. Operator-tunable count via
-            # 'icmp6.gratuitous_na_count' (default 1; 0 disables).
-            self.send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast=ip6_unicast_candidate)
+            # The optimistic wrapper has already joined the
+            # solicited-node multicast group via '_assign_ip6_host';
+            # in the strict path the multicast must be joined here
+            # so DAD probes can be received back from peers.
+            solicited_node = ip6_unicast_candidate.solicited_node_multicast
+            joined_for_dad = solicited_node not in self._ip6_multicast
+            if joined_for_dad:
+                self._assign_ip6_multicast(ip6_multicast=solicited_node)
 
-        # Tear down the per-address DAD slot. Order: clear the
-        # slot AFTER the state-transition above so the RX
-        # dispatch cannot signal a slot that's about to be
-        # popped. The registry tear-down runs under its
-        # internal lock so an in-flight RX
-        # 'try_signal_conflict' call cannot observe a
-        # half-popped slot.
-        self._icmp6_nd_dad__registry.teardown(ip6_unicast_candidate)
-        if joined_for_dad:
-            self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
-        return not conflict
+            # RFC 4861 §6.3.4: an RA-advertised Retrans Timer
+            # supersedes the operator-configured sysctl default. The
+            # mirror is captured by §13a; consumer wiring is §13b.
+            effective_retrans_timer_ms = self._icmp6_ra_parameters.retrans_timer_ms or sysctl_iface.get_for_iface(
+                "icmp6.retrans_timer_ms", self._interface_name
+            )
+            retrans_timer_s = effective_retrans_timer_ms / 1000.0
+            conflict = False
+            for _probe_index in range(sysctl_iface.get_for_iface("icmp6.dad_transmits", self._interface_name)):
+                # RFC 7527 §4.1: every NS(DAD) carries a fresh
+                # random nonce when Enhanced DAD is enabled. The
+                # nonce is registered with the slot under the
+                # registry's lock so the RX nonce-membership read
+                # in 'registry.try_signal_conflict' cannot observe
+                # a partially-mutated set.
+                nonce: bytes | None = None
+                if sysctl_iface.get_for_iface("icmp6.enhanced_dad", self._interface_name):
+                    nonce = secrets.token_bytes(6)
+                    self._icmp6_nd_dad__registry.register_nonce(ip6_unicast_candidate, nonce)
+                self._send_icmp6_nd_dad_message(
+                    ip6_unicast_candidate=ip6_unicast_candidate,
+                    nonce=nonce,
+                )
+                if await wait_event(dad_event, retrans_timer_s):
+                    conflict = True
+                    break
+
+            if conflict:
+                # The RX path captured the peer's TLLA into the
+                # slot under the registry's lock; we read it back
+                # the same way.
+                conflict_tlla = self._icmp6_nd_dad__registry.peer_info(ip6_unicast_candidate)
+                log.enabled and log(
+                    "stack",
+                    "<WARN>ICMPv6 ND DAD - Duplicate IPv6 address detected, "
+                    f"{ip6_unicast_candidate} advertised by "
+                    f"{conflict_tlla}</>",
+                )
+                # Conflict — drop the per-address state entry; the
+                # caller is responsible for reverting any pre-claim
+                # (Optimistic-DAD wrapper removes the address from
+                # '_ip6_ifaddr'; the strict path never assigned it).
+                self._icmp6_dad__states = {
+                    addr: state for addr, state in self._icmp6_dad__states.items() if addr != ip6_unicast_candidate
+                }
+            else:
+                log.enabled and log(
+                    "stack",
+                    "ICMPv6 ND DAD - No duplicate address detected for " f"{ip6_unicast_candidate}",
+                )
+                # Promote the per-address state to VALID before the
+                # gratuitous NA goes out so the NA emit path's
+                # OPTIMISTIC-source Override-flag suppression no
+                # longer applies (RFC 9131 §3 announcement carries
+                # Override=1 by design, RFC 4429 §3.3 step 5).
+                self._icmp6_dad__states = {**self._icmp6_dad__states, ip6_unicast_candidate: Icmp6DadState.VALID}
+                # RFC 9131 §3 — gratuitous Neighbor Advertisement(s)
+                # on host attachment so peers preemptively populate
+                # their neighbour cache for our newly-claimed
+                # address. Operator-tunable count via
+                # 'icmp6.gratuitous_na_count' (default 1; 0 disables).
+                self.send_icmp6_neighbor_advertisement_gratuitous(ip6_unicast=ip6_unicast_candidate)
+
+            return not conflict
+        finally:
+            # Single teardown site — runs on the straight-line
+            # path AND on cancellation / a raising probe emit.
+            # Order: the state transition above (VALID promotion /
+            # conflict removal) happened before we get here, so
+            # the RX dispatch cannot signal a slot that is about
+            # to be popped; the registry tear-down runs under its
+            # internal lock so an in-flight 'try_signal_conflict'
+            # cannot observe a half-popped slot ('teardown' is a
+            # tolerant pop, so the finally is idempotent).
+            self._icmp6_nd_dad__registry.teardown(ip6_unicast_candidate)
+            if joined_for_dad:
+                self._remove_ip6_multicast(ip6_unicast_candidate.solicited_node_multicast)
+            # A cancelled / failed claim never resolved: drop the
+            # still-pending (TENTATIVE / OPTIMISTIC) state entry
+            # so nothing stale outlives the attempt. Success
+            # promoted the entry to VALID above; a conflict
+            # already removed it — both are untouched here.
+            if self._icmp6_dad__states.get(ip6_unicast_candidate) not in (None, Icmp6DadState.VALID):
+                self._icmp6_dad__states = {
+                    a: s for a, s in self._icmp6_dad__states.items() if a != ip6_unicast_candidate
+                }
 
     async def _claim_ip6_address_optimistic(self, *, ip6_host: Ip6IfAddr) -> bool:
         """
