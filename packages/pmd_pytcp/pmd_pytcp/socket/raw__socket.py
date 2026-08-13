@@ -49,6 +49,7 @@ from pmd_net_proto.lib.enums import IpProto
 from pmd_pytcp import stack
 from pmd_pytcp.lib.logger import log
 from pmd_pytcp.socket import (
+    SOCKET__DGRAM_RX_QUEUE__MAX_LEN,
     IPPROTO_IP,
     IPPROTO_IPV6,
     SO_LINGER,
@@ -495,6 +496,11 @@ class RawSocket(socket):
         """
 
         if self._closed:
+            return
+        if len(self._packet_rx_md) >= SOCKET__DGRAM_RX_QUEUE__MAX_LEN:
+            # Full receive buffer: drop the NEWEST packet (POSIX
+            # raw(7) semantics) — an unread socket must not buffer
+            # inbound traffic without bound.
             return
         self._packet_rx_md.append(packet_rx_md)
         self._packet_rx_md_ready.release()

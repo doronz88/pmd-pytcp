@@ -164,6 +164,17 @@ class SolSocketOption(IntEnum):
     SO_BINDTODEVICE = 25  # bytes: pin socket egress / RX to an interface by name
 
 
+# Cap on the datagram-family (UDP / RAW / AF_PACKET) per-socket rx
+# queue, in datagrams. The queues are plain lists a blocked reader
+# drains one entry per recv; without a bound, any long-lived socket
+# the application does not drain buffers inbound traffic without
+# limit (worst case: the ACD ARP defense socket is polled once per
+# DHCP T1 — hours — while every ARP broadcast on the segment lands
+# in it). Once full, the NEWEST datagram is dropped — POSIX
+# full-receive-buffer semantics; SO_RCVBUF remains storage-only.
+# 512 datagrams gives a 4000-pps RTP stream ~128 ms of slack.
+SOCKET__DGRAM_RX_QUEUE__MAX_LEN = 512
+
 SO_REUSEADDR = SolSocketOption.SO_REUSEADDR
 SO_BROADCAST = SolSocketOption.SO_BROADCAST
 SO_SNDBUF = SolSocketOption.SO_SNDBUF
