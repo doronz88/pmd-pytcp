@@ -89,6 +89,17 @@ TCP__FIN_WAIT_2__TIMEOUT_MS = 60000
 # coalescing window MUST NOT exceed 500 ms.
 TCP__DELAYED_ACK__DELAY_MS = 100
 
+# Cap on concurrent embryonic (SYN_RCVD) children per listening
+# port — Linux 'tcp_max_syn_backlog' parity. The accept-queue gate
+# ('listen(backlog)') counts only ESTABLISHED-but-unaccepted
+# children; without this second bound every inbound SYN forked and
+# registered a child socket + session, so a SYN flood of
+# never-completing handshakes created unbounded concurrent sessions
+# (bounded only in time by each child's own R2 abort). An over-cap
+# SYN is dropped silently: the peer retransmits, and a slot frees
+# once a handshake completes or an embryo times out.
+TCP__SYN_BACKLOG__MAX_COUNT = 128
+
 # Cap on the per-session out-of-order reassembly queue (entry count,
 # not bytes). Each entry pins its full inbound packet buffer, and the
 # receive window alone does not bound the entry COUNT — a peer

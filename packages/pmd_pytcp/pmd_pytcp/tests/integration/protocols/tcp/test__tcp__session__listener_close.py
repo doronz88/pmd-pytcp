@@ -231,3 +231,56 @@ class TestTcpListenerClose(TcpTestCase):
         with self.assertRaises(OSError) as ctx:
             await asyncio.wait_for(listen_socket.accept(), timeout=1)
         self.assertEqual(ctx.exception.errno, errno.EBADF)
+
+
+class TestTcpListenerSynBacklog(TcpTestCase):
+    """
+    The embryonic (SYN_RCVD) admission-bound tests: every inbound
+    SYN forked and REGISTERED a child socket + session without any
+    counter, so a SYN flood of never-completing handshakes created
+    unbounded concurrent sessions — the exact DoS class the
+    accept-queue gate's comment claims to defend against, one state
+    earlier.
+    """
+
+    _TEST__SYN_BACKLOG = 8
+
+    def setUp(self) -> None:
+        super().setUp()
+        self._start_patch(
+            "pmd_pytcp.protocols.tcp.tcp__constants.TCP__SYN_BACKLOG__MAX_COUNT",
+            self._TEST__SYN_BACKLOG,
+        )
+
+    def test__listener__embryonic_children_are_bounded(self) -> None:
+        """
+        Ensure a SYN flood cannot fork embryonic children past the
+        SYN-backlog cap: the over-cap SYN is dropped silently (the
+        peer retransmits; a slot frees once a handshake completes
+        or an embryo times out).
+
+        Reference: Linux 'tcp_max_syn_backlog' (bound on SYN_RCVD sockets per listener).
+        """
+
+        listen_socket = TestTcpListenerClose._make_listen_socket(self)
+        del listen_socket  # registered in stack.sockets; the gate scans the registry
+
+        sockets_before = len(stack.sockets)
+        for i in range(self._TEST__SYN_BACKLOG + 5):
+            syn_frame = build_tcp4(
+                sport=PEER__PORT + i,
+                dport=LISTEN__PORT,
+                seq=PEER__ISS,
+                ack=0,
+                flags=("SYN",),
+                win=PEER__WIN,
+                mss=PEER__MSS,
+            )
+            self._drive_rx(frame=syn_frame)
+
+        forked = len(stack.sockets) - sockets_before
+        self.assertEqual(
+            forked,
+            self._TEST__SYN_BACKLOG,
+            msg="A SYN flood must not fork embryonic children past the SYN-backlog cap.",
+        )

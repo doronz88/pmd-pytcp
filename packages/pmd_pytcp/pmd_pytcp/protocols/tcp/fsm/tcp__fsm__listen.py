@@ -40,6 +40,7 @@ from pmd_net_addr import IpVersion
 from pmd_net_proto.protocols.tcp.tcp__header import TCP__MIN_MSS
 from pmd_pytcp import stack
 from pmd_pytcp.lib.logger import log
+from pmd_pytcp.protocols.tcp import tcp__constants
 from pmd_pytcp.protocols.tcp.tcp__enums import FsmState, SysCall
 from pmd_pytcp.protocols.tcp.tcp__seq import add32
 
@@ -128,6 +129,32 @@ def fsm__listen__packet(session: TcpSession, packet_rx_md: TcpMetadata) -> None:
                 log.enabled and log(
                     "tcp-ss",
                     f"[{session}] - Accept queue full " f"({accept_q_len}/{accept_q_cap}); " "dropping SYN silently",
+                )
+                return
+            # SYN-backlog admission gate (Linux 'tcp_max_syn_backlog'
+            # parity). The accept-queue gate above counts only
+            # ESTABLISHED-but-unaccepted children, so a SYN flood of
+            # never-completing handshakes would otherwise fork and
+            # REGISTER an unbounded number of embryonic sessions —
+            # the same DoS class, one state earlier. Counted by
+            # registry scan rather than a per-listener counter: no
+            # lifecycle bookkeeping to leak, and the cost is paid
+            # only on SYN admission. An over-cap SYN is dropped
+            # silently — the peer retransmits, and a slot frees once
+            # a handshake completes or an embryo R2-aborts.
+            embryonic = sum(
+                1
+                for sock in stack.sockets.values()
+                if getattr(sock, "_tcp_session", None) is not None
+                and sock._local_port == session._local_port
+                and sock._tcp_session.state is FsmState.SYN_RCVD
+            )
+            if embryonic >= tcp__constants.TCP__SYN_BACKLOG__MAX_COUNT:
+                log.enabled and log(
+                    "tcp-ss",
+                    f"[{session}] - SYN backlog full "
+                    f"({embryonic}/{tcp__constants.TCP__SYN_BACKLOG__MAX_COUNT}); "
+                    "dropping SYN silently",
                 )
                 return
             # pylint: enable=protected-access
