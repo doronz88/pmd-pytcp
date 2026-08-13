@@ -36,7 +36,7 @@ from __future__ import annotations
 from unittest import TestCase
 
 from pmd_net_addr import Ip4Address
-from pmd_pytcp.protocols.tcp.tcp__stack import TcpStack
+from pmd_pytcp.protocols.tcp.tcp__stack import TCP__FASTOPEN_NEGATIVE__MAX_LEN, TcpStack
 
 _PEER_A = Ip4Address("203.0.113.1")
 
@@ -201,18 +201,20 @@ class TestTcpStack__Defaults(TestCase):
 
     def test__tcp_stack__fastopen_negative_default_empty(self) -> None:
         """
-        Ensure 'fastopen_negative' defaults to an empty set so a
+        Ensure 'fastopen_negative' defaults to empty so a
         freshly-constructed stack does not bypass TFO for any
         peer — every peer gets a TFO-bearing SYN on the first
-        active-open attempt.
+        active-open attempt. (A dict-as-ordered-set since the
+        FIFO-eviction bound landed; membership semantics are
+        unchanged.)
 
         Reference: RFC 7413 §4.1.3.1 (negative-response cache).
         """
 
         self.assertEqual(
             self._stack.fastopen_negative,
-            set(),
-            msg="TcpStack.fastopen_negative must default to set().",
+            {},
+            msg="TcpStack.fastopen_negative must default to empty.",
         )
 
     def test__tcp_stack__fastopen_pending_count_default_zero(self) -> None:
@@ -255,4 +257,34 @@ class TestTcpStack__Defaults(TestCase):
             stack_a.fastopen_negative,
             stack_b.fastopen_negative,
             msg="Distinct TcpStack instances must own distinct fastopen_negative sets.",
+        )
+
+
+class TestTcpStackFastopenNegativeCap(TestCase):
+    """
+    The RFC 7413 §4.1.3.1 negative-cache bound tests.
+    """
+
+    def test__fastopen_negative__is_bounded(self) -> None:
+        """
+        Ensure the Fast-Open negative cache cannot grow without
+        bound: one entry lands per peer that ever experienced a
+        SYN-RTO during a TFO active open, so a many-destination
+        client (proxy / scanner workload) accrued one entry per
+        dead peer for the process lifetime. The cookie cache next
+        to it has FIFO eviction; the negative cache now matches.
+
+        Reference: RFC 7413 §4.1.3.1 (negative cache is an optimization, not a ledger).
+        """
+
+        from pmd_net_addr import Ip4Address
+
+        tcp_stack = TcpStack()
+        for i in range(TCP__FASTOPEN_NEGATIVE__MAX_LEN + 10):
+            tcp_stack.mark_fastopen_negative(Ip4Address(f"10.{(i >> 16) & 0xFF}.{(i >> 8) & 0xFF}.{i & 0xFF}"))
+
+        self.assertLessEqual(
+            len(tcp_stack.fastopen_negative),
+            TCP__FASTOPEN_NEGATIVE__MAX_LEN,
+            msg="The Fast-Open negative cache must not grow past its cap.",
         )

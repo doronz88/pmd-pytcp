@@ -53,6 +53,13 @@ from pmd_pytcp._compat import dataclass
 
 from pmd_net_addr import Ip4Address, Ip6Address
 
+# Cap on the RFC 7413 §4.1.3.1 negative-response cache. One entry
+# lands per peer that ever experienced a SYN-RTO during a TFO active
+# open, so a many-destination client (proxy / scanner workload) would
+# otherwise accrue one entry per dead peer for the process lifetime.
+# FIFO-evicted, same policy as the cookie cache.
+TCP__FASTOPEN_NEGATIVE__MAX_LEN = 1024
+
 
 @dataclass(slots=True)
 class TcpStack:
@@ -85,8 +92,9 @@ class TcpStack:
     # that drops TFO-bearing SYNs). Subsequent active-open
     # attempts to a peer in this set bypass the TFO option
     # entirely so a known-bad path is not exercised on every
-    # new connection.
-    fastopen_negative: set[Ip4Address | Ip6Address] = field(default_factory=set)
+    # new connection. A dict-as-ordered-set so 'mark' can
+    # FIFO-evict at 'TCP__FASTOPEN_NEGATIVE__MAX_LEN'.
+    fastopen_negative: dict[Ip4Address | Ip6Address, None] = field(default_factory=dict)
 
     # RFC 7413 §4.2 PendingFastOpenRequests: count of TFO-
     # accepted active connections in SYN-RCVD state on the
@@ -133,10 +141,15 @@ class TcpStack:
 
     def mark_fastopen_negative(self, peer: Ip4Address | Ip6Address, /) -> None:
         """
-        Record the peer in the Fast-Open negative cache.
+        Record the peer in the Fast-Open negative cache,
+        FIFO-evicting at 'TCP__FASTOPEN_NEGATIVE__MAX_LEN' (same
+        bounding policy as the cookie cache next door).
         """
 
-        self.fastopen_negative.add(peer)
+        self.fastopen_negative.pop(peer, None)
+        self.fastopen_negative[peer] = None
+        while len(self.fastopen_negative) > TCP__FASTOPEN_NEGATIVE__MAX_LEN:
+            del self.fastopen_negative[next(iter(self.fastopen_negative))]
 
     def fastopen_pending(self) -> int:
         """

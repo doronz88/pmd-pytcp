@@ -863,6 +863,20 @@ class PacketHandler(ABC):
         log.enabled and log("stack", f"Removed IPv6 unicast address {ip6_host}")
 
         self._remove_ip6_multicast(ip6_host.address.solicited_node_multicast)
+        self._drop_icmp6_dad_state(ip6_host.address)
+
+    def _drop_icmp6_dad_state(self, /, address: Ip6Address) -> None:
+        """
+        Drop the DAD registry entry for a removed address. Entries
+        are added on every claim but were removed only on DAD
+        CONFLICT, so each rotated-out RFC 8981 temp address left a
+        stale VALID entry forever — monotonic growth on exactly
+        the runs-for-days profile. Copy-on-write like the other
+        registry mutations.
+        """
+
+        if address in self._icmp6_dad__states:
+            self._icmp6_dad__states = {a: s for a, s in self._icmp6_dad__states.items() if a != address}
 
     @abstractmethod
     def _claim_ip6_address_async(
@@ -1241,6 +1255,14 @@ class PacketHandler(ABC):
             Icmp6NdRoutePreference.LOW: 2,
         }
         active = [r for r in self._icmp6_default_routers if r.expires_at > now]
+        # Write the filtered list back so timed-out routers are
+        # actually REMOVED (RFC 4861 §6.3.5), not merely hidden: a
+        # filter-only lazy ageing kept one stale entry per distinct
+        # RA source address forever, and an on-link attacker
+        # spoofing many link-local sources could grow the list
+        # without bound.
+        if len(active) != len(self._icmp6_default_routers):
+            self._icmp6_default_routers = list(active)
         # 'RESERVED' was normalised to MEDIUM at install time; the
         # rank dict has no entry for it, so a defensive fallback
         # places any stray RESERVED at MEDIUM rank.
@@ -1503,6 +1525,7 @@ class PacketHandler(ABC):
                     if snm in self._ip6_multicast:
                         self._remove_ip6_multicast(snm)
                     break
+            self._drop_icmp6_dad_state(entry.address)
 
         # Drop from the temp-address table.
         self._icmp6_temp_addresses = [t for t in self._icmp6_temp_addresses if t.valid_until > now]
@@ -1630,6 +1653,7 @@ class PacketHandler(ABC):
                     if snm in self._ip6_multicast:
                         self._remove_ip6_multicast(snm)
                     break
+            self._drop_icmp6_dad_state(entry.address)
 
         self._icmp6_slaac_addresses = [a for a in self._icmp6_slaac_addresses if a.valid_until > now]
 
