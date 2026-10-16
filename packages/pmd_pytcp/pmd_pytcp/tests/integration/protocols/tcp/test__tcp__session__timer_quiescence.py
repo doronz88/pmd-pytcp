@@ -212,6 +212,58 @@ class TestTcpTimerQuiescence(TcpTestCase):
             msg="An expired 'tlp' deadline the tick declined to act on must be cancelled.",
         )
 
+    def _assert_delayed_ack_is_one_shot(self, *, delay_ms: int) -> None:
+        self._start_patch("pmd_pytcp.protocols.tcp.tcp__constants.TCP__DELAYED_ACK__DELAY_MS", delay_ms)
+        session = self._establish()
+        segment = build_tcp4(
+            sport=PEER__PORT,
+            dport=STACK__PORT,
+            seq=PEER__ISS + 1,
+            ack=LOCAL__ISS + 1,
+            flags=("ACK", "PSH"),
+            win=PEER__WIN,
+            payload=b"x" * 100,
+        )
+
+        self.assertEqual(self._drive_rx(frame=segment), [], msg="A lone segment's ACK must be delayed.")
+        tx = self._advance(ms=3 * delay_ms)
+        self.assertEqual(len(tx), 1, msg="The delayed-ACK timer must emit exactly one ACK.")
+        self._assert_segment(self._parse_tx(tx[0]), flags=frozenset({"ACK"}), ack=PEER__ISS + 101)
+
+        self.assertNotIn(
+            "delayed_ack",
+            session._timers._deadlines,
+            msg="A fired delayed-ACK timer with nothing left to ACK must be retired, not re-armed.",
+        )
+        self.assertIsNone(
+            session._timers._service_handle,
+            msg="A session with nothing to ACK, send or retransmit must schedule no wakeup.",
+        )
+
+    def test__delayed_ack__timer_is_one_shot_at_1ms(self) -> None:
+        """
+        Ensure the delayed-ACK timer retires after it has ACKed the
+        pending data instead of re-arming itself: an unconditional
+        re-arm made it a free-running periodic, so every session that
+        had ever received data woke every 'tcp.delayed_ack.delay_ms'
+        for the rest of its life — 1000 no-op wakes per second at the
+        1 ms setting latency-sensitive consumers use.
+
+        Reference: RFC 1122 §4.2.3.2 (delayed ACK bounds an ACK's delay; it is not a clock).
+        """
+
+        self._assert_delayed_ack_is_one_shot(delay_ms=1)
+
+    def test__delayed_ack__timer_is_one_shot_at_default_delay(self) -> None:
+        """
+        Ensure the delayed-ACK timer is one-shot at the RFC default
+        delay too (an idle session otherwise wakes 10 times a second).
+
+        Reference: RFC 1122 §4.2.3.2 (delayed ACK bounds an ACK's delay; it is not a clock).
+        """
+
+        self._assert_delayed_ack_is_one_shot(delay_ms=100)
+
 
 class TestTlpRtoClamp(TcpTestCase):
     """

@@ -706,6 +706,16 @@ class TcpTxEngine:
         # wrong: the unarmed-flush behaviour is load-bearing. A
         # CLOSE_WAIT/ESTABLISHED tick with no delayed-ACK window
         # in progress must flush the held ACK immediately.
+        #
+        # The timer is one-shot (RFC 1122 §4.2.3.2 bounds the delay
+        # of an ACK for received data; it is not a periodic clock).
+        # The RX path arms it on the first unacked segment and
+        # '_phase5_post_send_timers' on every ESTABLISHED send; it is
+        # retired here once it fires. Re-arming it unconditionally
+        # made it a free-running periodic: an idle session woke every
+        # 'tcp.delayed_ack.delay_ms' forever (1000/s at 1 ms). The
+        # expired deadline must be dropped, not left in the map, or
+        # '_reschedule' keeps servicing it at its 1 ms floor.
         if not session._timer_armed("delayed_ack"):
             if gt32(session._rcv_seq.nxt, session._rcv_seq.una):
                 self.transmit_packet(flag_ack=True)
@@ -713,7 +723,8 @@ class TcpTxEngine:
                     "tcp-ss",
                     f"[{session}] - Sent out delayed ACK ({session._rcv_seq.nxt})",
                 )
-            session._arm_timer("delayed_ack", tcp__constants.TCP__DELAYED_ACK__DELAY_MS)
+            if session._timer_expired("delayed_ack"):
+                session._cancel_timer("delayed_ack")
 
     def build_sack_blocks(self) -> list[tuple[int, int]]:
         """
