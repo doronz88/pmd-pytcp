@@ -530,3 +530,24 @@ class LinkApi:
         """
 
         return _FLAGS_BY_LAYER[self._resolve_handler()._interface_layer]
+
+    def receive_frame(self, frame: bytes, /) -> None:
+        """
+        Hand one raw frame to this interface's ingress, exactly as
+        if it had been read from the interface fd: an Ethernet
+        frame on an L2 (TAP) interface, an IP packet on an L3 (TUN)
+        one. Processing is synchronous, on the caller's stack.
+
+        For embedders that produce inbound frames in-process on the
+        stack's event loop (a userspace tunnel): writing them to the
+        fd instead is bounded by the kernel socket buffer
+        ('net.core.rmem_max' without privileges on Linux) and drops
+        whatever a burst overflows. Must be called on the stack's
+        event loop. Frames received before 'stack.start()' are
+        dropped and counted like any fd frame without a consumer.
+        """
+
+        rx_ring = self._resolve_handler()._rx_ring
+        if rx_ring is None:
+            raise RuntimeError("The interface has no RX ring to receive the frame.")
+        rx_ring.receive_frame(frame)
