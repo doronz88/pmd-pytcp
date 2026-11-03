@@ -203,11 +203,17 @@ class RxRing:
         if self._reader_task is not None and not self._reader_task.done():
             self._reader_task.cancel()
 
-    def _handle_frame(self, frame: bytes, /) -> None:
+    def receive_frame(self, frame: bytes, /) -> None:
         """
         Parse one raw frame and deliver it synchronously to the
         packet handler. A raising handler is logged and swallowed
         so it cannot disarm the ingress.
+
+        Both fd ingress paths feed this; an embedder that already
+        holds the frame in-process (e.g. a userspace tunnel running
+        on the stack's loop) calls it directly via
+        'LinkApi.receive_frame' and skips the fd round trip. Must be
+        called on the stack's event loop.
         """
 
         packet_rx = PacketRx(frame)
@@ -273,7 +279,7 @@ class RxRing:
             except OSError as error:
                 self._count_os_error(error)
                 return
-            self._handle_frame(frame)
+            self.receive_frame(frame)
 
     async def _task__sock_reader(self) -> None:
         """
@@ -298,4 +304,4 @@ class RxRing:
                 # so yield a beat before retrying.
                 await asyncio.sleep(0.1)
                 continue
-            self._handle_frame(frame)
+            self.receive_frame(frame)

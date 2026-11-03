@@ -1194,3 +1194,59 @@ class TestLinkApiUnboundTool(TestCase):
             ifaces[1]._interface_mtu,
             msg="interface(2) on the unbound tool must read interface 2's MTU.",
         )
+
+
+class _RecordingRing:
+    """
+    Ring stand-in recording the frames 'LinkApi.receive_frame'
+    hands to its ingress.
+    """
+
+    def __init__(self) -> None:
+        self.frames: list[bytes] = []
+
+    def receive_frame(self, frame: bytes, /) -> None:
+        self.frames.append(frame)
+
+
+class TestLinkApiReceiveFrame(TestCase):
+    """
+    'LinkApi.receive_frame' feeds an in-process frame to the bound
+    interface's RX ring, as if it had been read from the fd.
+    """
+
+    def test__link_api__receive_frame__delivers_to_bound_rx_ring(self) -> None:
+        """
+        Ensure 'receive_frame' hands the frame verbatim to the bound
+        interface's RX ring, in call order.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        handler = _FakePacketHandlerL2(
+            mac_unicast=MacAddress("02:00:00:00:00:07"),
+            interface_mtu=1500,
+        )
+        ring = _RecordingRing()
+        handler._rx_ring = cast("_FakeRing", ring)
+        api = LinkApi(packet_handler=cast("PacketHandlerL2", handler))
+
+        api.receive_frame(b"\x01" * 60)
+        api.receive_frame(b"\x02" * 60)
+
+        self.assertEqual(
+            ring.frames,
+            [b"\x01" * 60, b"\x02" * 60],
+            msg="receive_frame must hand each frame to the bound RX ring, in order.",
+        )
+
+    def test__link_api__receive_frame__unbound_tool_raises(self) -> None:
+        """
+        Ensure 'receive_frame' on the unbound tool raises — the caller
+        must select a device via 'interface(ifindex)'.
+
+        Reference: PyTCP test infrastructure (Phase-3 Link API surface).
+        """
+
+        with self.assertRaises(RuntimeError):
+            LinkApi().receive_frame(b"\x01" * 60)

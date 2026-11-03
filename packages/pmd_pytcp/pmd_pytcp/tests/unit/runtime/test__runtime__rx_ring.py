@@ -55,7 +55,7 @@ class _RxRingFixture(TestCase):
     """
     Shared fixture: a bare 'RxRing' over a fake fd with logging
     suppressed. No loop is armed — the ingress mechanics
-    ('_handle_frame' / '_on_readable') are driven directly.
+    ('receive_frame' / '_on_readable') are driven directly.
     """
 
     def setUp(self) -> None:
@@ -127,7 +127,7 @@ class TestRxRingInit(_RxRingFixture):
 
 class TestRxRingDeliver(_RxRingFixture):
     """
-    The '_handle_frame' deliver-callback tests.
+    The 'receive_frame' deliver-callback tests.
     """
 
     def test__rx_ring__delivers_parsed_packet(self) -> None:
@@ -141,7 +141,7 @@ class TestRxRingDeliver(_RxRingFixture):
         delivered: list[PacketRx] = []
         self._ring.set_deliver_callback(delivered.append)
 
-        self._ring._handle_frame(_TEST_FRAME)
+        self._ring.receive_frame(_TEST_FRAME)
 
         self.assertEqual(
             len(delivered),
@@ -163,7 +163,7 @@ class TestRxRingDeliver(_RxRingFixture):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._ring._handle_frame(_TEST_FRAME)
+        self._ring.receive_frame(_TEST_FRAME)
 
         self.assertEqual(
             self._ring.queue_full_drop_count,
@@ -182,7 +182,7 @@ class TestRxRingDeliver(_RxRingFixture):
         self._ring.set_deliver_callback(MagicMock())
         self._ring.set_deliver_callback(None)
 
-        self._ring._handle_frame(_TEST_FRAME)
+        self._ring.receive_frame(_TEST_FRAME)
 
         self.assertEqual(
             self._ring.queue_full_drop_count,
@@ -200,7 +200,7 @@ class TestRxRingDeliver(_RxRingFixture):
 
         self._ring.set_deliver_callback(MagicMock(side_effect=RuntimeError("boom")))
 
-        self._ring._handle_frame(_TEST_FRAME)  # must not raise
+        self._ring.receive_frame(_TEST_FRAME)  # must not raise
 
         logged = " ".join(str(call_args) for call_args in self._log.call_args_list)
         self.assertIn(
@@ -222,7 +222,7 @@ class TestRxRingDeliver(_RxRingFixture):
         ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, link_stats=link_stats)
         ring.set_deliver_callback(MagicMock())
 
-        ring._handle_frame(_TEST_FRAME)
+        ring.receive_frame(_TEST_FRAME)
 
         self.assertEqual(
             link_stats.rx_bytes,
@@ -360,7 +360,7 @@ class TestRxRingSharedPacketStats(_RxRingFixture):
         stats = PacketStatsRx()
         ring = RxRing(fd=_TEST_FD, mtu=_TEST_MTU, packet_stats=stats)
 
-        ring._handle_frame(_TEST_FRAME)
+        ring.receive_frame(_TEST_FRAME)
 
         self.assertEqual(
             stats.rx_ring__queue_full__drop,
@@ -410,7 +410,7 @@ class TestRxRingSharedPacketStats(_RxRingFixture):
         Reference: PyTCP test infrastructure (no RFC clause).
         """
 
-        self._ring._handle_frame(_TEST_FRAME)
+        self._ring.receive_frame(_TEST_FRAME)
 
         self.assertEqual(
             self._ring._no_deliver_drop_count,
